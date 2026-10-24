@@ -186,10 +186,12 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
       };
       // Live replay: every committed publication of the durable transcript re-projects the
       // cell, whoever wrote it (this object's turns, tasks, tools, future code).
+      let lastView: ConversationView | undefined;
       self.task(async (ctx) => {
-        const conversation2 = await conversation;
-        const view = await conversation2.viewState(BACKGROUND_CONTEXT);
+        const chat = await conversation;
+        const view = await chat.viewState(BACKGROUND_CONTEXT);
         const apply = (value: ConversationView) => {
+          lastView = value;
           safeChange(cells.transcript, ctx, () =>
             projectTranscript(value.entries, cells.phase.value === "working"),
           );
@@ -199,6 +201,15 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
         await new Promise<void>((resolve) => {
           ctx.signal.addEventListener("abort", () => resolve());
         });
+      });
+      // Phase transitions re-project once more, so the streaming flag
+      // clears when the turn ends even if no publication followed.
+      self.on("reproject", cells.phase, (phase, ctx) => {
+        const view = lastView;
+        if (view === undefined) return;
+        safeChange(cells.transcript, ctx, () =>
+          projectTranscript(view.entries, phase === "working"),
+        );
       });
       return {
         variant: "default",
