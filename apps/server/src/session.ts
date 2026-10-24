@@ -9,6 +9,7 @@ import {
   type ConversationView,
   type EntryRecord,
   type Harness,
+  type LiveState,
   type Submission,
 } from "@earendil-works/pi-durable";
 import {
@@ -55,8 +56,12 @@ function textOf(content: unknown): string {
   return JSON.stringify(content);
 }
 
-/** Durable transcript entries -> rendered session steps (input/output/thinking/tool). */
-function projectTranscript(entries: readonly EntryRecord[], working: boolean): TranscriptEntry[] {
+/** Durable transcript entries + the live generation partial -> rendered session steps. */
+function projectTranscript(
+  entries: readonly EntryRecord[],
+  live: LiveState | undefined,
+  working: boolean,
+): TranscriptEntry[] {
   const results = new Map<
     string,
     { content: unknown; isError: boolean; durationMs: number | null }
@@ -129,6 +134,46 @@ function projectTranscript(entries: readonly EntryRecord[], working: boolean): T
       }
     }
   }
+  // The in-flight generation partial (pi.live doc) streams before any entry lands.
+  const partial = live?.generation?.message as
+    | { content?: unknown; timestamp?: unknown }
+    | undefined;
+  if (partial !== undefined) {
+    const at = typeof partial.timestamp === "number" ? partial.timestamp : Date.now();
+    const blocks = Array.isArray(partial.content) ? (partial.content as readonly unknown[]) : [];
+    let partialIndex = 0;
+    for (const block of blocks) {
+      const id = -1000 - partialIndex++;
+      const kind = (block as { type?: string }).type;
+      if (kind === "thinking") {
+        const text = String((block as { thinking?: unknown }).thinking ?? "");
+        if (text !== "") out.push({ id, kind: "thinking", at, text });
+      } else if (kind === "text") {
+        const text = String((block as { text?: unknown }).text ?? "");
+        const last = out[out.length - 1] as TranscriptEntry | undefined;
+        // Skip when the settled entry already carries this text (it is a prefix of it):
+        // covers the commit/clear overlap without dropping genuine growth.
+        if (text !== "" && !(last?.kind === "output" && last.text.startsWith(text))) {
+          out.push({ id, kind: "output", at, text, streaming: true });
+        }
+      } else if (kind === "toolCall") {
+        const callId = String((block as { id?: unknown }).id ?? id);
+        out.push({
+          id,
+          kind: "tool",
+          at,
+          step: {
+            callId,
+            name: String((block as { name?: unknown }).name ?? "tool"),
+            status: "running",
+            input: (block as { arguments?: unknown }).arguments ?? null,
+            output: null,
+            durationMs: null,
+          },
+        });
+      }
+    }
+  }
   // The newest agent text is streaming while the agent works.
   if (working) {
     for (let index = out.length - 1; index >= 0; index--) {
@@ -176,6 +221,11 @@ async function viewSnapshot(conversation: Conversation): Promise<ConversationVie
   });
 }
 
+/** The `pi.live` conversation doc from a structural view, typed. */
+function liveOf(view: ConversationView): LiveState | undefined {
+  return view.docs["pi.live"] as LiveState | undefined;
+}
+
 /** Registers per-session Session objects: state is a live projection of the durable transcript. */
 export function serveSession(host: Host<Principal>, harness: Harness): void {
   host.serve(
@@ -184,8 +234,10 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
       const conversation = ensureConversation(harness, input.id);
       const cells: SessionCells = {
         transcript: self.state("transcript", TranscriptSchema, {
-          init: async () =>
-            projectTranscript((await viewSnapshot(await conversation)).entries, false),
+          init: async () => {
+            const view = await viewSnapshot(await conversation);
+            return projectTranscript(view.entries, liveOf(view), false);
+          },
         }),
         phase: self.state("phase", PhaseSchema, "idle"),
         lastError: self.state("lastError", SessionErrorSchema, null),
@@ -201,7 +253,7 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
         const apply = (value: ConversationView) => {
           lastView = value;
           safeChange(cells.transcript, ctx, () =>
-            projectTranscript(value.entries, cells.phase.value === "working"),
+            projectTranscript(value.entries, liveOf(value), cells.phase.value === "working"),
           );
         };
         view.subscribe((value) => apply(value));
@@ -219,7 +271,7 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
         const view = lastView;
         if (view === undefined) return;
         safeChange(cells.transcript, ctx, () =>
-          projectTranscript(view.entries, phase === "working"),
+          projectTranscript(view.entries, liveOf(view), phase === "working"),
         );
       });
       return {

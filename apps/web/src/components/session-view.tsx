@@ -39,7 +39,7 @@ const roleStyles = {
 /** Agent output is markdown; the newest block streams with a caret while working. */
 function Output({ text, streaming }: { text: string; streaming: boolean }) {
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+    <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1.5 [&_hr]:my-3 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_h1]:mt-3 [&_h2]:mt-3 [&_h3]:mt-2 [&_pre]:my-2">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       {streaming && <span className="animate-pulse">▍</span>}
     </div>
