@@ -1,6 +1,6 @@
 # AGENTS.md — ultiv
 
-Effect-first, AI-native web app as a pnpm monorepo. `apps/server` (Node 24) runs a chord host with WebSocket links and a **pi-durable agent harness — all LLM chat goes through it**; `apps/web` (React 19) is the thin client over replicated chord state; `packages/contracts` holds the TypeBox chord contracts shared by both. Toolchain is Vite+ (`vp`), which owns vite/vitest/oxlint/oxfmt.
+Effect-first, AI-native web app as a pnpm monorepo. `apps/server` (Node 24) runs a chord host with WebSocket links and a **pi-durable agent harness — all LLM chat goes through it**; `apps/web` (React 19 + TanStack Router + shadcn on Base UI + Tailwind 4) is the thin client over replicated chord state; `packages/contracts` holds the TypeBox chord contracts shared by both. Toolchain is Vite+ (`vp`), which owns vite/vitest/oxlint/oxfmt.
 
 ## Dev environment
 
@@ -23,7 +23,8 @@ Effect-first, AI-native web app as a pnpm monorepo. `apps/server` (Node 24) runs
 - `packages/contracts` — chord contracts (TypeBox). All `remote()`/`local()` definitions live here; both apps import `@ultiv/contracts` (`workspace:*`).
 - `apps/server/src/main.ts` — `buildStack()`: env-keyed providers → pi-ai `Models` → pi-durable `Harness.open` (MemoryStorage until SQLite lands) → chord `createHost` + `acceptWebSockets` (`ws`) + HTTP health. Dev runs unbundled (Node strips TS types).
 - `apps/server/src/ai/` — `kenari.ts` (provider + agent defaults), `typesafe.ts` (Jev client), `probe.ts` (live verification).
-- `apps/web` — React 19 + `@effect/atom-react`; `vite.config.ts` imports `defineConfig` from `"vite-plus"` (vp rewrites this on `vp migrate`).
+- `apps/web` — React 19 + `@effect/atom-react`; `vite.config.ts` imports `defineConfig` from `"vite-plus"` (vp rewrites this on `vp migrate`) and loads `tanstackRouter` → `tailwindcss` → `react` plugins. Dev server: `pnpm --filter @ultiv/web dev` (`vp dev`). See **Web UI** below.
+- Root `vite.config.ts` — workspace-level vp config; only sets oxfmt `ignorePatterns` (the generated route tree).
 
 ## AI providers
 
@@ -31,6 +32,16 @@ Effect-first, AI-native web app as a pnpm monorepo. `apps/server` (Node 24) runs
 - **kenari.id** — OpenAI-compatible gateway, wired as a pi-ai `createProvider` (`openAICompletionsApi`), auth `envApiKeyAuth` on `KENARI_API_KEY`. Model id comes from `KENARI_MODEL` (fallback constant `KENARI_FALLBACK_MODEL` is the only other site — grep both when switching). Spec source: models.dev `kenari/deepseek-v4-1-flash` (reasoning model, 1M ctx / 384k out). Before switching models: verify the id exists in `GET $KENARI_BASE_URL/models` and run the probe. Never use `response_format: json_object` — it hangs some kenari models; ask for strict JSON in the prompt. The model misreports its own id (`model_used` says gpt-4o/gpt-4.1) — ignore it; routing follows the requested id.
 - **Typesafe.AI (Jev)** — `@typesafe-ai/sdk`, `client.systemOne({ state, questions })` with `noul`/`choice`/`score`/`box` builders; key `TYPESAFE_API_KEY`, model `jev-latest` (`TYPESAFE_MODEL` overrides). Jev is a typed decision side-channel, not a chat provider; if the harness needs it, expose it as a tool.
 - `.env` holds provider keys — server-side only; never commit, print, or ship to the client.
+
+## Web UI
+
+- **Routing: TanStack Router, file-based.** Routes live in `apps/web/src/routes/` (`__root.tsx`, `index.tsx`, `chat.$conversationId.tsx`). The router plugin regenerates `src/routeTree.gen.ts` on dev/build. It is committed, never hand-edited, and excluded from oxfmt. `src/router.ts` creates the router and registers its type.
+- **Components: shadcn, style `base-nova`, on Base UI (`@base-ui/react`), not Radix.** Config is `apps/web/components.json` (the shadcn CLI is a root devDep; run it from `apps/web`). Primitives live in `src/components/ui/` (badge, button, card, input, scroll-area, separator, textarea). Icons: `lucide-react`.
+- Base UI composes with the **`render` prop, not `asChild`**. When a `Button` renders a non-button element (e.g. a router `Link`), also pass `nativeButton={false}` — see `routes/index.tsx`.
+- **Styling: Tailwind 4, CSS-first** — no `tailwind.config`; theme tokens and the `dark` variant live in `src/index.css` (imports `tailwindcss`, `tw-animate-css`, `shadcn/tailwind.css`, Geist variable font). Use the semantic tokens (`bg-background`, `text-muted-foreground`, …), not raw colors.
+- `cn()` comes from the `cn` package (`src/lib/utils.ts` re-exports it), not clsx + tailwind-merge.
+- Alias `@/*` → `apps/web/src/*`, declared in both `vite.config.ts` (`resolve.alias`) and `tsconfig.json` (`paths`) — keep them in sync.
+- Current state: the chat route is a static scaffold on local `useState`; chord/pi-durable wiring to the server is not done yet.
 
 ## Conventions
 
