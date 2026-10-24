@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { PendingApproval, Phase, ToolStep, TranscriptEntry } from "@ultiv/contracts";
-import { BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupTextarea,
+} from "@/components/ui/input-group";
+import { ArrowUpIcon, BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -223,24 +229,34 @@ export function SessionView({
             </CardFooter>
           </Card>
         )}
-        <form className="flex w-full items-end gap-2" onSubmit={submit}>
-          <Textarea
-            className="min-h-9 resize-none"
-            rows={1}
-            placeholder={link === "live" ? "Give the agent a task…" : "Waiting for link…"}
-            value={draft}
-            disabled={link !== "live"}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                run();
-              }
-            }}
-          />
-          <Button type="submit" disabled={link !== "live" || busy}>
-            Run
-          </Button>
+        <form className="flex w-full flex-col gap-2" onSubmit={submit}>
+          <InputGroup>
+            <InputGroupTextarea
+              placeholder={link === "live" ? "Give the agent a task…" : "Waiting for link…"}
+              value={draft}
+              disabled={link !== "live"}
+              rows={2}
+              className="min-h-16 resize-none"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  run();
+                }
+              }}
+            />
+            <InputGroupAddon align="block-end">
+              <InputGroupButton
+                type="submit"
+                size="xs"
+                variant="default"
+                className="ml-auto"
+                disabled={link !== "live" || busy}
+              >
+                Run <ArrowUpIcon />
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
         </form>
       </CardFooter>
     </Card>
