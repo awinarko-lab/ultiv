@@ -5,9 +5,9 @@ import {
   type Ref,
   type WebSocketLike,
 } from "@earendil-works/chord";
-import { Chat, Sessions } from "@ultiv/contracts";
+import { Session, Sessions } from "@ultiv/contracts";
 
-export type ChatRef = Ref<typeof Chat>;
+export type SessionRef = Ref<typeof Session>;
 export type SessionsRef = Ref<typeof Sessions>;
 export type GuestPrincipal = { kind: "guest" };
 
@@ -44,10 +44,10 @@ function clientHost(): Promise<Host<GuestPrincipal>> {
   return hostPromise;
 }
 
-/** Opens (and holds) the conversation object for `id` on the server. */
-export async function openChat(id: string): Promise<ChatRef> {
+/** Opens (and holds) the session object for `id` on the server. */
+export async function openSession(id: string): Promise<SessionRef> {
   const host = await clientHost();
-  return host.get(Chat, { id });
+  return host.get(Session, { id });
 }
 
 /** Opens (and holds) the durable session registry. */

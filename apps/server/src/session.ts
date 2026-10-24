@@ -12,29 +12,30 @@ import {
   type Submission,
 } from "@earendil-works/pi-durable";
 import {
-  Chat,
-  ChatErrorSchema,
-  ChatMessagesSchema,
-  ChatTurnSchema,
-  type ChatMessage,
-  type ChatTurn,
+  Session,
+  SessionErrorSchema,
+  PhaseSchema,
+  TranscriptEntrySchema,
+  TranscriptSchema,
+  type Phase,
+  type TranscriptEntry,
 } from "@ultiv/contracts";
-import { kenariAgent } from "./ai/kenari.ts";
+import { defaultAgent } from "./ai/agent.ts";
 import { touchSession } from "./sessions.ts";
 import type { Principal } from "./main.ts";
 
-type ChatCells = {
-  messages: Cell<ChatMessage[]>;
-  turn: Cell<ChatTurn>;
+type SessionCells = {
+  transcript: Cell<TranscriptEntry[]>;
+  phase: Cell<Phase>;
   lastError: Cell<string | null>;
 };
 
-/** Durable chat-id -> conversation-id mapping (session doc family; SQLite-backed). */
-const ChatMapDoc = defineDocFamily<
+/** Durable session-id -> conversation-id mapping (session doc family; SQLite-backed). */
+const SessionMapDoc = defineDocFamily<
   { conversationId: ConversationId },
   { conversationId: ConversationId }
 >({
-  kind: "ultiv.chat-map",
+  kind: "ultiv.session-map",
   version: 1,
   scope: "session",
   family: true,
@@ -50,22 +51,9 @@ function textOf(content: unknown): string {
   return JSON.stringify(content);
 }
 
-/** Cell write that survives object disposal: background turns may outlive the last reference. */
-function safeChange<T>(
-  cell: Cell<T>,
-  ctx: Parameters<Cell<T>["change"]>[0],
-  fn: Parameters<Cell<T>["change"]>[1],
-): void {
-  try {
-    cell.change(ctx, fn);
-  } catch (error) {
-    console.warn("cell write skipped:", isChordError(error) ? error.code : error);
-  }
-}
-
-/** Durable transcript entries -> replicated chat messages; tool and empty entries drop out. */
-function toChatMessages(entries: readonly EntryRecord[]): ChatMessage[] {
-  const out: ChatMessage[] = [];
+/** Durable transcript entries -> replicated transcript; tool and empty entries drop out. */
+function toTranscriptEntries(entries: readonly EntryRecord[]): TranscriptEntry[] {
+  const out: TranscriptEntry[] = [];
   for (const entry of entries) {
     for (const message of (entry.model ?? []) as readonly unknown[]) {
       const role = (message as { role?: string }).role;
@@ -73,33 +61,41 @@ function toChatMessages(entries: readonly EntryRecord[]): ChatMessage[] {
       const text = textOf((message as { content?: unknown }).content).trim();
       if (text === "") continue;
       const at = (message as { timestamp?: unknown }).timestamp;
-      out.push({ id: entry.id, role, text, at: typeof at === "number" ? at : Date.now() });
+      out.push({
+        id: entry.id,
+        role: role === "user" ? "user" : "agent",
+        text,
+        at: typeof at === "number" ? at : Date.now(),
+      });
     }
   }
   return out;
 }
 
-/** Resolve the durable conversation behind one chat id, creating and mapping it on first use. */
-export async function ensureConversation(harness: Harness, chatId: string): Promise<Conversation> {
-  const known = await harness.snapshot(ChatMapDoc, chatId, BACKGROUND_CONTEXT);
+/** Resolve the durable conversation behind one session id, creating and mapping it on first use. */
+export async function ensureConversation(
+  harness: Harness,
+  sessionId: string,
+): Promise<Conversation> {
+  const known = await harness.snapshot(SessionMapDoc, sessionId, BACKGROUND_CONTEXT);
   if (known) {
     const existing = await harness.conversation(known.conversationId, BACKGROUND_CONTEXT);
     if (existing) return existing;
   }
   const created = await harness.createConversation(
-    { ownership: { kind: "ownerless" }, agent: kenariAgent() },
+    { ownership: { kind: "ownerless" }, agent: defaultAgent() },
     BACKGROUND_CONTEXT,
   );
   await harness.commit(async (tx) => {
-    const draft = await tx.doc(ChatMapDoc, chatId, { conversationId: created.id });
+    const draft = await tx.doc(SessionMapDoc, sessionId, { conversationId: created.id });
     draft.conversationId = created.id;
   }, BACKGROUND_CONTEXT);
   return created;
 }
 
 /** First hydrated revision of a conversation's structural view. */
-async function viewSnapshot(chat: Conversation): Promise<ConversationView> {
-  const view = await chat.viewState(BACKGROUND_CONTEXT);
+async function viewSnapshot(conversation: Conversation): Promise<ConversationView> {
+  const view = await conversation.viewState(BACKGROUND_CONTEXT);
   if (view.value !== undefined) return view.value;
   return new Promise<ConversationView>((resolve) => {
     const unsubscribe = view.subscribe((value) => {
@@ -109,26 +105,26 @@ async function viewSnapshot(chat: Conversation): Promise<ConversationView> {
   });
 }
 
-/** Registers per-conversation Chat objects: state is a live projection of the durable transcript. */
-export function serveChat(host: Host<Principal>, harness: Harness): void {
+/** Registers per-session Session objects: state is a live projection of the durable transcript. */
+export function serveSession(host: Host<Principal>, harness: Harness): void {
   host.serve(
-    Chat,
+    Session,
     (input, _principal, self) => {
       const conversation = ensureConversation(harness, input.id);
-      const cells: ChatCells = {
-        messages: self.state("messages", ChatMessagesSchema, {
-          init: async () => toChatMessages((await viewSnapshot(await conversation)).entries),
+      const cells: SessionCells = {
+        transcript: self.state("transcript", TranscriptSchema, {
+          init: async () => toTranscriptEntries((await viewSnapshot(await conversation)).entries),
         }),
-        turn: self.state("turn", ChatTurnSchema, "idle"),
-        lastError: self.state("lastError", ChatErrorSchema, null),
+        phase: self.state("phase", PhaseSchema, "idle"),
+        lastError: self.state("lastError", SessionErrorSchema, null),
       };
       // Live replay: every committed publication of the durable transcript re-projects the
       // cell, whoever wrote it (this object's turns, tasks, tools, future code).
       self.task(async (ctx) => {
-        const chat = await conversation;
-        const view = await chat.viewState(BACKGROUND_CONTEXT);
+        const conversation2 = await conversation;
+        const view = await conversation2.viewState(BACKGROUND_CONTEXT);
         const apply = (value: ConversationView) => {
-          safeChange(cells.messages, ctx, () => toChatMessages(value.entries));
+          safeChange(cells.transcript, ctx, () => toTranscriptEntries(value.entries));
         };
         view.subscribe((value) => apply(value));
         if (view.value !== undefined) apply(view.value);
@@ -138,28 +134,28 @@ export function serveChat(host: Host<Principal>, harness: Harness): void {
       });
       return {
         variant: "default",
-        messages: cells.messages,
-        turn: cells.turn,
+        transcript: cells.transcript,
+        phase: cells.phase,
         lastError: cells.lastError,
-        send: async ({ text }, ctx) => {
-          if (cells.turn.value === "thinking") {
-            throw invalid("busy", "a reply is already in flight");
+        input: async ({ text }, ctx) => {
+          if (cells.phase.value === "working") {
+            throw invalid("busy", "the agent is already working");
           }
-          cells.turn.change(ctx, () => "thinking");
+          cells.phase.change(ctx, () => "working");
           cells.lastError.change(ctx, () => null);
           try {
-            // Admit first: a message becomes visible through the durable
+            // Admit first: an entry becomes visible through the durable
             // transcript projection only once it is committed to storage.
-            const chat = await conversation;
-            const submission = await chat.submit(
+            const conversation2 = await conversation;
+            const submission = await conversation2.submit(
               { type: "input", content: text },
               BACKGROUND_CONTEXT,
             );
-            settle(host, harness, chat, submission, input.id, cells, text);
+            settle(host, harness, conversation2, submission, input.id, cells, text);
           } catch (error) {
-            console.error("send failed:", error);
+            console.error("input failed:", error);
             safeChange(cells.lastError, ctx, () => String(error));
-            safeChange(cells.turn, ctx, () => "error");
+            safeChange(cells.phase, ctx, () => "error");
             throw error;
           }
         },
@@ -177,15 +173,15 @@ function settle(
   harness: Harness,
   conversation: Conversation,
   submission: Submission,
-  chatId: string,
-  cells: ChatCells,
+  sessionId: string,
+  cells: SessionCells,
   text: string,
 ): void {
   void host.root(async (ctx) => {
     try {
       const settled = await submission.wait(BACKGROUND_CONTEXT);
       if (settled.status !== "done" || settled.type !== "input") {
-        throw new Error(`kenari unanswered: ${JSON.stringify(settled).slice(0, 200)}`);
+        throw new Error(`agent unanswered: ${JSON.stringify(settled).slice(0, 200)}`);
       }
       const stored = await conversation.commit(
         (tx) => tx.entry(AssistantEntry, settled.answer),
@@ -193,13 +189,26 @@ function settle(
       );
       const message = stored?.model?.[0] as { content?: unknown } | undefined;
       if (textOf(message?.content).trim() !== "") {
-        await touchSession(harness, chatId, { at: Date.now(), titleSeed: text });
+        await touchSession(harness, sessionId, { at: Date.now(), titleSeed: text });
       }
-      safeChange(cells.turn, ctx, () => "idle");
+      safeChange(cells.phase, ctx, () => "idle");
     } catch (error) {
-      console.error("chat turn failed:", error);
+      console.error("agent turn failed:", error);
       safeChange(cells.lastError, ctx, () => String(error));
-      safeChange(cells.turn, ctx, () => "error");
+      safeChange(cells.phase, ctx, () => "error");
     }
   });
+}
+
+/** Cell write that survives object disposal: background turns may outlive the last reference. */
+function safeChange<T>(
+  cell: Cell<T>,
+  ctx: Parameters<Cell<T>["change"]>[0],
+  fn: Parameters<Cell<T>["change"]>[1],
+): void {
+  try {
+    cell.change(ctx, fn);
+  } catch (error) {
+    console.warn("cell write skipped:", isChordError(error) ? error.code : error);
+  }
 }

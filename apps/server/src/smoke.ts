@@ -2,7 +2,7 @@
 // Run: pnpm --filter @ultiv/server smoke  (or npm run smoke at the root)
 import { buildStack } from "./main.ts";
 import { MemoryStorage } from "@earendil-works/pi-durable";
-import { Chat } from "@ultiv/contracts";
+import { Session } from "@ultiv/contracts";
 
 // Smoke stays offline and ephemeral: MemoryStorage, no db file.
 const stack = await buildStack({ storage: new MemoryStorage() });
@@ -11,9 +11,9 @@ await new Promise<void>((resolve, reject) => {
   stack.http.once("error", reject);
   stack.http.listen(0, "127.0.0.1");
 });
-// The Chat object must activate offline: its harness root is created lazily on first send.
-const chat = await stack.host.get(Chat, { id: "smoke" });
-chat.release();
+// The Session object must activate offline: its harness conversation is created lazily on first input.
+const session = await stack.host.get(Session, { id: "smoke" });
+session.release();
 const address = stack.http.address();
 const port = typeof address === "object" && address !== null ? address.port : address;
 console.log(`smoke ok: stack listening on 127.0.0.1:${port}`);

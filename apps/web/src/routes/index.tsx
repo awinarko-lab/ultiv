@@ -18,8 +18,8 @@ function HomePage() {
     const created = await sessions.create(null);
     if (created !== undefined) {
       await navigate({
-        to: "/chat/$conversationId",
-        params: { conversationId: created.id },
+        to: "/sessions/$sessionId",
+        params: { sessionId: created.id },
       });
     }
   };
@@ -57,9 +57,7 @@ function HomePage() {
                   variant="ghost"
                   className="w-full justify-between"
                   nativeButton={false}
-                  render={
-                    <Link to="/chat/$conversationId" params={{ conversationId: session.id }} />
-                  }
+                  render={<Link to="/sessions/$sessionId" params={{ sessionId: session.id }} />}
                 >
                   <span className="truncate">
                     {session.title === "" ? "Untitled session" : session.title}

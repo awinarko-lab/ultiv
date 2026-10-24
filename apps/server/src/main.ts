@@ -12,8 +12,9 @@ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { Type } from "typebox";
 import { WebSocketServer } from "ws";
 import { Ping } from "@ultiv/contracts";
-import { serveChat } from "./chat.ts";
+import { serveSession } from "./session.ts";
 import { serveSessions } from "./sessions.ts";
+import { jevExtension } from "./ai/agent.ts";
 import { kenariProvider } from "./ai/kenari.ts";
 import { jevClient } from "./ai/typesafe.ts";
 
@@ -33,11 +34,10 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
   if (process.env.OPENAI_API_KEY) models.setProvider(openaiProvider());
   if (process.env.KENARI_API_KEY) models.setProvider(kenariProvider());
 
-  const harness = await Harness.open(
-    storage,
-    { models, registry: createRegistry() },
-    BACKGROUND_CONTEXT,
-  );
+  const registry = createRegistry();
+  const jevExt = jevExtension();
+  if (jevExt !== undefined) registry.install(jevExt);
+  const harness = await Harness.open(storage, { models, registry }, BACKGROUND_CONTEXT);
   const host = createHost<Principal>({ name: "server", self: { kind: "server" } });
   host.serve(Ping, (_input, _principal, self) => {
     const count = self.state("count", Type.Number(), 0);
@@ -49,7 +49,7 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
       },
     };
   });
-  serveChat(host, harness);
+  serveSession(host, harness);
   serveSessions(host, harness);
 
   const http = createServer((_req, res) => {

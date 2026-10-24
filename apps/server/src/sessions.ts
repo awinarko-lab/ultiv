@@ -3,7 +3,7 @@ import type { Host } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { defineDoc, type Harness } from "@earendil-works/pi-durable";
 import { Sessions, SessionListSchema, type SessionInfo } from "@ultiv/contracts";
-import { ensureConversation } from "./chat.ts";
+import { ensureConversation } from "./session.ts";
 import type { Principal } from "./main.ts";
 
 /** Durable session registry (session doc singleton; SQLite-backed). */

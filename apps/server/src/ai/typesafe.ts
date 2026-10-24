@@ -1,4 +1,5 @@
 import {
+  choice,
   noul,
   TypeSafeClient,
   type EntryType,
@@ -38,4 +39,20 @@ export async function jevYesNo(
   const answer = result.answers.answer;
   if (answer.type !== "noul") throw new Error(`unexpected answer type: ${String(answer.type)}`);
   return answer.noul;
+}
+
+/** Typed pick: Jev chooses exactly one of the given options for the question. */
+export async function jevPick(
+  client: TypeSafeClient,
+  question: string,
+  options: readonly string[],
+): Promise<string> {
+  const criteria = Object.fromEntries(options.map((option) => [option, option]));
+  const result = await client.systemOne({
+    state: question,
+    questions: { answer: choice(question, criteria) },
+  });
+  const answer = result.answers.answer;
+  if (answer.type !== "choice") throw new Error(`unexpected answer type: ${String(answer.type)}`);
+  return answer.choice;
 }
