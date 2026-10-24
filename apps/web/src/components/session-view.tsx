@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Phase, TranscriptEntry } from "@ultiv/contracts";
+import type { PendingApproval, Phase, ToolStep, TranscriptEntry } from "@ultiv/contracts";
 import { BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,8 @@ import {
   CodeBlockHeader,
   CodeBlockTitle,
 } from "@/components/ui/code-block";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Trace,
   TraceCollapsible,
@@ -62,54 +62,61 @@ function Thinking({ text }: { text: string }) {
   );
 }
 
-/** Tool call as a Trace step: name + duration, collapsible input/output. */
-function Tool({
-  name,
-  status,
-  input,
-  output,
-  durationMs,
-}: {
-  name: string;
-  status: "running" | "done" | "error";
-  input: unknown;
-  output: string | null;
-  durationMs: number | null;
-}) {
-  const lineStatus = status === "running" || status === "error" ? { status } : {};
+/** Tool call as a Trace line: name + duration, collapsible input/output. */
+function Tool({ step }: { step: ToolStep }) {
+  const lineStatus =
+    step.status === "running" || step.status === "error" ? { status: step.status } : {};
   return (
-    <Trace>
-      <TraceCollapsible>
-        <TraceCollapsibleTrigger>
-          <TraceLine {...lineStatus}>
-            <TraceIcon>{status === "error" ? <CircleAlertIcon /> : <WrenchIcon />}</TraceIcon>
-            <TraceTitle>{name}</TraceTitle>
-            <TraceDescription>
-              {durationMs === null ? "running…" : `${durationMs} ms`}
-            </TraceDescription>
-          </TraceLine>
-        </TraceCollapsibleTrigger>
-        <TraceCollapsibleContent>
-          <div className="flex flex-col gap-2">
+    <TraceCollapsible>
+      <TraceCollapsibleTrigger>
+        <TraceLine {...lineStatus}>
+          <TraceIcon>{step.status === "error" ? <CircleAlertIcon /> : <WrenchIcon />}</TraceIcon>
+          <TraceTitle>{step.name}</TraceTitle>
+          <TraceDescription>
+            {step.durationMs === null ? "running…" : `${step.durationMs} ms`}
+          </TraceDescription>
+        </TraceLine>
+      </TraceCollapsibleTrigger>
+      <TraceCollapsibleContent>
+        <div className="flex flex-col gap-2">
+          <CodeBlock size="sm">
+            <CodeBlockHeader>
+              <CodeBlockTitle>input</CodeBlockTitle>
+            </CodeBlockHeader>
+            <CodeBlockContent wrap>{JSON.stringify(step.input, null, 2)}</CodeBlockContent>
+          </CodeBlock>
+          {step.output !== null && step.output !== "" && (
             <CodeBlock size="sm">
               <CodeBlockHeader>
-                <CodeBlockTitle>input</CodeBlockTitle>
+                <CodeBlockTitle>output</CodeBlockTitle>
               </CodeBlockHeader>
-              <CodeBlockContent wrap>{JSON.stringify(input, null, 2)}</CodeBlockContent>
+              <CodeBlockContent wrap>{step.output}</CodeBlockContent>
             </CodeBlock>
-            {output !== null && output !== "" && (
-              <CodeBlock size="sm">
-                <CodeBlockHeader>
-                  <CodeBlockTitle>output</CodeBlockTitle>
-                </CodeBlockHeader>
-                <CodeBlockContent wrap>{output}</CodeBlockContent>
-              </CodeBlock>
-            )}
-          </div>
-        </TraceCollapsibleContent>
-      </TraceCollapsible>
-    </Trace>
+          )}
+        </div>
+      </TraceCollapsibleContent>
+    </TraceCollapsible>
   );
+}
+
+/** Consecutive tool steps render as one Trace so a run reads as a sequence. */
+type Group = { key: string; tools: ToolStep[] } | { key: string; entry: TranscriptEntry };
+
+function groupTranscript(transcript: TranscriptEntry[]): Group[] {
+  const groups: Group[] = [];
+  for (const entry of transcript) {
+    const last = groups[groups.length - 1];
+    if (entry.kind === "tool") {
+      if (last !== undefined && "tools" in last) {
+        last.tools.push(entry.step);
+        continue;
+      }
+      groups.push({ key: String(entry.id), tools: [entry.step] });
+      continue;
+    }
+    groups.push({ key: String(entry.id), entry });
+  }
+  return groups;
 }
 
 export function SessionView({
@@ -117,13 +124,17 @@ export function SessionView({
   transcript,
   phase,
   lastError,
+  pending,
   onInput,
+  onDecide,
 }: {
   link: "connecting" | "live" | "lost";
   transcript: TranscriptEntry[];
   phase: Phase;
   lastError: string | null;
+  pending: PendingApproval;
   onInput: (text: string) => void;
+  onDecide: (callId: string, approved: boolean) => void;
 }) {
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -134,14 +145,18 @@ export function SessionView({
     const viewport = transcriptRef.current?.querySelector("[data-slot=scroll-area-viewport]");
     if (viewport === null || viewport === undefined) return;
     viewport.scrollTop = viewport.scrollHeight;
-  }, [transcript, busy]);
+  }, [transcript, busy, pending]);
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
+  const run = () => {
     const text = draft.trim();
     if (text === "" || busy) return;
     onInput(text);
     setDraft("");
+  };
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    run();
   };
 
   return (
@@ -154,55 +169,74 @@ export function SessionView({
         <div ref={transcriptRef} className="h-full min-h-0">
           <ScrollArea className="h-full">
             <ul className="flex flex-col gap-3 pr-3">
-              {transcript.map((entry) => {
-                if (entry.kind === "input") {
-                  return (
-                    <li key={entry.id} className={roleStyles.user}>
-                      {entry.text}
-                    </li>
-                  );
-                }
-                if (entry.kind === "output") {
-                  return (
-                    <li key={entry.id} className={roleStyles.agent}>
-                      <Output text={entry.text} streaming={entry.streaming} />
-                    </li>
-                  );
-                }
-                if (entry.kind === "thinking") {
-                  return (
-                    <li key={entry.id} className="w-full">
-                      <Thinking text={entry.text} />
-                    </li>
-                  );
-                }
-                return (
-                  <li key={entry.id} className="w-full">
-                    <Tool
-                      name={entry.step.name}
-                      status={entry.step.status}
-                      input={entry.step.input}
-                      output={entry.step.output}
-                      durationMs={entry.step.durationMs}
-                    />
+              {groupTranscript(transcript).map((group) =>
+                "tools" in group ? (
+                  <li key={group.key} className="w-full">
+                    <Trace>
+                      {group.tools.map((step) => (
+                        <Tool key={step.callId} step={step} />
+                      ))}
+                    </Trace>
                   </li>
-                );
-              })}
-              {busy && !transcript.some((entry) => entry.kind === "output" && entry.streaming) && (
-                <li className="self-start text-sm text-muted-foreground">working…</li>
+                ) : group.entry.kind === "input" ? (
+                  <li key={group.key} className={roleStyles.user}>
+                    {group.entry.text}
+                  </li>
+                ) : group.entry.kind === "output" ? (
+                  <li key={group.key} className={roleStyles.agent}>
+                    <Output text={group.entry.text} streaming={group.entry.streaming} />
+                  </li>
+                ) : group.entry.kind === "thinking" ? (
+                  <li key={group.key} className="w-full">
+                    <Thinking text={group.entry.text} />
+                  </li>
+                ) : null,
               )}
+              {busy &&
+                pending === null &&
+                !transcript.some((entry) => entry.kind === "output" && entry.streaming) && (
+                  <li className="self-start text-sm text-muted-foreground">working…</li>
+                )}
             </ul>
           </ScrollArea>
         </div>
       </CardContent>
       <CardFooter className="flex flex-col gap-2">
         {lastError !== null && <p className="w-full text-sm text-destructive">{lastError}</p>}
-        <form className="flex w-full gap-2" onSubmit={submit}>
-          <Input
+        {pending !== null && (
+          <Card className="w-full border-ring">
+            <CardHeader className="pb-0">
+              <CardTitle className="text-sm">Approve {pending.name}?</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <CodeBlock size="sm">
+                <CodeBlockContent wrap>{JSON.stringify(pending.input, null, 2)}</CodeBlockContent>
+              </CodeBlock>
+            </CardContent>
+            <CardFooter className="justify-end gap-2 pb-3">
+              <Button size="sm" variant="outline" onClick={() => onDecide(pending.callId, false)}>
+                Deny
+              </Button>
+              <Button size="sm" onClick={() => onDecide(pending.callId, true)}>
+                Approve
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
+        <form className="flex w-full items-end gap-2" onSubmit={submit}>
+          <Textarea
+            className="min-h-9 resize-none"
+            rows={1}
             placeholder={link === "live" ? "Give the agent a task…" : "Waiting for link…"}
             value={draft}
             disabled={link !== "live"}
             onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                run();
+              }
+            }}
           />
           <Button type="submit" disabled={link !== "live" || busy}>
             Run

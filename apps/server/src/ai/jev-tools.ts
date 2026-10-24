@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
+import { requestApproval } from "../approvals.ts";
 import { jevClient, jevPick, jevYesNo } from "./typesafe.ts";
 
 const ScoreParams = Type.Object({
@@ -43,7 +44,19 @@ export function jevPickTool(): ToolRegistration<typeof PickParams> {
       "Ask Jev, a typed decision model, to pick exactly one of the given options for a question.",
     parameters: PickParams,
     structuredOutputSchema: Type.Object({ choice: Type.String() }),
-    execute: async (args) => {
+    execute: async (args, api) => {
+      // Gated: jev_pick spends a decision on the user's behalf — wait for approval.
+      const approved = await requestApproval(String(api.conversationId), api.callId, {
+        callId: api.callId,
+        name: "jev_pick",
+        input: args,
+      });
+      if (!approved) {
+        return {
+          isError: true,
+          output: [{ type: "text", text: "denied by the user" }],
+        };
+      }
       const picked = await jevPick(jevClient(), args.question, args.options);
       return {
         output: [{ type: "text", text: `choice: ${picked}` }],

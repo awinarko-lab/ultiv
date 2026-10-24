@@ -12,6 +12,18 @@ export const ToolStepSchema = Type.Object({
 
 export type ToolStep = Static<typeof ToolStepSchema>;
 
+/** A tool call waiting for the user's approve/deny decision. */
+export const PendingApprovalSchema = Type.Union([
+  Type.Null(),
+  Type.Object({
+    callId: Type.String(),
+    name: Type.String(),
+    input: Type.Unknown(),
+  }),
+]);
+
+export type PendingApproval = Static<typeof PendingApprovalSchema>;
+
 /** One rendered step of a session: user input, agent output, reasoning, or a tool call. */
 export const TranscriptEntrySchema = Type.Union([
   Type.Object({
@@ -57,7 +69,7 @@ export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 2,
+  version: 3,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {
@@ -66,9 +78,14 @@ export const Session = remote("ultiv.session", {
         transcript: TranscriptSchema,
         phase: PhaseSchema,
         lastError: SessionErrorSchema,
+        pending: PendingApprovalSchema,
       },
       methods: {
         input: method(Type.Object({ text: Type.String() })),
+        approve: method(
+          Type.Object({ callId: Type.String(), approved: Type.Boolean() }),
+          Type.Object({ ok: Type.Boolean() }),
+        ),
       },
     },
   },

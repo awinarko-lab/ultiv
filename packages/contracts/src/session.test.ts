@@ -2,9 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { Session } from "./session.ts";
 
 describe("Session contract", () => {
-  it("is a remote contract, version 2, hosted on the server", () => {
+  it("is a remote contract, version 3, hosted on the server", () => {
     expect(Session.scope).toBe("remote");
-    expect(Session.def.version).toBe(2);
+    expect(Session.def.version).toBe(3);
   });
 
   it("is addressed per session id", () => {
@@ -14,14 +14,22 @@ describe("Session contract", () => {
     });
   });
 
-  it("declares transcript, phase and lastError state plus an input method", () => {
+  it("declares transcript, phase, lastError and pending approval state", () => {
     const variant = Session.def.variants.default;
     expect(variant).toBeDefined();
     expect(variant?.state).toMatchObject({
       transcript: { type: "array" },
       phase: expect.anything(),
       lastError: expect.anything(),
+      pending: expect.anything(),
     });
-    expect(variant?.methods).toMatchObject({ input: expect.anything() });
+  });
+
+  it("declares input and approve methods", () => {
+    const variant = Session.def.variants.default;
+    expect(variant?.methods).toMatchObject({
+      input: expect.anything(),
+      approve: expect.anything(),
+    });
   });
 });

@@ -14,12 +14,15 @@ import {
 import {
   Session,
   SessionErrorSchema,
+  PendingApprovalSchema,
   PhaseSchema,
   TranscriptEntrySchema,
   TranscriptSchema,
+  type PendingApproval,
   type Phase,
   type TranscriptEntry,
 } from "@ultiv/contracts";
+import { decideApproval, pendingFor } from "./approvals.ts";
 import { defaultAgent } from "./ai/agent.ts";
 import { touchSession } from "./sessions.ts";
 import type { Principal } from "./main.ts";
@@ -28,6 +31,7 @@ type SessionCells = {
   transcript: Cell<TranscriptEntry[]>;
   phase: Cell<Phase>;
   lastError: Cell<string | null>;
+  pending: Cell<PendingApproval>;
 };
 
 /** Durable session-id -> conversation-id mapping (session doc family; SQLite-backed). */
@@ -183,9 +187,11 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
         }),
         phase: self.state("phase", PhaseSchema, "idle"),
         lastError: self.state("lastError", SessionErrorSchema, null),
+        pending: self.state("pending", PendingApprovalSchema, null),
       };
       // Live replay: every committed publication of the durable transcript re-projects the
       // cell, whoever wrote it (this object's turns, tasks, tools, future code).
+      const conversationId = conversation.then((chat) => String(chat.id));
       let lastView: ConversationView | undefined;
       self.task(async (ctx) => {
         const chat = await conversation;
@@ -198,9 +204,12 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
         };
         view.subscribe((value) => apply(value));
         if (view.value !== undefined) apply(view.value);
-        await new Promise<void>((resolve) => {
-          ctx.signal.addEventListener("abort", () => resolve());
-        });
+        // Surface tool calls waiting for the user's approve/deny decision.
+        while (!ctx.signal.aborted) {
+          const [waiting] = pendingFor(await conversationId);
+          safeChange(cells.pending, ctx, () => waiting ?? null);
+          await new Promise<void>((resolve) => setTimeout(resolve, 250));
+        }
       });
       // Phase transitions re-project once more, so the streaming flag
       // clears when the turn ends even if no publication followed.
@@ -216,6 +225,13 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
         transcript: cells.transcript,
         phase: cells.phase,
         lastError: cells.lastError,
+        pending: cells.pending,
+        approve: async ({ callId, approved }, ctx) => {
+          const id = await conversationId;
+          decideApproval(id, callId, approved);
+          safeChange(cells.pending, ctx, () => pendingFor(id)[0] ?? null);
+          return { ok: true };
+        },
         input: async ({ text }, ctx) => {
           if (cells.phase.value === "working") {
             throw invalid("busy", "the agent is already working");

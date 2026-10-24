@@ -22,7 +22,9 @@ function SessionPage() {
         transcript={session.transcript}
         phase={session.phase}
         lastError={session.lastError}
+        pending={session.pending}
         onInput={session.input}
+        onDecide={session.decide}
       />
       <Link
         className="w-fit text-sm text-muted-foreground underline-offset-4 hover:underline"
