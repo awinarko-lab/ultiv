@@ -86,6 +86,8 @@ function projectTranscript(entries: readonly EntryRecord[], working: boolean): T
         content?: unknown;
         timestamp?: unknown;
       };
+      // Tool results surface through the paired toolCall step's collapsible.
+      if (record.role === "toolResult" || record.role === "system") continue;
       const at = typeof record.timestamp === "number" ? record.timestamp : Date.now();
       const blocks = Array.isArray(record.content)
         ? (record.content as readonly unknown[])
