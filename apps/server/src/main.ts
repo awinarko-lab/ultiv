@@ -8,6 +8,8 @@ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { Type } from "typebox";
 import { WebSocketServer } from "ws";
 import { Ping } from "@ultiv/contracts";
+import { kenariProvider } from "./ai/kenari.ts";
+import { jevClient } from "./ai/typesafe.ts";
 
 export type Principal = { kind: "guest" } | { kind: "server" };
 
@@ -15,6 +17,7 @@ export type Principal = { kind: "guest" } | { kind: "server" };
 export async function buildStack() {
   const models = createModels();
   if (process.env.OPENAI_API_KEY) models.setProvider(openaiProvider());
+  if (process.env.KENARI_API_KEY) models.setProvider(kenariProvider());
 
   const harness = await Harness.open(
     new MemoryStorage(),
@@ -48,7 +51,8 @@ export async function buildStack() {
     ]);
     await harness.close(BACKGROUND_CONTEXT);
   };
-  return { host, harness, http, close };
+  const jev = process.env.TYPESAFE_API_KEY ? jevClient() : undefined;
+  return { host, harness, http, jev, close };
 }
 
 const isMain =
