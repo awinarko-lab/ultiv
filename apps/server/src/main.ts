@@ -61,6 +61,9 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
   acceptWebSockets(wss, host, { principal: async () => guest });
 
   const close = async () => {
+    // Drop connected links first: wss.close() waits for clients otherwise, so
+    // one live browser tab would block shutdown (and node --watch restarts) forever.
+    for (const client of wss.clients) client.terminate();
     await Promise.allSettled([
       new Promise<void>((resolve) => wss.close(() => resolve())),
       new Promise<void>((resolve) => http.close(() => resolve())),

@@ -1,5 +1,5 @@
 import { defineExtension, type AgentChange, type Extension } from "@earendil-works/pi-durable";
-import { jevPickTool, jevScoreTool } from "./jev-tools.ts";
+import { jevAskTool, jevPickTool, jevRateTool, jevScoreTool } from "./jev-tools.ts";
 import { kenariAgent } from "./kenari.ts";
 
 /**
@@ -19,6 +19,6 @@ export function jevExtension(): Extension | undefined {
   if (process.env.TYPESAFE_API_KEY === undefined) return undefined;
   return defineExtension({
     name: "typesafe",
-    tools: [jevScoreTool(), jevPickTool()],
+    tools: [jevScoreTool(), jevPickTool(), jevRateTool(), jevAskTool()],
   });
 }

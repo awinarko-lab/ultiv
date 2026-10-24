@@ -256,8 +256,11 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
             projectTranscript(value.entries, liveOf(value), cells.phase.value === "working"),
           );
         };
-        view.subscribe((value) => apply(value));
+        const unsubscribe = view.subscribe((value) => apply(value));
         if (view.value !== undefined) apply(view.value);
+        // Detach on abort, or the attached view outlives the object and hangs
+        // graceful shutdown (node --watch restarts wait forever).
+        ctx.signal.addEventListener("abort", () => unsubscribe(), { once: true });
         // Surface tool calls waiting for the user's approve/deny decision.
         while (!ctx.signal.aborted) {
           const [waiting] = pendingFor(await conversationId);
