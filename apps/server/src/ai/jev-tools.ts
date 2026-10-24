@@ -21,7 +21,7 @@ export function jevScoreTool(): ToolRegistration<typeof ScoreParams> {
     execute: async (args) => {
       const probability = await jevYesNo(jevClient(), args.statement, args.instruction);
       return {
-        output: [{ type: "text", text: `probability: ${probability}` }],
+        output: [{ type: "text", text: String(probability) }],
         structuredOutput: { probability },
       };
     },
@@ -59,7 +59,7 @@ export function jevPickTool(): ToolRegistration<typeof PickParams> {
       }
       const picked = await jevPick(jevClient(), args.question, args.options);
       return {
-        output: [{ type: "text", text: `choice: ${picked}` }],
+        output: [{ type: "text", text: picked }],
         structuredOutput: { choice: picked },
       };
     },
