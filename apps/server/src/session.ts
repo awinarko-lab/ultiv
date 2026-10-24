@@ -51,22 +51,87 @@ function textOf(content: unknown): string {
   return JSON.stringify(content);
 }
 
-/** Durable transcript entries -> replicated transcript; tool and empty entries drop out. */
-function toTranscriptEntries(entries: readonly EntryRecord[]): TranscriptEntry[] {
+/** Durable transcript entries -> rendered session steps (input/output/thinking/tool). */
+function projectTranscript(entries: readonly EntryRecord[], working: boolean): TranscriptEntry[] {
+  const results = new Map<
+    string,
+    { content: unknown; isError: boolean; durationMs: number | null }
+  >();
+  for (const entry of entries) {
+    for (const message of (entry.model ?? []) as readonly unknown[]) {
+      const record = message as {
+        role?: string;
+        toolCallId?: unknown;
+        content?: unknown;
+        isError?: boolean;
+        durationMs?: unknown;
+      };
+      if (record.role !== "toolResult" || record.toolCallId === undefined) continue;
+      results.set(String(record.toolCallId), {
+        content: record.content,
+        isError: record.isError === true,
+        durationMs: typeof record.durationMs === "number" ? record.durationMs : null,
+      });
+    }
+  }
   const out: TranscriptEntry[] = [];
   for (const entry of entries) {
     for (const message of (entry.model ?? []) as readonly unknown[]) {
-      const role = (message as { role?: string }).role;
-      if (role !== "user" && role !== "assistant") continue;
-      const text = textOf((message as { content?: unknown }).content).trim();
-      if (text === "") continue;
-      const at = (message as { timestamp?: unknown }).timestamp;
-      out.push({
-        id: entry.id,
-        role: role === "user" ? "user" : "agent",
-        text,
-        at: typeof at === "number" ? at : Date.now(),
-      });
+      const record = message as {
+        role?: string;
+        content?: unknown;
+        timestamp?: unknown;
+      };
+      const at = typeof record.timestamp === "number" ? record.timestamp : Date.now();
+      const blocks = Array.isArray(record.content)
+        ? (record.content as readonly unknown[])
+        : [{ type: "text", text: textOf(record.content) }];
+      let blockIndex = 0;
+      for (const block of blocks) {
+        const id = entry.id * 100 + blockIndex++;
+        if (record.role === "user") {
+          const text = String((block as { text?: unknown }).text ?? "").trim();
+          if (text !== "") out.push({ id, kind: "input", at, text });
+          break;
+        }
+        const kind = (block as { type?: string }).type;
+        if (kind === "thinking") {
+          const text = String((block as { thinking?: unknown }).thinking ?? "").trim();
+          if (text !== "") out.push({ id, kind: "thinking", at, text });
+        } else if (kind === "toolCall") {
+          const callId = String((block as { id?: unknown }).id ?? id);
+          const result = results.get(callId);
+          out.push({
+            id,
+            kind: "tool",
+            at,
+            step: {
+              callId,
+              name: String((block as { name?: unknown }).name ?? "tool"),
+              status: result === undefined ? "running" : result.isError ? "error" : "done",
+              input: (block as { arguments?: unknown }).arguments ?? null,
+              output: result === undefined ? null : textOf(result.content).trim(),
+              durationMs: result === undefined ? null : result.durationMs,
+            },
+          });
+        } else if (kind === "text") {
+          const text = String((block as { text?: unknown }).text ?? "").trim();
+          if (text !== "") {
+            out.push({ id, kind: "output", at, text, streaming: false });
+          }
+        }
+      }
+    }
+  }
+  // The newest agent text is streaming while the agent works.
+  if (working) {
+    for (let index = out.length - 1; index >= 0; index--) {
+      const entry = out[index] as TranscriptEntry;
+      if (entry.kind === "output") {
+        out[index] = { ...entry, streaming: true };
+        break;
+      }
+      if (entry.kind !== "thinking") break;
     }
   }
   return out;
@@ -113,7 +178,8 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
       const conversation = ensureConversation(harness, input.id);
       const cells: SessionCells = {
         transcript: self.state("transcript", TranscriptSchema, {
-          init: async () => toTranscriptEntries((await viewSnapshot(await conversation)).entries),
+          init: async () =>
+            projectTranscript((await viewSnapshot(await conversation)).entries, false),
         }),
         phase: self.state("phase", PhaseSchema, "idle"),
         lastError: self.state("lastError", SessionErrorSchema, null),
@@ -124,7 +190,9 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
         const conversation2 = await conversation;
         const view = await conversation2.viewState(BACKGROUND_CONTEXT);
         const apply = (value: ConversationView) => {
-          safeChange(cells.transcript, ctx, () => toTranscriptEntries(value.entries));
+          safeChange(cells.transcript, ctx, () =>
+            projectTranscript(value.entries, cells.phase.value === "working"),
+          );
         };
         view.subscribe((value) => apply(value));
         if (view.value !== undefined) apply(view.value);
