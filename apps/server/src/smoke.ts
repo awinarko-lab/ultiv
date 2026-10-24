@@ -1,9 +1,11 @@
 // Boots the full server stack on an ephemeral port and closes it cleanly.
 // Run: pnpm --filter @ultiv/server smoke  (or npm run smoke at the root)
 import { buildStack } from "./main.ts";
+import { MemoryStorage } from "@earendil-works/pi-durable";
 import { Chat } from "@ultiv/contracts";
 
-const stack = await buildStack();
+// Smoke stays offline and ephemeral: MemoryStorage, no db file.
+const stack = await buildStack({ storage: new MemoryStorage() });
 await new Promise<void>((resolve, reject) => {
   stack.http.once("listening", resolve);
   stack.http.once("error", reject);
