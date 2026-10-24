@@ -2,22 +2,19 @@
   "name": "ultiv",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=24"
-  },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "smoke": "node src/smoke.ts"
-  },
-  "dependencies": {
-    "@earendil-works/chord": "^1.4.0",
-    "@earendil-works/pi-ai": "^1.4.0",
-    "@earendil-works/pi-durable": "^1.4.0",
-    "effect": "^4.0.6",
-    "typebox": "1.3.27"
+    "check": "vp check",
+    "build": "vp -C apps/web build",
+    "test": "vp test",
+    "smoke": "node apps/server/src/smoke.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
-    "typescript": "^7.0.2"
-  }
+    "typescript": "^7.0.2",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.15.0"
 }
