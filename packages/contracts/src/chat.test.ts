@@ -2,9 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { Chat } from "./chat.ts";
 
 describe("Chat contract", () => {
-  it("is a remote contract, version 1, hosted on the server", () => {
+  it("is a remote contract, version 2, hosted on the server", () => {
     expect(Chat.scope).toBe("remote");
-    expect(Chat.def.version).toBe(1);
+    expect(Chat.def.version).toBe(2);
   });
 
   it("is addressed per conversation id", () => {

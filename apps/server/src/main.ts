@@ -13,6 +13,7 @@ import { Type } from "typebox";
 import { WebSocketServer } from "ws";
 import { Ping } from "@ultiv/contracts";
 import { serveChat } from "./chat.ts";
+import { serveSessions } from "./sessions.ts";
 import { kenariProvider } from "./ai/kenari.ts";
 import { jevClient } from "./ai/typesafe.ts";
 
@@ -49,6 +50,7 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
     };
   });
   serveChat(host, harness);
+  serveSessions(host, harness);
 
   const http = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "application/json" });

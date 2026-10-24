@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatTurn } from "@ultiv/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,15 @@ export function ChatView({
   onSend: (text: string) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
   const busy = turn === "thinking";
+
+  // Pin the transcript to the newest message: on open, on every turn.
+  useEffect(() => {
+    const viewport = transcriptRef.current?.querySelector("[data-slot=scroll-area-viewport]");
+    if (viewport === null || viewport === undefined) return;
+    viewport.scrollTop = viewport.scrollHeight;
+  }, [messages, busy]);
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -42,16 +50,18 @@ export function ChatView({
         <Badge variant={phase === "live" ? "secondary" : "outline"}>{phase}</Badge>
       </CardHeader>
       <CardContent className="min-h-0 flex-1">
-        <ScrollArea className="h-80">
-          <ul className="flex flex-col gap-3 pr-3">
-            {messages.map((message, index) => (
-              <li key={index} className={roleStyles[message.role]}>
-                {message.text}
-              </li>
-            ))}
-            {busy && <li className="self-start text-sm text-muted-foreground">thinking…</li>}
-          </ul>
-        </ScrollArea>
+        <div ref={transcriptRef} className="h-full min-h-0">
+          <ScrollArea className="h-full">
+            <ul className="flex flex-col gap-3 pr-3">
+              {messages.map((message) => (
+                <li key={message.id} className={roleStyles[message.role]}>
+                  {message.text}
+                </li>
+              ))}
+              {busy && <li className="self-start text-sm text-muted-foreground">thinking…</li>}
+            </ul>
+          </ScrollArea>
+        </div>
       </CardContent>
       <CardFooter className="flex flex-col gap-2">
         {lastError !== null && <p className="w-full text-sm text-destructive">{lastError}</p>}

@@ -1,12 +1,15 @@
 import type { Cell, Host } from "@earendil-works/chord";
-import { invalid } from "@earendil-works/chord";
+import { invalid, isChordError } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   AssistantEntry,
   defineDocFamily,
   type Conversation,
   type ConversationId,
+  type ConversationView,
+  type EntryRecord,
   type Harness,
+  type Submission,
 } from "@earendil-works/pi-durable";
 import {
   Chat,
@@ -17,6 +20,7 @@ import {
   type ChatTurn,
 } from "@ultiv/contracts";
 import { kenariAgent } from "./ai/kenari.ts";
+import { touchSession } from "./sessions.ts";
 import type { Principal } from "./main.ts";
 
 type ChatCells = {
@@ -46,22 +50,37 @@ function textOf(content: unknown): string {
   return JSON.stringify(content);
 }
 
-/** Transcript messages (pi-ai `Message`) -> replicated chat messages; tool and empty entries drop out. */
-function toChatMessages(messages: readonly unknown[]): ChatMessage[] {
+/** Cell write that survives object disposal: background turns may outlive the last reference. */
+function safeChange<T>(
+  cell: Cell<T>,
+  ctx: Parameters<Cell<T>["change"]>[0],
+  fn: Parameters<Cell<T>["change"]>[1],
+): void {
+  try {
+    cell.change(ctx, fn);
+  } catch (error) {
+    console.warn("cell write skipped:", isChordError(error) ? error.code : error);
+  }
+}
+
+/** Durable transcript entries -> replicated chat messages; tool and empty entries drop out. */
+function toChatMessages(entries: readonly EntryRecord[]): ChatMessage[] {
   const out: ChatMessage[] = [];
-  for (const message of messages) {
-    const role = (message as { role?: string }).role;
-    if (role !== "user" && role !== "assistant") continue;
-    const text = textOf((message as { content?: unknown }).content).trim();
-    if (text === "") continue;
-    const at = (message as { timestamp?: unknown }).timestamp;
-    out.push({ role, text, at: typeof at === "number" ? at : Date.now() });
+  for (const entry of entries) {
+    for (const message of (entry.model ?? []) as readonly unknown[]) {
+      const role = (message as { role?: string }).role;
+      if (role !== "user" && role !== "assistant") continue;
+      const text = textOf((message as { content?: unknown }).content).trim();
+      if (text === "") continue;
+      const at = (message as { timestamp?: unknown }).timestamp;
+      out.push({ id: entry.id, role, text, at: typeof at === "number" ? at : Date.now() });
+    }
   }
   return out;
 }
 
 /** Resolve the durable conversation behind one chat id, creating and mapping it on first use. */
-async function resolveConversation(harness: Harness, chatId: string): Promise<Conversation> {
+export async function ensureConversation(harness: Harness, chatId: string): Promise<Conversation> {
   const known = await harness.snapshot(ChatMapDoc, chatId, BACKGROUND_CONTEXT);
   if (known) {
     const existing = await harness.conversation(known.conversationId, BACKGROUND_CONTEXT);
@@ -78,79 +97,109 @@ async function resolveConversation(harness: Harness, chatId: string): Promise<Co
   return created;
 }
 
-async function historyOf(conversation: Conversation): Promise<ChatMessage[]> {
-  const view = await conversation.context(BACKGROUND_CONTEXT);
-  return toChatMessages(view.messages);
-}
-
-/** Registers the per-conversation Chat objects: replicated state, replies through the harness. */
-export function serveChat(host: Host<Principal>, harness: Harness): void {
-  host.serve(Chat, (input, _principal, self) => {
-    const conversation = resolveConversation(harness, input.id);
-    const cells: ChatCells = {
-      messages: self.state("messages", ChatMessagesSchema, {
-        init: async () => historyOf(await conversation),
-      }),
-      turn: self.state("turn", ChatTurnSchema, "idle"),
-      lastError: self.state("lastError", ChatErrorSchema, null),
-    };
-    return {
-      variant: "default",
-      messages: cells.messages,
-      turn: cells.turn,
-      lastError: cells.lastError,
-      send: ({ text }, ctx) => {
-        if (cells.turn.value === "thinking") {
-          throw invalid("busy", "a reply is already in flight");
-        }
-        cells.messages.change(ctx, (list) => [...list, { role: "user", text, at: Date.now() }]);
-        cells.turn.change(ctx, () => "thinking");
-        cells.lastError.change(ctx, () => null);
-        reply(host, conversation, cells, text);
-      },
-    };
+/** First hydrated revision of a conversation's structural view. */
+async function viewSnapshot(chat: Conversation): Promise<ConversationView> {
+  const view = await chat.viewState(BACKGROUND_CONTEXT);
+  if (view.value !== undefined) return view.value;
+  return new Promise<ConversationView>((resolve) => {
+    const unsubscribe = view.subscribe((value) => {
+      unsubscribe();
+      resolve(value);
+    });
   });
 }
 
-async function runTurn(
-  conversation: Promise<Conversation>,
-  cells: ChatCells,
-  text: string,
-  ctx: Parameters<Parameters<Host<Principal>["root"]>[0]>[0],
-): Promise<void> {
-  const chat = await conversation;
-  const submission = await chat.submit({ type: "input", content: text }, BACKGROUND_CONTEXT);
-  const settled = await submission.wait(BACKGROUND_CONTEXT);
-  if (settled.status !== "done" || settled.type !== "input") {
-    throw new Error(`kenari unanswered: ${JSON.stringify(settled).slice(0, 200)}`);
-  }
-  const stored = await chat.commit(
-    (tx) => tx.entry(AssistantEntry, settled.answer),
-    BACKGROUND_CONTEXT,
+/** Registers per-conversation Chat objects: state is a live projection of the durable transcript. */
+export function serveChat(host: Host<Principal>, harness: Harness): void {
+  host.serve(
+    Chat,
+    (input, _principal, self) => {
+      const conversation = ensureConversation(harness, input.id);
+      const cells: ChatCells = {
+        messages: self.state("messages", ChatMessagesSchema, {
+          init: async () => toChatMessages((await viewSnapshot(await conversation)).entries),
+        }),
+        turn: self.state("turn", ChatTurnSchema, "idle"),
+        lastError: self.state("lastError", ChatErrorSchema, null),
+      };
+      // Live replay: every committed publication of the durable transcript re-projects the
+      // cell, whoever wrote it (this object's turns, tasks, tools, future code).
+      self.task(async (ctx) => {
+        const chat = await conversation;
+        const view = await chat.viewState(BACKGROUND_CONTEXT);
+        const apply = (value: ConversationView) => {
+          safeChange(cells.messages, ctx, () => toChatMessages(value.entries));
+        };
+        view.subscribe((value) => apply(value));
+        if (view.value !== undefined) apply(view.value);
+        await new Promise<void>((resolve) => {
+          ctx.signal.addEventListener("abort", () => resolve());
+        });
+      });
+      return {
+        variant: "default",
+        messages: cells.messages,
+        turn: cells.turn,
+        lastError: cells.lastError,
+        send: async ({ text }, ctx) => {
+          if (cells.turn.value === "thinking") {
+            throw invalid("busy", "a reply is already in flight");
+          }
+          cells.turn.change(ctx, () => "thinking");
+          cells.lastError.change(ctx, () => null);
+          try {
+            // Admit first: a message becomes visible through the durable
+            // transcript projection only once it is committed to storage.
+            const chat = await conversation;
+            const submission = await chat.submit(
+              { type: "input", content: text },
+              BACKGROUND_CONTEXT,
+            );
+            settle(host, harness, chat, submission, input.id, cells, text);
+          } catch (error) {
+            console.error("send failed:", error);
+            safeChange(cells.lastError, ctx, () => String(error));
+            safeChange(cells.turn, ctx, () => "error");
+            throw error;
+          }
+        },
+      };
+    },
+    // Hold the object (and its replay) briefly after the last reference so a
+    // navigation mid-turn does not dispose it out from under the background turn.
+    { linger: 60_000 },
   );
-  const message = stored?.model?.[0] as { content?: unknown } | undefined;
-  const replyText = textOf(message?.content).trim();
-  cells.messages.change(ctx, (list) => [
-    ...list,
-    { role: "assistant", text: replyText, at: Date.now() },
-  ]);
-  cells.turn.change(ctx, () => "idle");
 }
 
-/** Fire-and-forget: the method returns at once; the harness turn lands in state when it settles. */
-function reply(
+/** Settles an admitted submission in the background; the transcript projection picks up the turn. */
+function settle(
   host: Host<Principal>,
-  conversation: Promise<Conversation>,
+  harness: Harness,
+  conversation: Conversation,
+  submission: Submission,
+  chatId: string,
   cells: ChatCells,
   text: string,
 ): void {
   void host.root(async (ctx) => {
     try {
-      await runTurn(conversation, cells, text, ctx);
+      const settled = await submission.wait(BACKGROUND_CONTEXT);
+      if (settled.status !== "done" || settled.type !== "input") {
+        throw new Error(`kenari unanswered: ${JSON.stringify(settled).slice(0, 200)}`);
+      }
+      const stored = await conversation.commit(
+        (tx) => tx.entry(AssistantEntry, settled.answer),
+        BACKGROUND_CONTEXT,
+      );
+      const message = stored?.model?.[0] as { content?: unknown } | undefined;
+      if (textOf(message?.content).trim() !== "") {
+        await touchSession(harness, chatId, { at: Date.now(), titleSeed: text });
+      }
+      safeChange(cells.turn, ctx, () => "idle");
     } catch (error) {
       console.error("chat turn failed:", error);
-      cells.lastError.change(ctx, () => String(error));
-      cells.turn.change(ctx, () => "error");
+      safeChange(cells.lastError, ctx, () => String(error));
+      safeChange(cells.turn, ctx, () => "error");
     }
   });
 }

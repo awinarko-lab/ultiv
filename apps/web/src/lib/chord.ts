@@ -5,9 +5,10 @@ import {
   type Ref,
   type WebSocketLike,
 } from "@earendil-works/chord";
-import { Chat } from "@ultiv/contracts";
+import { Chat, Sessions } from "@ultiv/contracts";
 
 export type ChatRef = Ref<typeof Chat>;
+export type SessionsRef = Ref<typeof Sessions>;
 export type GuestPrincipal = { kind: "guest" };
 
 let hostPromise: Promise<Host<GuestPrincipal>> | undefined;
@@ -47,4 +48,10 @@ function clientHost(): Promise<Host<GuestPrincipal>> {
 export async function openChat(id: string): Promise<ChatRef> {
   const host = await clientHost();
   return host.get(Chat, { id });
+}
+
+/** Opens (and holds) the durable session registry. */
+export async function openSessions(): Promise<SessionsRef> {
+  const host = await clientHost();
+  return host.get(Sessions, {});
 }

@@ -12,7 +12,7 @@ function ChatPage() {
   const chat = useChat(conversationId);
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-4 p-8">
+    <main className="mx-auto flex h-dvh max-w-2xl flex-col gap-4 p-8">
       <header className="flex items-center justify-between">
         <h1 className="font-heading text-xl font-semibold tracking-tight">Chat</h1>
         <Badge variant="outline">{conversationId}</Badge>
