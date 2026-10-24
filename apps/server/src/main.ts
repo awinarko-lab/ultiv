@@ -8,6 +8,7 @@ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { Type } from "typebox";
 import { WebSocketServer } from "ws";
 import { Ping } from "@ultiv/contracts";
+import { serveChat } from "./chat.ts";
 import { kenariProvider } from "./ai/kenari.ts";
 import { jevClient } from "./ai/typesafe.ts";
 
@@ -35,6 +36,7 @@ export async function buildStack() {
       },
     };
   });
+  serveChat(host, harness);
 
   const http = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "application/json" });

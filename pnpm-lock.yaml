@@ -246,6 +246,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.9.0
         version: 1.9.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@earendil-works/chord':
+        specifier: ^1.4.0
+        version: 1.4.0
       '@effect/atom-react':
         specifier: ^4.0.6
         version: 4.0.6(effect@4.0.6)(react@19.3.1)(scheduler@0.28.0)
