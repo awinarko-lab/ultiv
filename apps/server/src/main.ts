@@ -1,0 +1,67 @@
+import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { acceptWebSockets, createHost } from "@earendil-works/chord";
+import { createRegistry, Harness, MemoryStorage } from "@earendil-works/pi-durable";
+import { createModels } from "@earendil-works/pi-ai/models";
+import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import { Type } from "typebox";
+import { WebSocketServer } from "ws";
+import { Ping } from "@ultiv/contracts";
+
+export type Principal = { kind: "guest" } | { kind: "server" };
+
+/** Wires the durable harness, the chord host, and the WebSocket + HTTP listeners. */
+export async function buildStack() {
+  const models = createModels();
+  if (process.env.OPENAI_API_KEY) models.setProvider(openaiProvider());
+
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models, registry: createRegistry() },
+    BACKGROUND_CONTEXT,
+  );
+  const host = createHost<Principal>({ name: "server", self: { kind: "server" } });
+  host.serve(Ping, (_input, _principal, self) => {
+    const count = self.state("count", Type.Number(), 0);
+    return {
+      variant: "default",
+      count,
+      increment: async ({ by }, ctx) => {
+        count.change(ctx, (n) => n + by);
+      },
+    };
+  });
+
+  const http = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ app: "ultiv", ok: true }));
+  });
+  const wss = new WebSocketServer({ server: http });
+  const guest: Principal = { kind: "guest" };
+  acceptWebSockets(wss, host, { principal: async () => guest });
+
+  const close = async () => {
+    await Promise.allSettled([
+      new Promise<void>((resolve) => wss.close(() => resolve())),
+      new Promise<void>((resolve) => http.close(() => resolve())),
+    ]);
+    await harness.close(BACKGROUND_CONTEXT);
+  };
+  return { host, harness, http, close };
+}
+
+const isMain =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  const port = Number(process.env.PORT ?? 8787);
+  const stack = await buildStack();
+  stack.http.listen(port, "127.0.0.1", () => {
+    console.log(`ultiv server listening on http://127.0.0.1:${port}`);
+  });
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      void stack.close().then(() => process.exit(0));
+    });
+  }
+}
