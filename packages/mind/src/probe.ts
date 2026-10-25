@@ -38,6 +38,26 @@ if (!Number.isFinite(probability) || probability < 0 || probability > 1) {
   throw new Error("jev tool path failed: no probability in reply");
 }
 
+// 1c) Act: temporal awareness + the live-web tools (TinyFish, TINYFISH_API_KEY).
+const now = mind.act.tools().find((tool) => tool.name === "now");
+if (now === undefined) throw new Error("now tool missing");
+const nowResult = await now.execute({}, {} as never, {} as never);
+console.log("now:", JSON.stringify(nowResult.structuredOutput));
+const search = mind.act.tools().find((tool) => tool.name === "web_search");
+if (search === undefined) throw new Error("web_search missing: is TINYFISH_API_KEY set?");
+const searchResult = await search.execute(
+  { query: "TinyFish web toolkit" },
+  {} as never,
+  {} as never,
+);
+const found = searchResult.structuredOutput as { results?: unknown[] };
+if (found.results === undefined || found.results.length === 0) {
+  throw new Error("web_search returned no results");
+}
+console.log(
+  `web_search: ${found.results.length} results, first: ${JSON.stringify(found.results[0]).slice(0, 140)}`,
+);
+
 // 2) Decide: the independent faculty — no conversation involved.
 const yes = await run(
   mind.decide.yesNo("A clear-sky day typically has a blue sky.", "Is the statement true?"),

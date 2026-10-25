@@ -1,6 +1,7 @@
 export * from "./act/act.ts";
 export * from "./act/decision-ask.ts";
 export * from "./act/decision-tools.ts";
+export * from "./act/temporal.ts";
 export * from "./approvals.ts";
 export * from "./config.ts";
 export * from "./converse/converse.ts";

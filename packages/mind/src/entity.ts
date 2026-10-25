@@ -10,11 +10,18 @@ import { Context, Effect, Layer } from "effect";
 import { ConfigError } from "effect/Config";
 import type { Storage } from "@earendil-works/pi-durable";
 import { openRuntime, Duplicate, External, Unavailable, type Runtime } from "@ultiv/core";
-import { makeRegistry, Registry, type Plugin } from "@ultiv/ext";
+import {
+  makeRegistry,
+  Registry,
+  tinyfishConfigured,
+  tinyfishPlugin,
+  type Plugin,
+} from "@ultiv/ext";
 import { Approvals, approvalsLayer, type ApprovalsService } from "./approvals.ts";
 import { actService } from "./act/act.ts";
 import { ENTITY_NAME, identityPlugin } from "./act/identity.ts";
 import { decisionPlugin } from "./act/decision-tools.ts";
+import { temporalPlugin } from "./act/temporal.ts";
 import { Converse, converseLayer, type ConverseService } from "./converse/converse.ts";
 import { decideLayer, Decide, type DecideService } from "./decide/decide.ts";
 import { MindModels, modelsLayer } from "./providers/models.ts";
@@ -86,9 +93,16 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
     Registry,
     Effect.gen(function* () {
       const decide = yield* Decide;
+      // First-party faculties ride always (identity, temporal); TinyFish
+      // live-web egress and Jev install only when their keys are present.
+      const base = [
+        identityPlugin(),
+        temporalPlugin(),
+        ...(tinyfishConfigured() ? [tinyfishPlugin] : []),
+      ];
       const plugins = decide.available
-        ? [identityPlugin(), decisionPlugin(decide), ...(options.plugins ?? [])]
-        : [identityPlugin(), ...(options.plugins ?? [])];
+        ? [...base, decisionPlugin(decide), ...(options.plugins ?? [])]
+        : [...base, ...(options.plugins ?? [])];
       return yield* makeRegistry(plugins);
     }),
   ).pipe(Layer.provide(decideLayer));
