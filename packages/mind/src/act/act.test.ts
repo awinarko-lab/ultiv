@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import type { PromptSection } from "@earendil-works/pi-durable";
 import { defineTool, type RegistryService } from "@ultiv/ext";
 import { makeApprovals } from "../approvals.ts";
+import { makeAudit } from "../audit/audit.ts";
 import { actService } from "./act.ts";
 import { ENTITY_NAME, identityPlugin, identitySection } from "./identity.ts";
 
@@ -26,8 +27,10 @@ const registry = (
 });
 
 describe("Act", () => {
+  const audit = makeAudit("/dev/null");
+
   it("carries registry sections into the extension", () => {
-    const act = actService(registry([echo], [identitySection()]), makeApprovals());
+    const act = actService(registry([echo], [identitySection()]), makeApprovals(), audit);
     const section = act.extension().sections?.[0];
     expect(section?.key).toBe("identity");
     expect(section?.render({} as never, {} as never)).toContain(`You are ${ENTITY_NAME}`);
@@ -40,6 +43,7 @@ describe("Act", () => {
         { ...echo, name: "echo_read" },
       ]),
       makeApprovals(),
+      audit,
     );
     expect(act.tools().map((tool) => tool.name)).toEqual(["echo", "echo_read"]);
     // The gated one is wrapped: its execute now consults the broker first.

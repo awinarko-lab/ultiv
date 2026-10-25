@@ -12,7 +12,6 @@ import { ConfigError } from "effect/Config";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import {
   AssistantEntry,
-  createRegistry,
   defineDocFamily,
   Harness,
   type AgentChange,
@@ -26,9 +25,8 @@ import {
 } from "@earendil-works/pi-durable";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { External } from "@ultiv/core";
-import { actService } from "../act/act.ts";
 import { harnessDb } from "../config.ts";
-import { Approvals } from "../approvals.ts";
+import { PiRegistry } from "./pi-registry.ts";
 import {
   kenariAgent,
   kenariCompaction,
@@ -37,7 +35,6 @@ import {
   type KenariWiring,
 } from "../providers/kenari.ts";
 import { MindModels } from "../providers/models.ts";
-import { Registry } from "@ultiv/ext";
 
 export interface TurnResult {
   /** The committed assistant text; empty when the turn produced none. */
@@ -253,21 +250,19 @@ const openSqlite: Effect.Effect<Storage, External | ConfigError> = Effect.gen(fu
 
 /**
  * The Converse faculty. Storage overrides come from `openMind`; the model
- * catalog, the tool extension, the approval broker, and the agent selection
- * are the mind's own.
+ * catalog and the pi-durable registry are the mind's own. The act's tool
+ * extension, codemode, and the task tools are installed into that registry by
+ * the entity (see `entity.ts`) — pi-durable registries may keep changing
+ * while the harness runs, so late installs reach every conversation.
  */
 export const converseLayer = (
   storage: Storage | undefined,
-): Layer.Layer<Converse, External | ConfigError, MindModels | Registry | Approvals> =>
+): Layer.Layer<Converse, External | ConfigError, MindModels | PiRegistry> =>
   Layer.effect(
     Converse,
     Effect.gen(function* () {
       const models = yield* MindModels;
-      const registry = yield* Registry;
-      const approvals = yield* Approvals;
-      const act = actService(registry, approvals);
-      const piRegistry = createRegistry();
-      piRegistry.install(act.extension());
+      const piRegistry = yield* PiRegistry;
       const wiring: KenariWiring = yield* kenariWiring;
       const resolvedStorage = yield* storage !== undefined ? Effect.succeed(storage) : openSqlite;
       const harness = yield* Effect.acquireRelease(

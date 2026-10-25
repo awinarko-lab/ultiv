@@ -104,7 +104,7 @@ export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 4,
+  version: 5,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {
@@ -119,7 +119,13 @@ export const Session = remote("ultiv.session", {
         effort: EffortSchema,
       },
       methods: {
-        input: method(Type.Object({ text: Type.String() })),
+        input: method(
+          Type.Object({
+            text: Type.String(),
+            /** Artifact ids to attach; each rides into the prompt as a reference the agent can read. */
+            attachments: Type.Optional(Type.Array(Type.String())),
+          }),
+        ),
         approve: method(
           Type.Object({ callId: Type.String(), approved: Type.Boolean() }),
           Type.Object({ ok: Type.Boolean() }),

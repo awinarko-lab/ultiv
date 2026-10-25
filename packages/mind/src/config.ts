@@ -24,3 +24,6 @@ export const typesafeModel = Config.String("TYPESAFE_MODEL").pipe(
   Config.withDefault(JEV_FALLBACK_MODEL),
 );
 export const harnessDb = Config.String("HARNESS_DB").pipe(Config.withDefault(HARNESS_DB_DEFAULT));
+export const kenariMaxConcurrency = Config.Number("KENARI_MAX_CONCURRENCY").pipe(
+  Config.withDefault(4),
+);

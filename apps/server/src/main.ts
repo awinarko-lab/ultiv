@@ -1,3 +1,8 @@
+/**
+ * Wires the mind (the platform's AI entity), the chord host, and the
+ * WebSocket + HTTP + REST listeners. The app is thin: transport and registry
+ * REST live here; every AI capability lives in @ultiv/mind.
+ */
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { acceptWebSockets, createHost } from "@earendil-works/chord";
@@ -6,16 +11,18 @@ import { Type } from "typebox";
 import { WebSocketServer } from "ws";
 import { Ping } from "@ultiv/contracts";
 import { httpPlugin } from "@ultiv/ext";
-import { KENARI_MODELS, openMind } from "@ultiv/mind";
-import { createSession, listSessions, removeSession } from "./sessions.ts";
+import { openMind } from "@ultiv/mind";
+import { startScheduler, type CronScheduler } from "./cron.ts";
+import { principalFromRequest, type Principal } from "./identity.ts";
+import { createRestHandler } from "./rest.ts";
 import { serveSession } from "./session.ts";
 
-export type Principal = { kind: "guest" } | { kind: "server" };
+export type { Principal } from "./identity.ts";
 
 /**
- * Wires the mind (the platform's AI entity), the chord host, and the
- * WebSocket + HTTP listeners. The app is thin: state and transport live here;
- * every AI capability lives in @ultiv/mind.
+ * Boots the whole stack: mind, chord host, cron scheduler, REST + WebSocket
+ * listeners. `close()` stops the scheduler, drops links, then closes the
+ * mind's scope (harness finalizers).
  */
 export async function buildStack(options?: { readonly storage?: Storage }) {
   const handle = await openMind({
@@ -23,6 +30,7 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
     ...(options?.storage !== undefined ? { storage: options.storage } : {}),
   });
   const mind = handle.mind;
+  const scheduler: CronScheduler = await startScheduler(mind);
   const host = createHost<Principal>({ name: "server", self: { kind: "server" } });
   host.serve(Ping, (_input, _principal, self) => {
     const count = self.state("count", Type.Number(), 0);
@@ -36,64 +44,14 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
   });
   serveSession(host, mind);
 
-  // Session registry + model catalog as plain REST: CRUD over chord's
-  // replicated-object wire desyncs on attach (chord 1.4.0 ack-window bug).
-  const http = createServer((req, res) => {
-    const url = new URL(req.url ?? "/", "http://localhost");
-    const headers = {
-      "content-type": "application/json",
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
-      "access-control-allow-headers": "content-type",
-    };
-    const json = (status: number, body: unknown): void => {
-      res.writeHead(status, headers);
-      res.end(JSON.stringify(body));
-    };
-    if (req.method === "OPTIONS") {
-      res.writeHead(204, headers);
-      res.end();
-      return;
-    }
-    const readBody = async (): Promise<{ title?: string | null }> => {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) chunks.push(chunk as Buffer);
-      const raw = Buffer.concat(chunks).toString("utf8");
-      return raw === "" ? {} : (JSON.parse(raw) as { title?: string | null });
-    };
-    void (async () => {
-      try {
-        if (url.pathname === "/api/sessions" && req.method === "GET") {
-          json(200, await listSessions(mind));
-        } else if (url.pathname === "/api/sessions" && req.method === "POST") {
-          const body = await readBody();
-          json(200, await createSession(mind, body.title ?? null));
-        } else if (url.pathname.startsWith("/api/sessions/") && req.method === "DELETE") {
-          const id = decodeURIComponent(url.pathname.slice("/api/sessions/".length));
-          json(200, { ok: await removeSession(mind, id) });
-        } else if (url.pathname === "/api/models") {
-          json(
-            200,
-            KENARI_MODELS.map((spec) => ({
-              id: spec.id,
-              label: spec.label,
-              efforts: [...spec.efforts],
-              defaultEffort: spec.defaultEffort,
-            })),
-          );
-        } else {
-          json(200, { app: "ultiv", ok: true });
-        }
-      } catch (error) {
-        json(500, { error: String(error).slice(0, 300) });
-      }
-    })();
-  });
+  const http = createServer(createRestHandler({ mind, scheduler }));
   const wss = new WebSocketServer({ server: http });
-  const guest: Principal = { kind: "guest" };
-  acceptWebSockets(wss, host, { principal: async () => guest });
+  // The upgrade request IS the credential for now: x-ultiv-user scopes the
+  // link's principal (see identity.ts for the seam a real IdP replaces).
+  acceptWebSockets(wss, host, { principal: async (request) => principalFromRequest(request) });
 
   const close = async () => {
+    scheduler.stop();
     // Drop connected links first: wss.close() waits for clients otherwise, so
     // one live browser tab would block shutdown (and node --watch restarts) forever.
     for (const client of wss.clients) client.terminate();
@@ -103,7 +61,7 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
     ]);
     await handle.close();
   };
-  return { host, mind, http, close };
+  return { host, mind, http, scheduler, close };
 }
 
 const isMain =

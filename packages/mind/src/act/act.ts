@@ -7,6 +7,7 @@
 import { defineExtension, type Extension } from "@earendil-works/pi-durable";
 import type { RegistryService, Tool } from "@ultiv/ext";
 import { withApproval, type ApprovalsService } from "../approvals.ts";
+import { withAudit, type AuditService } from "../audit/audit.ts";
 
 export interface ActService {
   readonly tools: () => readonly Tool[];
@@ -14,15 +15,23 @@ export interface ActService {
   readonly extension: () => Extension;
 }
 
-export const actService = (registry: RegistryService, approvals: ApprovalsService): ActService => {
+export const actService = (
+  registry: RegistryService,
+  approvals: ApprovalsService,
+  audit: AuditService,
+): ActService => {
   const gate = (tool: Tool): Tool => (tool.gated === true ? withApproval(approvals, tool) : tool);
+  const tools: readonly Tool[] = registry
+    .tools()
+    .map(gate)
+    .map((tool) => withAudit(audit, tool));
   const extension = defineExtension({
     name: "ultius.act",
-    tools: registry.tools().map(gate),
+    tools,
     sections: registry.sections(),
   });
   return {
-    tools: () => registry.tools().map(gate),
+    tools: () => tools,
     extension: () => extension,
   };
 };

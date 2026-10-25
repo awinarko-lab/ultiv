@@ -2,9 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { Session } from "./session.ts";
 
 describe("Session contract", () => {
-  it("is a remote contract, version 4, hosted on the server", () => {
+  it("is a remote contract, version 5, hosted on the server", () => {
     expect(Session.scope).toBe("remote");
-    expect(Session.def.version).toBe(4);
+    expect(Session.def.version).toBe(5);
   });
 
   it("is addressed per session id", () => {

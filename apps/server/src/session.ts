@@ -8,6 +8,7 @@ import type {
   Submission,
 } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
+import { artifactsDir, readArtifact } from "@ultiv/ext";
 import {
   EffortSchema,
   ModelIdSchema,
@@ -25,7 +26,7 @@ import {
 } from "@ultiv/contracts";
 import { projectTranscript, usageOf, type MindService } from "@ultiv/mind";
 import { touchSession } from "./sessions.ts";
-import type { Principal } from "./main.ts";
+import { ownerOf, sessionKey, type Principal } from "./identity.ts";
 
 type SessionCells = {
   transcript: Cell<TranscriptEntry[]>;
@@ -59,8 +60,10 @@ function safeChange<T>(
 export function serveSession(host: Host<Principal>, mind: MindService): void {
   host.serve(
     Session,
-    (input, _principal, self) => {
-      const conversation = Effect.runPromise(mind.converse.ensure(input.id));
+    (input, principal, self) => {
+      const owner = ownerOf(principal);
+      const key = sessionKey(owner, input.id);
+      const conversation = Effect.runPromise(mind.converse.ensure(key));
       // Sync empty starts: the transcript/usage hydration must NOT publish at
       // attach — a publication racing the client's subscribe handshake trips
       // chord's ack window over the wire and desyncs every object on the link
@@ -142,10 +145,20 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         approve: async ({ callId, approved }, ctx) => {
           const id = await conversationId;
           mind.approvals.decide(id, callId, approved);
+          mind.audit.record({
+            at: Date.now(),
+            kind: "approval",
+            conversationId: id,
+            callId,
+            name: null,
+            durationMs: null,
+            ok: approved,
+            error: null,
+          });
           safeChange(cells.pending, ctx, () => mind.approvals.pendingFor(id)[0] ?? null);
           return { ok: true };
         },
-        input: async ({ text }, ctx) => {
+        input: async ({ text, attachments }, ctx) => {
           if (cells.phase.value === "working") {
             throw invalid("busy", "the agent is already working");
           }
@@ -155,8 +168,10 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
             // Admit first, in the method: an entry becomes visible through the
             // durable transcript projection only once it is committed to storage.
             const chat = await conversation;
-            const submission = await Effect.runPromise(mind.converse.submit(chat, text));
-            settle(host, mind, chat, submission, input.id, cells, text);
+            const content =
+              attachments === undefined ? text : await withAttachments(text, attachments);
+            const submission = await Effect.runPromise(mind.converse.submit(chat, content));
+            settle(host, mind, chat, submission, owner, input.id, cells, text);
           } catch (error) {
             console.error("input failed:", error);
             safeChange(cells.lastError, ctx, () => String(error));
@@ -178,6 +193,7 @@ function settle(
   mind: MindService,
   conversation: Conversation,
   submission: Submission,
+  owner: string,
   sessionId: string,
   cells: SessionCells,
   text: string,
@@ -186,7 +202,7 @@ function settle(
     try {
       const result = await Effect.runPromise(mind.converse.settle(conversation, submission));
       if (result.text.trim() !== "") {
-        await touchSession(mind, sessionId, { at: Date.now(), titleSeed: text });
+        await touchSession(mind, owner, sessionId, { at: Date.now(), titleSeed: text });
       }
       safeChange(cells.phase, ctx, () => "idle");
     } catch (error) {
@@ -195,4 +211,15 @@ function settle(
       safeChange(cells.phase, ctx, () => "error");
     }
   });
+}
+
+/** The attachment block an input carries: one reference line per artifact id. */
+async function withAttachments(text: string, attachments: readonly string[]): Promise<string> {
+  const dir = artifactsDir();
+  const lines = attachments.map((id) => {
+    const found = readArtifact(dir, id);
+    if (found === undefined) return `- artifact ${id}: (unknown)`;
+    return `- artifact ${found.info.id} "${found.info.name}" (${found.info.mime}): use artifact_read to open it`;
+  });
+  return `${text}\n\nAttached artifacts:\n${lines.join("\n")}`;
 }

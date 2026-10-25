@@ -3,6 +3,8 @@ import { ModelInfoSchema } from "./session.ts";
 
 export const SessionInfoSchema = Type.Object({
   id: Type.String(),
+  /** Registry owner the session belongs to (header-scoped; "guest" unauthenticated). */
+  owner: Type.String(),
   title: Type.String(),
   createdAt: Type.Number(),
   lastMessageAt: Type.Number(),
