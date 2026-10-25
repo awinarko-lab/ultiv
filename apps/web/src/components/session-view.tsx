@@ -203,10 +203,28 @@ const stampOf = (at: number): string => {
     : `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
 };
 
-/** Bracket headers ([relay • topic], [reply from …]) are stripped for display. */
-const noteText = (text: string): string => {
-  const end = text.indexOf("]");
-  return text.startsWith("[") && end > 0 ? text.slice(end + 1).trim() : text;
+/**
+ * Bracketed machinery notes: the header ([relay • topic], [reply from …],
+ * "✉ → peer (kind)") renders as a small caption, the rest as the body.
+ */
+const noteParts = (text: string): { header: string; body: string } => {
+  const firstBreak = text.indexOf("\n");
+  if (text.startsWith("[") || text.startsWith("✉")) {
+    const headerEnd = text.indexOf("]");
+    if (text.startsWith("✉")) {
+      const header = firstBreak > 0 ? text.slice(0, firstBreak) : text;
+      return { header, body: firstBreak > 0 ? text.slice(firstBreak + 1).trim() : "" };
+    }
+    if (headerEnd > 0) {
+      return { header: text.slice(1, headerEnd), body: text.slice(headerEnd + 1).trim() };
+    }
+  }
+  return { header: "note", body: text };
+};
+const noteHeader = (text: string): string => noteParts(text).header;
+const noteBody = (text: string): string => {
+  const { header, body } = noteParts(text);
+  return body === "" ? header : body;
 };
 
 function groupTranscript(transcript: TranscriptEntry[]): Group[] {
@@ -340,10 +358,15 @@ export function SessionView({
                 ) : group.entry.kind === "note" ? (
                   <li
                     key={group.key}
-                    className="text-muted-foreground w-full text-center text-xs italic"
+                    className="bg-muted/40 text-muted-foreground w-full rounded-md border px-3 py-2 text-sm"
                   >
-                    — {noteText(group.entry.text)}{" "}
-                    <span className="not-italic">{stampOf(group.entry.at)}</span> —
+                    <span className="text-foreground/70 text-xs font-semibold uppercase">
+                      {noteHeader(group.entry.text)}{" "}
+                      <span className="font-normal">{stampOf(group.entry.at)}</span>
+                    </span>
+                    <p className="mt-1 whitespace-pre-wrap break-words">
+                      {noteBody(group.entry.text)}
+                    </p>
                   </li>
                 ) : null,
               )}

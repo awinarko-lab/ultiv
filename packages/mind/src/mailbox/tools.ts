@@ -1,17 +1,16 @@
 /**
- * The mailbox as native tools of the agent loop: `message` and `relay`.
- * Messaging is asynchronous by design — the tool admits the envelope into
- * the pair's contextual room and returns immediately; the sender's turn
- * ends, and the reply arrives later as a new input in the sender's seat.
- * `relay` is the way back to the owner: it surfaces an outcome on the bot's
- * MAIN thread, so conclusions never stay buried in a room.
+ * The mailbox as native tools of the agent loop: `message` and `room`.
+ * The room is a TUNNEL: `message` admits an envelope into it (recording this
+ * conversation as the near endpoint — replies are signalled back HERE), and
+ * `room` reads the tunnel's full transcript from any endpoint. Messaging is
+ * asynchronous — the sender's turn ends at admission, the counterpart thinks
+ * on their own main thread, and the finish signal wakes the sender's endpoint.
  */
 import { Type } from "typebox";
-import { Effect } from "effect";
 import { definePlugin, defineTool, toolCapability, type Plugin, type Tool } from "@ultiv/ext";
 import type { MailboxService } from "./mailbox.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
-import type { ConverseService } from "../converse/converse.ts";
+import type { RoomsService } from "../profiles/rooms.ts";
 
 const MessageParams = Type.Object({
   to: Type.String({
@@ -19,8 +18,8 @@ const MessageParams = Type.Object({
   }),
   kind: Type.Union([Type.Literal("request"), Type.Literal("notify")], {
     description:
-      '"request" expects an answer (you are woken with the reply) — use it for questions and ' +
-      'delegations. "notify" is fire-and-forget information.',
+      '"request" expects an answer (your thread is woken with a finish signal) — use it ' +
+      'for questions and delegations. "notify" is fire-and-forget information.',
   }),
   body: Type.String({
     description:
@@ -45,12 +44,12 @@ const messageTool = (mailbox: MailboxService, profiles: ProfilesService): Tool =
   defineTool({
     name: "message",
     description:
-      "Send a message to a sibling bot in your workspace. Asynchronous: it lands in your " +
-      "shared room for the topic, the sibling answers there, and you are WOKEN with the " +
-      "reply as a new input in that same room — END YOUR TURN after sending; never wait or " +
-      "poll. Exchanges are capped (the tool output shows your remaining budget to each " +
-      "sibling) — say everything you need to say in as few messages as possible. Requests " +
-      "cost a model turn for the sibling; prefer notify when no answer is needed.",
+      "Send a message to a sibling bot through your shared room (the tunnel). Asynchronous: " +
+      "the sibling receives it on THEIR main thread, thinks there, and replies through the " +
+      "room; YOUR current thread is then woken with a finish signal — END YOUR TURN after " +
+      "sending; never wait or poll. Exchanges are capped (the output shows your remaining " +
+      "budget per sibling) — say everything you need in as few messages as possible. Prefer " +
+      "notify when no answer is needed.",
     parameters: MessageParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), status: Type.String() }),
     execute: (args, api) => {
@@ -76,6 +75,7 @@ const messageTool = (mailbox: MailboxService, profiles: ProfilesService): Tool =
           ...(args.topic !== undefined ? { topic: args.topic } : {}),
           ...(args.artifacts !== undefined ? { artifacts: args.artifacts } : {}),
           origin: "tool",
+          originConversation: String(api.conversationId),
         })
         .then(async (entry) => {
           const budget = await mailbox.budgetOf(scope.owner, scope.profileId, args.to);
@@ -91,7 +91,7 @@ const messageTool = (mailbox: MailboxService, profiles: ProfilesService): Tool =
                 text:
                   `message ${entry.envelope.id} admitted to ${args.to}.` +
                   budgetNote +
-                  " End your turn now; you will be woken with any reply.",
+                  " End your turn now; your thread will be woken with a finish signal when they reply.",
               },
             ],
             structuredOutput: { id: entry.envelope.id, status: entry.status },
@@ -109,26 +109,28 @@ const messageTool = (mailbox: MailboxService, profiles: ProfilesService): Tool =
     },
   });
 
-const RelayParams = Type.Object({
-  body: Type.String({
-    description:
-      "The owner-facing summary of the outcome — self-contained, written for the owner " +
-      "(they have not read the room).",
-  }),
-  topic: Type.Optional(
-    Type.String({ description: "The room topic this outcome came from, if any." }),
+const RoomParams = Type.Object({
+  room: Type.Optional(
+    Type.String({
+      description:
+        "A room id you were given (e.g. in a finish signal). Omit with `peer` to find a room.",
+    }),
   ),
+  peer: Type.Optional(
+    Type.String({ description: "A sibling profile id — picks your latest room with them." }),
+  ),
+  topic: Type.Optional(Type.String({ description: "Narrow a peer search to one topic." })),
 });
 
-const relayTool = (converse: ConverseService, profiles: ProfilesService): Tool =>
+const roomTool = (mailbox: MailboxService, profiles: ProfilesService, rooms: RoomsService): Tool =>
   defineTool({
-    name: "relay",
+    name: "room",
     description:
-      "Surface an outcome on YOUR MAIN THREAD, where your owner reads you. Use it when a " +
-      "sibling's reply (or any background result) concludes something the owner asked " +
-      "about — otherwise they will never see it. Write the summary for the owner, not " +
-      "for yourself; the owner does not read bot-to-bot rooms.",
-    parameters: RelayParams,
+      "Read the FULL transcript of a bot-to-bot room (the tunnel): every message both sides " +
+      "exchanged, labelled by speaker. Use it when a finish signal arrives and you need the " +
+      "content — the signal itself carries no transcript. Also use it to check what was " +
+      "already said before following up.",
+    parameters: RoomParams,
     execute: (args, api) => {
       const scope = profiles.scopeOf(String(api.conversationId));
       if (scope === undefined) {
@@ -136,44 +138,50 @@ const relayTool = (converse: ConverseService, profiles: ProfilesService): Tool =
           output: [
             {
               type: "text" as const,
-              text: "refused: this conversation belongs to no bot — relay is a bot capability.",
+              text: "refused: this conversation belongs to no bot — rooms are a bot capability.",
             },
           ],
           isError: true as const,
         });
       }
       return (async () => {
-        const main = await profiles.ensureMain(scope.owner, scope.profileId);
-        const mainId = await Effect.runPromise(
-          converse.conversationIdOf(await profiles.keyOfRow(main)),
-        );
-        if (mainId !== undefined && String(mainId) === String(api.conversationId)) {
+        const { owner, profileId } = scope;
+        let room = args.room !== undefined ? await rooms.get(owner, args.room) : undefined;
+        if (room === undefined && args.peer !== undefined) {
+          const candidates = (await rooms.list(owner, profileId)).filter((candidate) =>
+            candidate.participants.includes(args.peer as string),
+          );
+          room =
+            args.topic !== undefined
+              ? candidates.find((candidate) => candidate.topic === args.topic)
+              : candidates[0];
+        }
+        if (room === undefined) {
           return {
             output: [
               {
                 type: "text" as const,
-                text: "refused: you are already on your main thread — just say it directly.",
+                text: "no such room — pass a room id from a finish signal, or peer/topic to search.",
               },
             ],
             isError: true as const,
           };
         }
-        const chat = await Effect.runPromise(converse.ensure(await profiles.keyOfRow(main)));
-        const header =
-          args.topic !== undefined && args.topic !== "" ? `[relay • ${args.topic}]` : "[relay]";
-        const submission = await Effect.runPromise(
-          converse.submit(
-            chat,
-            `${header}\n\n${args.body.slice(0, 6_000)}\n\n(Relayed from a bot-to-bot room. Summarize this for your owner in your own voice now.)`,
-          ),
-        );
-        // The main-thread turn settles in the background, like every delivery.
-        void Effect.runPromise(converse.settle(chat, submission)).catch(() => undefined);
+        const lines = await mailbox.transcriptOf(owner, room);
+        const rendered =
+          lines.length === 0
+            ? "(the room is empty)"
+            : lines
+                .map(
+                  (line) =>
+                    `${line.speaker} (${new Date(line.at).toISOString().slice(11, 16)}): ${line.text}`,
+                )
+                .join("\n\n---\n\n");
         return {
           output: [
             {
               type: "text" as const,
-              text: "relayed — your main thread now carries the outcome; your owner will see your summary there.",
+              text: `Room “${room.topic === "" ? "general" : room.topic}” (${room.participants.join(", ")}) — full transcript:\n\n${rendered}`,
             },
           ],
         };
@@ -189,26 +197,27 @@ const relayTool = (converse: ConverseService, profiles: ProfilesService): Tool =
     },
   });
 
-/** The message + relay tools, for late pi-registry installs. */
+/** The message + room tools, for late pi-registry installs. */
 export const messageTools = (
   mailbox: MailboxService,
   profiles: ProfilesService,
-  converse: ConverseService,
-): readonly Tool[] => [messageTool(mailbox, profiles), relayTool(converse, profiles)];
+  rooms: RoomsService,
+): readonly Tool[] => [messageTool(mailbox, profiles), roomTool(mailbox, profiles, rooms)];
 
 /** The mailbox faculty as an installable plugin. */
 export const mailboxPlugin = (
   mailbox: MailboxService,
   profiles: ProfilesService,
-  converse: ConverseService,
+  rooms: RoomsService,
 ): Plugin =>
   definePlugin({
     id: "ultiv.mind.mailbox",
-    version: "1.1.0",
+    version: "1.2.0",
     description:
-      "Inter-entity messaging on contextual rooms — asynchronous, exchange-capped — plus relay to the owner's main thread.",
+      "Inter-entity messaging through contextual rooms (the tunnel) — asynchronous, " +
+      "exchange-capped — plus full-transcript reads from any endpoint.",
     capabilities: [
       toolCapability(messageTool(mailbox, profiles)),
-      toolCapability(relayTool(converse, profiles)),
+      toolCapability(roomTool(mailbox, profiles, rooms)),
     ],
   });

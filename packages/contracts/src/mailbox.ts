@@ -54,6 +54,12 @@ export const MailboxEntrySchema = Type.Object({
       Type.Literal("external"),
     ]),
   ),
+  /**
+   * The conversation the send was made FROM (the tunnel's near endpoint):
+   * replies and NACKs are signalled back here — a session if the exchange
+   * started there, otherwise the bot's main thread.
+   */
+  originConversation: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
 export type MailboxEntry = Static<typeof MailboxEntrySchema>;

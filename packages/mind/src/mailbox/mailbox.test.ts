@@ -5,7 +5,6 @@ import { Effect } from "effect";
 import { openMind } from "../entity.ts";
 import { HOP_CAP, PAIR_RATE_PER_HOUR, mailboxService } from "./mailbox.ts";
 import { messageTools } from "./tools.ts";
-import { projectTranscript } from "../converse/steps.ts";
 
 /** A mailbox with zero retry delay, for dead-letter tests. */
 const fastMailbox = (handle: Awaited<ReturnType<typeof openMind>>) =>
@@ -170,61 +169,73 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
     await handle.close();
   });
 
-  it("relays outcomes to the bot's main thread as a note, and refuses on the main thread itself", async () => {
+  it("tunnels: delivery lands on the counterpart's MAIN thread, the room tool reads the transcript, and sessions pin the near endpoint", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const mailbox = fastMailbox(handle);
-    const { converse, profiles } = handle.mind;
+    const { converse, profiles, rooms } = handle.mind;
     const a = await profiles.create("harry", { name: "One", onboard: false });
     const b = await profiles.create("harry", { name: "Two", onboard: false });
-    const tools = messageTools(mailbox, profiles, converse);
-    const relay = tools.find((tool) => tool.name === "relay");
-    expect(relay).toBeDefined();
+    const tools = messageTools(mailbox, profiles, rooms);
 
-    // Relay from the bot's OWN main thread is refused — it is already there.
-    const main = await profiles.ensureMain("harry", a.id);
-    const mainKey = await profiles.keyOfRow(main);
-    const mainChat = await Effect.runPromise(converse.ensure(mainKey));
-    const onMain = await relay!.execute(
-      { body: "already here" },
-      {
-        conversationId: mainChat.id,
-      } as never,
-      undefined as never,
-    );
-    expect(onMain.isError).toBe(true);
-
-    // Relay from a room seat lands in the main thread and projects as a note.
+    // The counterpart's main thread is the delivery endpoint.
     expect(
       await settle(
         mailbox.send({
           owner: "harry",
-          from: b.id,
-          to: a.id,
+          from: a.id,
+          to: b.id,
           kind: "notify",
-          body: "knock",
-          origin: "tool",
+          body: "knock knock",
+          origin: "human",
         }),
       ),
     ).toBe("");
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const [room] = await handle.mind.rooms.list("harry", a.id);
-    const seat = await Effect.runPromise(converse.ensure(`harry:room:${room!.id}:${a.id}`));
-    const relayed = await relay!.execute(
-      { body: "Two says hi", topic: "greetings" },
-      {
-        conversationId: seat.id,
-      } as never,
+    const bMain = await Effect.runPromise(
+      converse.ensure(await profiles.keyOfRow(await profiles.ensureMain("harry", b.id))),
+    );
+    const bView = await bMain.viewState(BACKGROUND_CONTEXT);
+    expect(JSON.stringify(bView.value?.entries ?? [])).toContain("[message from One");
+
+    // The room tool reads the full tunnel transcript from an endpoint.
+    const roomTool = tools.find((tool) => tool.name === "room");
+    expect(roomTool).toBeDefined();
+    const aMain = await Effect.runPromise(
+      converse.ensure(await profiles.keyOfRow(await profiles.ensureMain("harry", a.id))),
+    );
+    const read = await roomTool!.execute(
+      { peer: b.id },
+      { conversationId: aMain.id } as never,
       undefined as never,
     );
-    expect((relayed as { isError?: boolean }).isError).not.toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const view = await mainChat.viewState(BACKGROUND_CONTEXT);
-    const entries = projectTranscript(view.value?.entries ?? [], undefined, false);
-    const note = entries.find((entry) => entry.kind === "note");
-    expect(note).toBeDefined();
-    expect((note as { text: string }).text).toContain("[relay • greetings]");
-    // The bracketed relay is a note, never a user bubble.
-    expect(entries.some((entry) => entry.kind === "input")).toBe(false);
+    const readText = JSON.stringify(read);
+    expect(readText).toContain("knock knock");
+    expect(readText).toContain("One");
+
+    // A send pinned to a session routes that bot's tunnel endpoint there.
+    const session = await profiles.createSession("harry", a.id, "dig");
+    const sessionConversation = await Effect.runPromise(
+      converse.ensure(await profiles.keyOfRow(session)),
+    );
+    expect(
+      await settle(
+        mailbox.send({
+          owner: "harry",
+          from: a.id,
+          to: b.id,
+          kind: "notify",
+          body: "from the session",
+          topic: "dig",
+          origin: "human",
+          originConversation: String(sessionConversation.id),
+        }),
+      ),
+    ).toBe("");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const digRoom = (await rooms.list("harry", a.id)).find((room) => room.topic === "dig");
+    expect(digRoom).toBeDefined();
+    expect(await mailbox.endpointOf("harry", digRoom!, a.id)).toBe(String(sessionConversation.id));
+    expect(await mailbox.endpointOf("harry", digRoom!, b.id)).toBe(String(bMain.id));
     await handle.close();
   });
 
@@ -334,10 +345,10 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
     await handle.close();
   });
 
-  it("dead-letters after retries and NACKs the sender inside the room seat (offline: turns fail)", async () => {
+  it("dead-letters after retries; NACK signals the sender's main thread (offline: turns fail)", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const mailbox = fastMailbox(handle);
-    const { profiles, rooms } = handle.mind;
+    const { profiles } = handle.mind;
     const a = await profiles.create("harry", { name: "CoS", onboard: false });
     const b = await profiles.create("harry", { name: "Researcher", onboard: false });
     await mailbox.send({
@@ -356,24 +367,22 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
       dead = (await mailbox.dead("harry")).length > 0;
     }
     expect(dead).toBe(true);
-    // The NACK wakes the sender in their room SEAT — never the main chat.
-    const [room] = await rooms.list("harry", a.id);
-    expect(room).toBeDefined();
-    const seats = await rooms.seats("harry", room!);
-    const mine = seats.find((seat) => seat.profileId === a.id);
-    expect(mine?.conversationId).not.toBeNull();
-    const seatConversation = await Effect.runPromise(
-      handle.mind.converse.ensure(`harry:room:${room!.id}:${a.id}`),
+    // The failed delivery was ATTEMPTED on the counterpart's main thread…
+    const bMain = await Effect.runPromise(
+      handle.mind.converse.ensure(
+        await profiles.keyOfRow(await profiles.ensureMain("harry", b.id)),
+      ),
     );
-    const view = await seatConversation.viewState(BACKGROUND_CONTEXT);
-    expect(JSON.stringify(view.value?.entries ?? [])).toContain("[nack from Researcher");
-    // The main chat stays clean of bot-to-bot traffic.
-    const main = await profiles.ensureMain("harry", a.id);
-    const mainConversation = await Effect.runPromise(
-      handle.mind.converse.ensure(await profiles.keyOfRow(main)),
+    const bView = await bMain.viewState(BACKGROUND_CONTEXT);
+    expect(JSON.stringify(bView.value?.entries ?? [])).toContain("[message from CoS");
+    // …and the NACK signal wakes the SENDER's main thread (the origin endpoint).
+    const aMain = await Effect.runPromise(
+      handle.mind.converse.ensure(
+        await profiles.keyOfRow(await profiles.ensureMain("harry", a.id)),
+      ),
     );
-    const mainView = await mainConversation.viewState(BACKGROUND_CONTEXT);
-    expect(JSON.stringify(mainView.value?.entries ?? [])).not.toContain("[nack from Researcher");
+    const aView = await aMain.viewState(BACKGROUND_CONTEXT);
+    expect(JSON.stringify(aView.value?.entries ?? [])).toContain("[nack from Researcher");
     await handle.close();
   });
 });

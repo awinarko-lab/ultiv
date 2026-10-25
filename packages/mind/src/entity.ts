@@ -143,7 +143,7 @@ const mindLayerRaw = (
         tools: () => act.extension().tools ?? [],
       });
       const profilesRef: ProfilesService = profiles;
-      const rooms = roomsService({ converse, profiles });
+      const rooms = roomsService({ converse });
       const mailbox = mailboxService({ converse, profiles, rooms, audit });
       const memory = memoryService({ converse, profiles });
       // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
@@ -183,7 +183,7 @@ const mindLayerRaw = (
       piRegistry.install(
         defineExtension({
           name: "ultius.mind.mailbox",
-          tools: messageTools(mailbox, profiles, converse),
+          tools: messageTools(mailbox, profiles, rooms),
         }),
       );
       piRegistry.install(

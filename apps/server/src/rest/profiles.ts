@@ -208,13 +208,6 @@ async function applyModelPreference(
     const cid = await Effect.runPromise(mind.converse.conversationIdOf(key));
     if (cid !== undefined) await configure(cid);
   }
-  for (const room of await mind.rooms.list(profile.owner, profile.id)) {
-    for (const seat of await mind.rooms.seats(profile.owner, room)) {
-      if (seat.profileId === profile.id && seat.conversationId !== null) {
-        await configure(seat.conversationId);
-      }
-    }
-  }
 }
 
 /** The purge cascade: every store a profile touches. */

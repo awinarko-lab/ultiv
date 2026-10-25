@@ -334,10 +334,28 @@ Also in this wave, from owner feedback:
   with per-seat transcripts + supervision say, vault manager (shared by default, scoping
   optional), "Bot" terminology throughout.
 
-## 17. Addendum (post-live fixes, 2026-10-26)
+## 17. Addendum — the tunnel model (post-live fixes, 2026-10-26)
 
-- **Work vs. rooms.** Rooms are coordination surfaces only: substantive work is delegated to background tasks (`task_spawn`) from the seat, and the result is delivered back into the room. The request envelope says so explicitly.
-- **Per-pair exchange cap.** Tool-initiated sends between two bots are capped at 3 per sender per sibling (all topics combined) — human/REST sends are exempt, and the `message` tool output reports the remaining budget so a bot can acknowledge the limit and conclude.
-- **Relay.** The `relay` tool is the way outcomes reach the owner: it posts a `[relay]` summary onto the acting bot's main thread (a muted note in the transcript, never a user bubble) and the bot's main turn writes the owner-facing summary. Reply wakes carry this hint.
-- **Transcript notes.** Bracketed machinery inputs (`[relay]`, `[owner]`, `[cron]`, room wakes) project as `note` entries; `[onboarding]` is dropped from display entirely. The model still sees all of them.
+- **The room is a tunnel.** An exchange runs between two endpoint conversations:
+  the sender's origin thread (main chat, or the session the message was sent
+  from) and the counterpart's MAIN thread. Delivery submits the envelope onto
+  the recipient's main thread — the thinking, tool calls and drafting happen
+  there, in the open, where the owner can read them. The room record carries
+  routing only (participants + topic); seats are gone.
+- **Signals, not copies.** When the counterpart finishes a request, the
+  sender's origin thread is woken with a finish signal (who replied, which
+  room, room id) — never a transcript copy. The `room` tool reads a room's
+  full envelope transcript from any endpoint; NACKs signal the same way.
+- **Session-pinned exchanges.** Every send records its origin conversation:
+  an exchange started from a session tunnels back to that session, while the
+  counterpart always works on their main thread.
+- **Per-pair exchange cap, acknowledged.** Tool-initiated sends between two
+  bots are capped at 3 per sender per sibling (all topics combined);
+  human/REST/cron sends are exempt. The `message` tool output reports the
+  remaining budget so a bot can acknowledge the limit and conclude.
+- **Initiator visibility.** An outgoing `message` call renders in the
+  sender's transcript as a visible "✉ → peer" note, not a collapsed trace.
+  Bracketed machinery inputs (`[message from …]`, `[reply from …]`, `[nack …]`,
+  `[owner]`, `[cron …]`) project as `note` entries; `[onboarding]` is dropped
+  from display entirely. The model still sees all of them.
 - **Timestamps.** Session transcripts and room timelines render entry timestamps.

@@ -79,9 +79,26 @@ function committedSteps(entries: readonly EntryRecord[], results: Map<string, To
           const text = String((block as { thinking?: unknown }).thinking ?? "").trim();
           if (text !== "") out.push({ id, kind: "thinking", at, text });
         } else if (kind === "toolCall") {
-          out.push(
-            toolStep(block, id, at, results.get(String((block as { id?: unknown }).id ?? id))),
-          );
+          const name = String((block as { name?: unknown }).name ?? "tool");
+          if (name === "message") {
+            // The initiator's outgoing message is chat, not plumbing: render
+            // it as a visible note ("✉ → who") instead of a collapsed trace.
+            const args = (block as { arguments?: Record<string, unknown> }).arguments ?? {};
+            const to = String(args.to ?? "unknown");
+            const messageKind = String(args.kind ?? "notify");
+            const topic = args.topic === undefined ? "" : ` • ${String(args.topic)}`;
+            const body = String(args.body ?? "").slice(0, 800);
+            out.push({
+              id,
+              kind: "note",
+              at,
+              text: `✉ → ${to} (${messageKind}${topic})\n\n${body}`,
+            });
+          } else {
+            out.push(
+              toolStep(block, id, at, results.get(String((block as { id?: unknown }).id ?? id))),
+            );
+          }
         } else if (kind === "text") {
           const text = String((block as { text?: unknown }).text ?? "").trim();
           if (text !== "") out.push({ id, kind: "output", at, text, streaming: false });

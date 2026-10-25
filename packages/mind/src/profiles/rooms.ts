@@ -1,17 +1,16 @@
 /**
- * Rooms: contextual conversations between bots. A pair may have many rooms
- * ("Q3 report", "onboarding", …); each participant experiences the room
- * through their OWN conversation (`{owner}:room:{roomId}:{profileId}`), so
- * the identity section renders THEIR persona and memory/tools scope to THEIR
- * profile — fixing the shared-DM identity bug at the root. Rooms are not
- * sessions and never appear in session lists; the app reads them via REST.
+ * Rooms: the tunnel registry for bot-to-bot exchanges. A pair may have many
+ * rooms ("Q3 report", "onboarding", …) — each is routing context (participants
+ * + topic), NOT a place where anyone thinks. Messages flow through the room
+ * between two endpoint conversations: the sender's origin thread and the
+ * counterpart's main thread. The canonical transcript is the mailbox entries;
+ * rooms are not sessions and never appear in session lists.
  */
 import { randomUUID } from "node:crypto";
 import { defineDoc } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
 import type { RoomInfo, RoomList } from "@ultiv/contracts";
 import type { ConverseService } from "../converse/converse.ts";
-import type { ProfilesService } from "./profiles.ts";
 
 export const RoomsDoc = defineDoc<{ items: RoomInfo[] }>({
   kind: "ultiv.rooms",
@@ -20,10 +19,6 @@ export const RoomsDoc = defineDoc<{ items: RoomInfo[] }>({
   initial: () => ({ items: [] }),
   checkpointWhen: () => true,
 });
-
-/** One participant's conversation key inside a room. */
-export const roomConversationKey = (owner: string, roomId: string, profileId: string): string =>
-  `${owner}:room:${roomId}:${profileId}`;
 
 const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|");
@@ -56,45 +51,14 @@ export interface RoomsService {
   ) => Promise<RoomInfo>;
   readonly get: (owner: string, id: string) => Promise<RoomInfo | undefined>;
   readonly list: (owner: string, profileId?: string) => Promise<RoomList>;
-  /** The durable conversation ids for each seat (null before first use). */
-  readonly seats: (
-    owner: string,
-    room: RoomInfo,
-  ) => Promise<{ readonly profileId: string; readonly conversationId: string | null }[]>;
-  /** Admit a text into one participant's seat and settle it (supervision say). */
-  readonly say: (
-    owner: string,
-    room: RoomInfo,
-    profileId: string,
-    text: string,
-  ) => Promise<boolean>;
   readonly touch: (owner: string, roomId: string) => Promise<void>;
   /** Remove every room the profile participates in (purge cascade). */
   readonly purgeProfile: (owner: string, profileId: string) => Promise<number>;
 }
 
-export const roomsService = (deps: {
-  readonly converse: ConverseService;
-  readonly profiles: ProfilesService;
-}): RoomsService => {
-  const { converse, profiles } = deps;
-
-  const ensureSeat = async (owner: string, room: RoomInfo, profileId: string): Promise<string> => {
-    const profile = await profiles.get(owner, profileId);
-    if (profile === undefined) throw new Error(`unknown profile ${profileId}`);
-    const key = roomConversationKey(owner, room.id, profileId);
-    await profiles.adoptConversation(key, {
-      owner,
-      profileId,
-      kind: "room",
-      participants: room.participants,
-    });
-    const cid = await run(converse.conversationIdOf(key));
-    if (cid === undefined) throw new Error(`room seat ${key} unmapped`);
-    return cid;
-  };
-
-  const service: RoomsService = {
+export const roomsService = (deps: { readonly converse: ConverseService }): RoomsService => {
+  const { converse } = deps;
+  return {
     ensure: async (owner, participants, topic) => {
       const normalized = normalizeTopic(topic);
       const existing = await readRooms(converse);
@@ -114,10 +78,6 @@ export const roomsService = (deps: {
         lastMessageAt: Date.now(),
       };
       await writeRooms(converse, (items) => [...items, room]);
-      // External senders have no identity side — no seat for them.
-      for (const profileId of room.participants) {
-        if (!profileId.startsWith("external:")) await ensureSeat(owner, room, profileId);
-      }
       return room;
     },
     get: (owner, id) =>
@@ -131,25 +91,6 @@ export const roomsService = (deps: {
           .filter((room) => profileId === undefined || room.participants.includes(profileId))
           .sort((a, b) => b.lastMessageAt - a.lastMessageAt),
       ),
-    seats: (owner, room) =>
-      Promise.all(
-        room.participants.map(async (profileId) => {
-          const key = roomConversationKey(owner, room.id, profileId);
-          const cid = await run(converse.conversationIdOf(key));
-          return { profileId, conversationId: cid === undefined ? null : String(cid) };
-        }),
-      ),
-    say: async (owner, room, profileId, text) => {
-      const conversationId = await ensureSeat(owner, room, profileId);
-      const conversation = await run(converse.open(conversationId));
-      if (conversation === undefined) return false;
-      const submission = await run(converse.submit(conversation, text));
-      void run(converse.settle(conversation, submission)).catch((cause) => {
-        console.error("room say failed:", cause);
-      });
-      await service.touch(owner, room.id);
-      return true;
-    },
     touch: (owner, roomId) =>
       writeRooms(converse, (items) =>
         items.map((room) =>
@@ -167,5 +108,4 @@ export const roomsService = (deps: {
         return rooms.length - remaining.length;
       }),
   };
-  return service;
 };

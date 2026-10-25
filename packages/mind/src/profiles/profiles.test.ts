@@ -67,14 +67,8 @@ describe("Profiles (offline, MemoryStorage)", () => {
     expect(onboard.id).not.toBe(report.id);
     // Rooms are invisible in session lists (bot-to-bot traffic is not "my chats").
     expect((await profiles.listSessions("harry")).every((row) => row.kind !== "room")).toBe(true);
-    // Each participant's seat is scoped to THEIR profile — identity and memory
-    // are per-entity, never shared.
-    for (const seat of await rooms.seats("harry", report)) {
-      const scope = handle.mind.profiles.scopeOf(seat.conversationId ?? "");
-      expect(scope?.kind).toBe("room");
-      expect(scope?.participants).toContain(a.id);
-      expect(scope?.participants).toContain(b.id);
-    }
+    // A room is just a tunnel record — no seat conversations are created; the
+    // thinking happens at the endpoints (main threads / sessions).
     expect(await rooms.purgeProfile("harry", a.id)).toBe(2);
     expect((await rooms.list("harry")).length).toBe(0);
     await handle.close();

@@ -1,15 +1,16 @@
 /**
- * The inter-entity mailbox: asynchronous, durable messaging between bots in
- * CONTEXTUAL rooms. Each room gives every participant their OWN conversation
- * (identity section, memory scope, persona are per-entity — a room is never a
- * shared transcript), so a pair may hold many rooms by topic and groups work
- * the same way. Delivery semantics mirror deliver.ts — admission is the
- * contract, the turn settles in the background, a failed turn is a NACK —
- * plus the safety rules that make a team of bots affordable: lineage hop
- * caps, cycle refusal, per-pair rate limits, per-profile daily budgets, lane
- * caps, and bounded retries with dead-lettering. Replies and NACKs wake the
- * sender in THEIR seat of the room — never their main chat, never a session
- * list.
+ * The inter-entity mailbox: asynchronous, durable messaging where the ROOM is
+ * a pure TUNNEL. An exchange runs between two endpoint conversations — the
+ * sender's origin thread (their main chat, or the session they were working
+ * in when they sent) and the counterpart's MAIN thread. All thinking happens
+ * at the endpoints; the tunnel carries only the exchanged envelopes, and its
+ * transcript is the mailbox entries (readable end-to-end with the `room`
+ * tool). Wakes carry a FINISH SIGNAL plus a pointer, never a transcript copy.
+ * Delivery semantics mirror deliver.ts — admission is the contract, the turn
+ * settles in the background, a failed turn is a NACK — plus the safety rules
+ * that make a team of bots affordable: lineage hop caps, cycle refusal,
+ * per-pair rate limits, per-pair exchange caps, per-profile daily budgets,
+ * lane caps, and bounded retries with dead-lettering.
  */
 import { randomUUID } from "node:crypto";
 import { defineDoc } from "@earendil-works/pi-durable";
@@ -18,9 +19,9 @@ import { InvalidInput, NotFound } from "@ultiv/core";
 import type { MailboxEntry, MailboxEnvelope, MailboxList } from "@ultiv/contracts";
 import type { AuditService } from "../audit/audit.ts";
 import type { ConverseService } from "../converse/converse.ts";
-import { roomConversationKey } from "../profiles/rooms.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 import type { RoomsService } from "../profiles/rooms.ts";
+import type { RoomInfo } from "@ultiv/contracts";
 
 export const MailboxDoc = defineDoc<{ items: MailboxEntry[] }>({
   kind: "ultiv.mailbox",
@@ -35,7 +36,6 @@ export const HOP_CAP = 3;
 export const PAIR_RATE_PER_HOUR = 10;
 export const EXTERNAL_RATE_PER_HOUR = 5;
 export const MAX_RETRIES = 3;
-export const WAKE_DIGEST_CHARS = 4_000;
 /**
  * Ad-hoc exchange cap: a bot may send at most this many tool-initiated
  * messages to one sibling (all topics/rooms combined), so two bots never
@@ -84,6 +84,11 @@ export interface MailboxSendInput {
   readonly origin: MailboxOrigin;
   /** The room's context — a pair may hold many concurrent threads. */
   readonly topic?: string;
+  /**
+   * The conversation this send is made FROM (the tunnel's near endpoint).
+   * Replies and NACKs are signalled back here; omit for the main thread.
+   */
+  readonly originConversation?: string | null;
 }
 
 export interface MailboxService {
@@ -106,6 +111,23 @@ export interface MailboxService {
   ) => Promise<{ readonly used: number; readonly cap: number }>;
   /** Dead-lettered entries — the attention path reads this. */
   readonly dead: (owner: string) => Promise<MailboxList>;
+  /**
+   * The tunnel transcript for a room: every exchanged envelope,
+   * speaker-labelled, oldest first. This is what endpoints read.
+   */
+  readonly transcriptOf: (
+    owner: string,
+    room: RoomInfo,
+  ) => Promise<
+    readonly {
+      readonly at: number;
+      readonly speaker: string;
+      readonly text: string;
+      readonly system: boolean;
+    }[]
+  >;
+  /** The conversation a profile tunnels at in a room (their latest send origin, else main). */
+  readonly endpointOf: (owner: string, room: RoomInfo, profileId: string) => Promise<string>;
   /** Remove every entry touching a profile (purge cascade). */
   readonly purgeProfile: (owner: string, profileId: string) => Promise<number>;
 }
@@ -148,11 +170,12 @@ const envelopeText = (envelope: MailboxEnvelope, fromName: string, topic: string
     envelope.artifacts.length > 0 ? `\n\nGranted artifacts: ${envelope.artifacts.join(", ")}` : "";
   const room = topic === "" ? "" : ` • ${topic}`;
   // The answer expectation is explicit: the recipient must never have to
-  // guess whether this thread is asking them or informing them — and heavy
-  // work belongs in background tasks, not in the coordination thread.
+  // guess whether this thread is asking them or informing them. The request
+  // arrives ON their main thread — the work happens here, the answer goes
+  // back through the tunnel.
   const expectation =
     envelope.kind === "request"
-      ? "\n\n(This is a direct request TO YOU. For substantial work, run it as a background task (task_spawn) and deliver the result here when done. Reply in this conversation.)"
+      ? `\n\n(This is a direct request TO YOU, delivered to your main thread. Think and work HERE, then send your answer back with the message tool${room === "" ? "" : ` (same topic: ${topic})`}. Your owner can read this thread.)`
       : "\n\n(This is a notification. NO reply is needed — do not message back.)";
   return `[message from ${fromName}${room} • ${envelope.kind} • re: ${envelope.id}]${grants}\n\n${envelope.body}${expectation}`;
 };
@@ -193,18 +216,46 @@ export const mailboxService = (deps: {
     readonly participants: readonly string[];
   }
 
-  /** Wake a profile inside their own seat of the room — never the main chat. */
-  const wakeInRoom = async (
+  /** The bot's main-chat conversation id — the default tunnel endpoint. */
+  const mainConversationId = async (owner: string, profileId: string): Promise<string> => {
+    const row = await profiles.ensureMain(owner, profileId);
+    const key = await profiles.keyOfRow(row);
+    const cid = await run(converse.conversationIdOf(key));
+    if (cid !== undefined) return String(cid);
+    const chat = await run(converse.ensure(key));
+    return String(chat.id);
+  };
+
+  /**
+   * Where a profile tunnels at in this room: the thread they last sent FROM
+   * here (a session, if the exchange started in one), else their main chat.
+   */
+  const endpointOf = async (
     owner: string,
     room: RoomRef,
     profileId: string,
-    text: string,
-  ): Promise<void> => {
+    entries: readonly MailboxEntry[],
+  ): Promise<string> => {
+    const mine = entries
+      .filter(
+        (candidate) =>
+          (candidate.owner ?? "") === owner &&
+          candidate.envelope.topic === room.topic &&
+          candidate.envelope.from === profileId &&
+          candidate.originConversation != null,
+      )
+      .sort((a, b) => a.envelope.at - b.envelope.at);
+    const last = mine[mine.length - 1];
+    return last?.originConversation ?? (await mainConversationId(owner, profileId));
+  };
+
+  /** Submit a signal into a conversation and settle it in the background. */
+  const wakeConversation = async (conversationId: string, text: string): Promise<void> => {
     try {
-      const seat = await run(converse.ensure(roomConversationKey(owner, room.id, profileId)));
-      const submission = await run(converse.submit(seat, text));
-      void run(converse.settle(seat, submission)).catch(() => undefined);
-      await rooms.touch(owner, room.id);
+      const chat = await run(converse.open(conversationId));
+      if (chat === undefined) return;
+      const submission = await run(converse.submit(chat, text));
+      void run(converse.settle(chat, submission)).catch(() => undefined);
     } catch (cause) {
       console.error("mailbox wake failed:", cause);
     }
@@ -217,56 +268,62 @@ export const mailboxService = (deps: {
       kind: "mailbox",
       conversationId: "mailbox",
       profile: entry.envelope.from,
-      callId: null,
+      callId: entry.envelope.id,
       name: "dead",
       durationMs: null,
       ok: false,
       error: text.slice(0, 300),
     });
-    void wakeInRoom(owner, room, entry.envelope.from, text);
+    const wakeTarget = isExternal(entry.envelope.from)
+      ? undefined
+      : (entry.originConversation ?? undefined);
+    if (wakeTarget !== undefined) void wakeConversation(wakeTarget, text);
+    else if (!isExternal(entry.envelope.from))
+      void mainConversationId(owner, entry.envelope.from).then((id) => wakeConversation(id, text));
   };
 
   /**
-   * Deliver one envelope to its recipient's seat. At-least-once: a retry
-   * after a failed settle re-admits the envelope (a duplicate input in the
-   * seat is the documented cost; admission is the contract).
+   * Deliver one envelope to the recipient's ENDPOINT conversation (their main
+   * thread, or the thread they tunnel at). At-least-once: a retry after a
+   * failed settle re-admits the envelope (a duplicate input at the endpoint
+   * is the documented cost; admission is the contract).
    */
   const runDelivery = async (entry: MailboxEntry, owner: string, topic: string): Promise<void> => {
     const envelope = entry.envelope;
     const releaseGlobal = await globalLane.acquire();
     const releaseProfile = await profileLane(envelope.to).acquire();
     try {
-      const [fromProfile, toProfile, room] = await Promise.all([
+      const [fromProfile, toProfile, room, entries] = await Promise.all([
         isExternal(envelope.from) ? Promise.resolve(undefined) : profiles.get(owner, envelope.from),
         profiles.get(owner, envelope.to),
         rooms.ensure(owner, [envelope.from, envelope.to], topic),
+        readEntries(converse),
       ]);
-      const seat = await run(converse.ensure(roomConversationKey(owner, room.id, envelope.to)));
+      const endpointId = await endpointOf(owner, room, envelope.to, entries);
+      const endpoint = await run(converse.open(endpointId));
+      if (endpoint === undefined) throw new Error(`tunnel endpoint ${endpointId} unmapped`);
       const submission = await run(
         converse.submit(
-          seat,
+          endpoint,
           envelopeText(envelope, fromProfile?.name ?? envelope.from, room.topic),
         ),
       );
       await updateEntry(converse, envelope.id, { deliveredAt: Date.now() });
       await rooms.touch(owner, room.id);
-      const result = await run(converse.settle(seat, submission));
+      await run(converse.settle(endpoint, submission));
       await updateEntry(converse, envelope.id, {
         status: "replied",
         settledAt: Date.now(),
         error: null,
       });
-      if (envelope.kind === "request") {
-        const digest =
-          result.text.length > WAKE_DIGEST_CHARS
-            ? `${result.text.slice(0, WAKE_DIGEST_CHARS)}\n[truncated — full reply in the room]`
-            : result.text;
-        await wakeInRoom(
-          owner,
-          room,
-          envelope.from,
-          `[reply from ${toProfile?.name ?? envelope.to} • re: ${envelope.id}]\n\n${digest}` +
-            "\n\n(If this outcome matters to your owner, surface it with the relay tool — it posts the summary on your main thread.)",
+      if (envelope.kind === "request" && !isExternal(envelope.from)) {
+        // A finish SIGNAL, not a transcript copy: the sender's endpoint reads
+        // the whole tunnel with the `room` tool if it needs the content.
+        const name = toProfile?.name ?? envelope.to;
+        const wakeId = entry.originConversation ?? (await mainConversationId(owner, envelope.from));
+        await wakeConversation(
+          wakeId,
+          `[reply from ${name} • re: ${envelope.id}]\n\n${name} finished their reply — the exchange in your room${room.topic === "" ? "" : ` (“${room.topic}”)`} is done. Read the full transcript with the room tool (room id: ${room.id}) if you need it, then respond here; your owner reads this thread. Reply to ${name} only if something is genuinely missing.`,
         );
       }
     } catch (cause) {
@@ -377,6 +434,7 @@ export const mailboxService = (deps: {
     envelope: MailboxEnvelope,
     topic: string,
     origin: MailboxOrigin,
+    originConversation: string | null,
   ): Promise<MailboxEntry> => {
     const entry: MailboxEntry = {
       envelope,
@@ -387,6 +445,7 @@ export const mailboxService = (deps: {
       error: null,
       owner,
       origin,
+      originConversation,
     };
     await writeEntries(converse, (items) => [...items, entry]);
     audit.record({
@@ -429,7 +488,7 @@ export const mailboxService = (deps: {
         artifacts: [...(input.artifacts ?? [])],
         at: Date.now(),
       };
-      return admit(input.owner, envelope, topic, input.origin);
+      return admit(input.owner, envelope, topic, input.origin, input.originConversation ?? null);
     },
     deliverExternal: async (input) => {
       const sender = `external:${input.from.replace(/^external:/, "")}`;
@@ -448,8 +507,35 @@ export const mailboxService = (deps: {
         artifacts: [],
         at: Date.now(),
       };
-      return admit(input.owner, envelope, topic, "external");
+      return admit(input.owner, envelope, topic, "external", null);
     },
+    transcriptOf: async (owner, room) => {
+      const entries = await readEntries(converse);
+      const nameOf = async (id: string): Promise<string> => {
+        if (isExternal(id)) return id.replace(/^external:/, "");
+        const profile = await profiles.get(owner, id);
+        return profile?.name ?? id;
+      };
+      const inRoom = entries
+        .filter(
+          (candidate) =>
+            (candidate.owner ?? "") === owner &&
+            candidate.envelope.topic === room.topic &&
+            room.participants.includes(candidate.envelope.from) &&
+            room.participants.includes(candidate.envelope.to),
+        )
+        .sort((a, b) => a.envelope.at - b.envelope.at);
+      return Promise.all(
+        inRoom.map(async (candidate) => ({
+          at: candidate.envelope.at,
+          speaker: await nameOf(candidate.envelope.from),
+          text: candidate.envelope.body,
+          system: false,
+        })),
+      );
+    },
+    endpointOf: (owner, room, profileId) =>
+      readEntries(converse).then((entries) => endpointOf(owner, room, profileId, entries)),
     budgetOf: async (owner, from, to) => {
       const entries = await readEntries(converse);
       const used = entries.filter(

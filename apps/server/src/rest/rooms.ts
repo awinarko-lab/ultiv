@@ -1,13 +1,11 @@
 /**
  * Room routes: the bot-to-bot surface. Rooms are REST-only (never sessions,
- * never chord objects). The detail view is ONE merged chat timeline with
- * speaker names — each participant's private seat conversation stays an
- * implementation detail of identity scoping, not something the owner reads.
+ * never chord objects) — a room is a TUNNEL, and its transcript is the
+ * mailbox envelopes. The detail view is one merged, speaker-labelled chat;
+ * the supervision "say" injects into the bot's endpoint conversation.
  */
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Effect } from "effect";
-import { projectTranscript, type MindService } from "@ultiv/mind";
-import type { RoomInfo, RoomSeat, TranscriptEntry } from "@ultiv/contracts";
+import type { RoomInfo } from "@ultiv/contracts";
 import { errorOf, queryOr, type RouteArgs } from "./types.ts";
 
 /** One merged, speaker-labelled line of the room chat. */
@@ -24,73 +22,17 @@ export interface RoomDetail {
   readonly timeline: RoomLine[];
 }
 
-/** Pull "[header]\n\nbody" apart and say who spoke. */
-function labelInput(text: string): { speaker: string; body: string; system: boolean } | undefined {
-  const headerEnd = text.indexOf("]");
-  if (!text.startsWith("[") || headerEnd < 0) return undefined;
-  const header = text.slice(1, headerEnd);
-  const body = text.slice(headerEnd + 1).trim();
-  const message = /^message from (.+?)(?: •.*)?$/.exec(header);
-  if (message !== null) return { speaker: message[1] ?? "", body, system: false };
-  // Reply digests duplicate the speaker's own output line — skip the copy.
-  if (header.startsWith("reply from ")) return undefined;
-  const nack = /^nack from (.+?)(?: •.*)?$/.exec(header);
-  if (nack !== null) {
-    return { speaker: "system", body: `${nack[1]}: ${body}`, system: true };
-  }
-  if (header === "owner") return { speaker: "owner", body, system: false };
-  if (header.startsWith("cron ")) return { speaker: "cron", body, system: true };
-  return undefined;
-}
-
-async function seatLines(
-  mind: MindService,
-  seat: RoomSeat & { name: string },
-): Promise<RoomLine[]> {
-  if (seat.conversationId === null) return [];
-  try {
-    const conversation = await Effect.runPromise(mind.converse.open(seat.conversationId));
-    if (conversation === undefined) return [];
-    const view = await conversation.viewState(BACKGROUND_CONTEXT);
-    if (view.value === undefined) return [];
-    const entries: TranscriptEntry[] = projectTranscript(view.value.entries, undefined, false);
-    const lines: RoomLine[] = [];
-    for (const entry of entries) {
-      if (entry.kind === "input") {
-        const labelled = labelInput(entry.text);
-        if (labelled !== undefined && labelled.body !== "") {
-          lines.push({
-            at: entry.at,
-            speaker: labelled.speaker,
-            text: labelled.body,
-            system: labelled.system,
-          });
-        }
-      } else if (entry.kind === "output" && entry.text.trim() !== "") {
-        lines.push({ at: entry.at, speaker: seat.name, text: entry.text, system: false });
-      }
-    }
-    return lines;
-  } catch {
-    return [];
-  }
-}
-
 async function roomDetail(args: RouteArgs, room: RoomInfo): Promise<RoomDetail> {
-  const seats = await args.mind.rooms.seats(args.owner, room);
-  const named = seats.map((seat) => {
-    const profile =
-      seat.conversationId !== null ? args.mind.profiles.profileOf(seat.conversationId) : undefined;
-    return { ...seat, name: profile?.name ?? seat.profileId };
-  });
-  const timeline = (await Promise.all(named.map((seat) => seatLines(args.mind, seat))))
-    .flat()
-    .sort((a, b) => a.at - b.at);
-  return {
-    room,
-    participants: named.map(({ profileId, name }) => ({ profileId, name })),
-    timeline,
-  };
+  const participants = await Promise.all(
+    room.participants
+      .filter((profileId) => !profileId.startsWith("external:"))
+      .map(async (profileId) => ({
+        profileId,
+        name: (await args.mind.profiles.get(args.owner, profileId))?.name ?? profileId.slice(0, 8),
+      })),
+  );
+  const timeline = await args.mind.mailbox.transcriptOf(args.owner, room);
+  return { room, participants, timeline: [...timeline] };
 }
 
 export async function roomRoutes(args: RouteArgs): Promise<boolean> {
@@ -128,8 +70,20 @@ export async function roomRoutes(args: RouteArgs): Promise<boolean> {
       return true;
     }
     try {
-      const said = await mind.rooms.say(args.owner, room, body.to, `[owner] ${body.text}`);
-      json(200, { ok: said });
+      // The say lands in the bot's endpoint conversation for this room —
+      // the thread the exchange actually runs through.
+      const endpointId = await mind.mailbox.endpointOf(args.owner, room, body.to);
+      const chat = await Effect.runPromise(mind.converse.open(endpointId));
+      if (chat === undefined) {
+        json(404, { error: "endpoint conversation missing" });
+        return true;
+      }
+      const submission = await Effect.runPromise(
+        mind.converse.submit(chat, `[owner] ${body.text}`),
+      );
+      void Effect.runPromise(mind.converse.settle(chat, submission)).catch(() => undefined);
+      await mind.rooms.touch(args.owner, room.id);
+      json(200, { ok: true });
     } catch (cause) {
       json(500, { error: errorOf(cause) });
     }
