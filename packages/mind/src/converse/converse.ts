@@ -52,6 +52,8 @@ export interface ConverseService {
   readonly root: () => Effect.Effect<Conversation, External>;
   /** Resolve the durable conversation behind an app key, creating and mapping it on first use. */
   readonly ensure: (key: string) => Effect.Effect<Conversation, External>;
+  /** Open an existing durable conversation by id; undefined when there is none. */
+  readonly open: (id: string) => Effect.Effect<Conversation | undefined, External>;
   /** Admit an input into the durable transcript (visibility = durability). */
   readonly submit: (
     conversation: Conversation,
@@ -178,6 +180,14 @@ const modelIdOf = (agent: { readonly model?: unknown }): string | null => {
 const converseService = (harness: Harness, agent: AgentChange): ConverseService => ({
   root: () => asEffect("root conversation", harness.root(BACKGROUND_CONTEXT, { agent })),
   ensure: (key) => ensureConversation(harness, key, agent),
+  open: (id) => {
+    // Conversation ids are numeric today; accept any string form losslessly.
+    const numeric = Number(id);
+    const conversationId = (Number.isSafeInteger(numeric) && numeric >= 0
+      ? numeric
+      : id) as unknown as ConversationId;
+    return asEffect("conversation open", harness.conversation(conversationId, BACKGROUND_CONTEXT));
+  },
   submit: (conversation, content) => submitOf(conversation, content),
   settle: (conversation, submission) => settleOf(conversation, submission),
   turn: (conversation, content) =>

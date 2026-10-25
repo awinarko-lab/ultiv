@@ -15,6 +15,8 @@ export const TaskInfoSchema = Type.Object({
   sessionId: Type.String(),
   /** Registry owner the task was spawned under (see /api/sessions owner scoping). */
   owner: Type.String(),
+  /** The durable conversation that spawned the task; woken when it settles. Null for REST spawns. */
+  conversationId: Type.Union([Type.String(), Type.Null()]),
   prompt: Type.String(),
   status: TaskStatusSchema,
   result: Type.Union([Type.String(), Type.Null()]),

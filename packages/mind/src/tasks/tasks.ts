@@ -1,10 +1,12 @@
 /**
  * The Tasks faculty: background work the entity runs in its own durable
  * conversation — the mind's sub-agent surface. `spawn` admits a prompt into a
- * fresh conversation and settles it in the background; the durable transcript
- * survives restarts, and a reaper marks tasks orphaned by one as failed, so
- * nothing is left claiming "running" forever. REST and the act's task tools
- * read the same registry doc.
+ * fresh conversation and settles it in the background; when a task settles it
+ * WAKES the conversation that spawned it with the outcome, so the parent ends
+ * its turn instead of polling. Restarts do not kill tasks: on boot every
+ * still-running task is resumed with a continuation input (the transcript is
+ * durable), and only a genuinely dead run ends up failed. REST and the act's
+ * task tools read the same registry doc.
  */
 import { randomUUID } from "node:crypto";
 import { defineDoc } from "@earendil-works/pi-durable";
@@ -18,6 +20,8 @@ export interface TasksService {
   readonly spawn: (input: {
     readonly sessionId: string;
     readonly owner: string;
+    /** Conversation to wake when the task settles; null = nobody (REST spawns). */
+    readonly conversationId: string | null;
     readonly prompt: string;
   }) => Effect.Effect<TaskInfo, External>;
   readonly get: (id: string) => Effect.Effect<TaskInfo | undefined, External>;
@@ -26,7 +30,8 @@ export interface TasksService {
 
 export class Tasks extends Context.Service<Tasks, TasksService>()("ultiv/mind/Tasks") {}
 
-const TasksDoc = defineDoc<{ tasks: TaskInfo[] }>({
+/** The registry doc; exported for tests and read-only surfaces. */
+export const TasksDoc = defineDoc<{ tasks: TaskInfo[] }>({
   kind: "ultiv.tasks",
   version: 1,
   scope: "session",
@@ -36,22 +41,66 @@ const TasksDoc = defineDoc<{ tasks: TaskInfo[] }>({
 
 const taskConversationKey = (id: string): string => `task:${id}`;
 
+/** Legacy rows predate `conversationId`; normalize on every read. */
+const normalize = (task: TaskInfo): TaskInfo => ({
+  ...task,
+  conversationId: task.conversationId ?? null,
+});
+
+const readTasks = (converse: ConverseService): Effect.Effect<TaskInfo[], External> =>
+  Effect.map(converse.docs.snapshot(TasksDoc), (doc) => (doc?.tasks ?? []).map(normalize));
+
+const writeTasks = (converse: ConverseService, tasks: TaskInfo[]): Effect.Effect<void, External> =>
+  converse.docs.commit(async (tx) => {
+    const draft = await tx.doc(TasksDoc);
+    draft.tasks = tasks;
+  });
+
 const updateTask = (
   converse: ConverseService,
   id: string,
   change: (task: TaskInfo) => TaskInfo,
 ): Effect.Effect<void, External> =>
-  converse.docs.commit(async (tx) => {
-    const draft = await tx.doc(TasksDoc);
-    draft.tasks = draft.tasks.map((task) => (task.id === id ? change(task) : task));
-  });
+  Effect.flatMap(readTasks(converse), (tasks) =>
+    writeTasks(
+      converse,
+      tasks.map((task) => (task.id === id ? change(task) : task)),
+    ),
+  );
 
-/** Settles a spawned task in the background; the registry doc carries the outcome. */
-const runTask = (converse: ConverseService, task: TaskInfo): void => {
+const WAKE_RESULT_CHARS = 4_000;
+const RESUME_NOTE =
+  "[resume] You were interrupted by a server restart. Continue the task from where the " +
+  "transcript left off and produce the final deliverable now.";
+
+/** Submit the outcome into the spawning conversation; best-effort, never throws. */
+const wakeParent = async (
+  converse: ConverseService,
+  task: TaskInfo,
+  text: string,
+): Promise<void> => {
+  if (task.conversationId === null) return;
+  try {
+    const parent = await Effect.runPromise(converse.open(task.conversationId));
+    if (parent === undefined) return;
+    const submission = await Effect.runPromise(converse.submit(parent, text));
+    void Effect.runPromise(converse.settle(parent, submission)).catch((cause) => {
+      console.error("wake turn failed:", cause);
+    });
+  } catch (cause) {
+    console.error("task wake failed:", cause);
+  }
+};
+
+/**
+ * Settles a spawned (or resumed) task in the background: the registry doc
+ * carries the outcome and the spawning conversation is woken with it.
+ */
+const runTask = (converse: ConverseService, task: TaskInfo, prompt: string): void => {
   void (async () => {
     try {
       const conversation = await Effect.runPromise(converse.ensure(taskConversationKey(task.id)));
-      const result = await Effect.runPromise(converse.turn(conversation, task.prompt));
+      const result = await Effect.runPromise(converse.turn(conversation, prompt));
       await Effect.runPromise(
         updateTask(converse, task.id, (current) => ({
           ...current,
@@ -60,15 +109,22 @@ const runTask = (converse: ConverseService, task: TaskInfo): void => {
           finishedAt: Date.now(),
         })),
       );
+      const digest =
+        result.text.length > WAKE_RESULT_CHARS
+          ? `${result.text.slice(0, WAKE_RESULT_CHARS)}\n[truncated — full result: task_status "${task.id}"]`
+          : result.text;
+      await wakeParent(converse, task, `[task ${task.id} finished]\n\n${digest}`);
     } catch (cause) {
+      const error = String(cause).slice(0, 500);
       await Effect.runPromise(
         updateTask(converse, task.id, (current) => ({
           ...current,
           status: "failed",
-          error: String(cause).slice(0, 500),
+          error,
           finishedAt: Date.now(),
         })),
       ).catch(() => undefined);
+      await wakeParent(converse, task, `[task ${task.id} failed] ${error}`);
     }
   })();
 };
@@ -84,6 +140,7 @@ export const tasksService = (converse: ConverseService): TasksService => ({
         id,
         sessionId: input.sessionId,
         owner: input.owner,
+        conversationId: input.conversationId,
         prompt: input.prompt,
         status: "running",
         result: null,
@@ -91,41 +148,31 @@ export const tasksService = (converse: ConverseService): TasksService => ({
         createdAt: Date.now(),
         finishedAt: null,
       };
-      yield* converse.docs.commit(async (tx) => {
-        const draft = await tx.doc(TasksDoc);
-        draft.tasks = [...draft.tasks, task];
-      });
-      runTask(converse, task);
+      yield* Effect.flatMap(readTasks(converse), (tasks) => writeTasks(converse, [...tasks, task]));
+      runTask(converse, task, input.prompt);
       return task;
     }),
-  get: (id) =>
-    Effect.map(converse.docs.snapshot(TasksDoc), (doc) =>
-      doc?.tasks.find((task) => task.id === id),
-    ),
-  list: () => Effect.map(converse.docs.snapshot(TasksDoc), (doc) => doc?.tasks ?? []),
+  get: (id) => Effect.map(readTasks(converse), (tasks) => tasks.find((task) => task.id === id)),
+  list: () => readTasks(converse),
 });
 
-/** Mark tasks a restart interrupted (no runner left) as failed, loudly. */
-const reapOrphans = (converse: ConverseService): Effect.Effect<void, External> =>
-  converse.docs.commit(async (tx) => {
-    const draft = await tx.doc(TasksDoc);
-    draft.tasks = draft.tasks.map((task) =>
-      task.status === "running"
-        ? {
-            ...task,
-            status: "failed",
-            error: "interrupted by restart",
-            finishedAt: Date.now(),
-          }
-        : task,
-    );
+/**
+ * Boot-time resume: the in-process runner dies with the old process, but the
+ * task's transcript is durable. Re-admit a continuation input and re-attach a
+ * runner — only tasks still marked running, only their own conversations.
+ */
+const resumeRunning = (converse: ConverseService): Effect.Effect<void, External> =>
+  Effect.map(readTasks(converse), (tasks) => {
+    for (const task of tasks) {
+      if (task.status === "running") runTask(converse, task, RESUME_NOTE);
+    }
   });
 
 export const tasksLayer: Layer.Layer<Tasks, External, Converse> = Layer.effect(
   Tasks,
   Effect.gen(function* () {
     const converse = yield* Converse;
-    yield* Effect.ignore(reapOrphans(converse));
+    yield* Effect.ignore(resumeRunning(converse));
     return tasksService(converse);
   }),
 );

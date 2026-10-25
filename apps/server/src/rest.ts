@@ -146,6 +146,7 @@ async function taskRoutes(args: RouteArgs, segment: (after: string) => string): 
       mind.tasks.spawn({
         sessionId: body.sessionId ?? "",
         owner: args.owner,
+        conversationId: null,
         prompt: body.prompt,
       }),
     );

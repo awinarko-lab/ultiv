@@ -42,19 +42,27 @@ const spawnTool = (tasks: TasksService): Tool =>
     name: "task_spawn",
     description:
       "Start a background task: your own sub-agent turn, run in its own durable conversation. " +
-      "Use it for work that should not hold this conversation open; read the result back with task_status.",
+      "Use it for work that would hold this conversation open for minutes. After spawning, END " +
+      "YOUR TURN and tell the user what is running — you are woken automatically with the result " +
+      "as a new input when the task settles. Do NOT poll task_status in a loop.",
     parameters: SpawnParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), status: Type.String() }),
-    execute: (args) =>
+    execute: (args, api) =>
       Effect.runPromise(
         Effect.map(
           tasks.spawn({
             sessionId: args.sessionId ?? "",
             owner: AGENT_OWNER,
+            conversationId: String(api.conversationId),
             prompt: args.prompt,
           }),
           (task) => ({
-            output: [{ type: "text" as const, text: `task ${task.id} ${task.status}` }],
+            output: [
+              {
+                type: "text" as const,
+                text: `task ${task.id} running. End your turn now; you will be woken with the result.`,
+              },
+            ],
             structuredOutput: { id: task.id, status: task.status },
           }),
         ),
@@ -64,7 +72,9 @@ const spawnTool = (tasks: TasksService): Tool =>
 const statusTool = (tasks: TasksService): Tool =>
   defineTool({
     name: "task_status",
-    description: "Read a background task's status, result and error by id.",
+    description:
+      "One-shot status check for a background task by id. Tasks you spawned wake you with their " +
+      "result automatically — use this only for an on-demand check, never to poll in a loop.",
     parameters: StatusParams,
     structuredOutputSchema: Type.Object({
       status: Type.String(),
