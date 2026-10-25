@@ -7,6 +7,7 @@
  */
 import { Effect } from "effect";
 import { Type } from "typebox";
+import { External } from "@ultiv/core";
 import { definePlugin, toolCapability, type Plugin, type Tool } from "@ultiv/ext";
 import { defineTool } from "@ultiv/ext";
 import type { TasksService } from "../tasks/tasks.ts";
@@ -34,6 +35,14 @@ type StatusReply =
       };
     };
 
+/** One tool reply, the two shapes the spawn tool produces. */
+type SpawnReply =
+  | { output: { type: "text"; text: string }[]; isError: true }
+  | {
+      output: { type: "text"; text: string }[];
+      structuredOutput: { id: string; status: string };
+    };
+
 /** Agent-spawned tasks are filed under their own owner label. */
 const AGENT_OWNER = "agent";
 
@@ -47,26 +56,47 @@ const spawnTool = (tasks: TasksService): Tool =>
       "as a new input when the task settles. Do NOT poll task_status in a loop.",
     parameters: SpawnParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), status: Type.String() }),
-    execute: (args, api) =>
-      Effect.runPromise(
-        Effect.map(
-          tasks.spawn({
-            sessionId: args.sessionId ?? "",
-            owner: AGENT_OWNER,
-            conversationId: String(api.conversationId),
-            prompt: args.prompt,
-          }),
-          (task) => ({
-            output: [
-              {
-                type: "text" as const,
-                text: `task ${task.id} running. End your turn now; you will be woken with the result.`,
-              },
-            ],
-            structuredOutput: { id: task.id, status: task.status },
-          }),
+    execute: (args, api) => {
+      const spawningConversation = String(api.conversationId);
+      return Effect.runPromise(
+        Effect.flatMap(
+          tasks.isTaskConversation(spawningConversation),
+          (isTask): Effect.Effect<SpawnReply, External> => {
+            if (isTask) {
+              return Effect.succeed({
+                output: [
+                  {
+                    type: "text",
+                    text:
+                      "refused: you are already running AS a background task — tasks cannot spawn " +
+                      "sub-tasks (it compounds cost). Do the work yourself in this conversation, or " +
+                      "finish and let the parent decide.",
+                  },
+                ],
+                isError: true,
+              });
+            }
+            return Effect.map(
+              tasks.spawn({
+                sessionId: args.sessionId ?? "",
+                owner: AGENT_OWNER,
+                conversationId: spawningConversation,
+                prompt: args.prompt,
+              }),
+              (task) => ({
+                output: [
+                  {
+                    type: "text",
+                    text: `task ${task.id} running. End your turn now; you will be woken with the result.`,
+                  },
+                ],
+                structuredOutput: { id: task.id, status: task.status },
+              }),
+            );
+          },
         ),
-      ),
+      );
+    },
   });
 
 const statusTool = (tasks: TasksService): Tool =>

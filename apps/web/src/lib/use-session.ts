@@ -22,6 +22,7 @@ export function useSession(sessionId: string): {
   input: (text: string) => void;
   decide: (callId: string, approved: boolean) => void;
   configure: (model: string | null, effort: ThinkingLevel | null) => void;
+  interrupt: () => void;
 } {
   const [link, setLink] = useState<LinkPhase>("connecting");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -99,6 +100,10 @@ export function useSession(sessionId: string): {
     [ref],
   );
 
+  const interrupt = useCallback(() => {
+    ref?.interrupt({}).catch((error) => console.warn("interrupt failed:", error));
+  }, [ref]);
+
   return {
     link,
     transcript,
@@ -111,5 +116,6 @@ export function useSession(sessionId: string): {
     input,
     decide,
     configure,
+    interrupt,
   };
 }

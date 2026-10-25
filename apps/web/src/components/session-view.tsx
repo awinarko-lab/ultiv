@@ -16,7 +16,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
-import { ArrowUpIcon, BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
+import { ArrowUpIcon, BrainIcon, CircleAlertIcon, CircleStopIcon, WrenchIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -167,14 +167,18 @@ function Tool({ step }: { step: ToolStep }) {
             <CodeBlockHeader>
               <CodeBlockTitle>input</CodeBlockTitle>
             </CodeBlockHeader>
-            <CodeBlockContent wrap>{JSON.stringify(step.input, null, 2)}</CodeBlockContent>
+            <CodeBlockContent wrap className="max-h-64 overflow-y-auto">
+              {JSON.stringify(step.input, null, 2)}
+            </CodeBlockContent>
           </CodeBlock>
           {step.output !== null && step.output !== "" && (
             <CodeBlock size="sm">
               <CodeBlockHeader>
                 <CodeBlockTitle>output</CodeBlockTitle>
               </CodeBlockHeader>
-              <CodeBlockContent wrap>{step.output}</CodeBlockContent>
+              <CodeBlockContent wrap className="max-h-64 overflow-y-auto">
+                {step.output}
+              </CodeBlockContent>
             </CodeBlock>
           )}
         </div>
@@ -216,6 +220,7 @@ export function SessionView({
   onInput,
   onDecide,
   onConfigure,
+  onInterrupt,
 }: {
   link: "connecting" | "live" | "lost";
   transcript: TranscriptEntry[];
@@ -229,15 +234,29 @@ export function SessionView({
   onInput: (text: string) => void;
   onDecide: (callId: string, approved: boolean) => void;
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
+  onInterrupt: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  // Autoscroll only while the user is at the bottom: scrolling up mid-stream
+  // must stay put (the transcript keeps growing underneath).
+  const pinned = useRef(true);
   const busy = phase === "working";
 
-  // Pin the transcript to the newest entry: on open, on every turn.
   useEffect(() => {
     const viewport = transcriptRef.current?.querySelector("[data-slot=scroll-area-viewport]");
     if (viewport === null || viewport === undefined) return;
+    const onScroll = (): void => {
+      pinned.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80;
+    };
+    viewport.addEventListener("scroll", onScroll, { passive: true });
+    return () => viewport.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Pin the transcript to the newest entry only while the user is pinned there.
+  useEffect(() => {
+    const viewport = transcriptRef.current?.querySelector("[data-slot=scroll-area-viewport]");
+    if (viewport === null || viewport === undefined || !pinned.current) return;
     viewport.scrollTop = viewport.scrollHeight;
   }, [transcript, busy, pending]);
 
@@ -313,7 +332,9 @@ export function SessionView({
             </CardHeader>
             <CardContent className="pt-2">
               <CodeBlock size="sm">
-                <CodeBlockContent wrap>{JSON.stringify(pending.input, null, 2)}</CodeBlockContent>
+                <CodeBlockContent wrap className="max-h-48 overflow-y-auto">
+                  {JSON.stringify(pending.input, null, 2)}
+                </CodeBlockContent>
               </CodeBlock>
             </CardContent>
             <CardFooter className="justify-end gap-2 pb-3">
@@ -343,6 +364,18 @@ export function SessionView({
               }}
             />
             <InputGroupAddon align="block-end">
+              {busy && (
+                <InputGroupButton
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  className="text-destructive"
+                  onClick={onInterrupt}
+                  disabled={link !== "live"}
+                >
+                  <CircleStopIcon /> Stop
+                </InputGroupButton>
+              )}
               <InputGroupButton
                 type="submit"
                 size="xs"

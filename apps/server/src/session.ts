@@ -142,6 +142,13 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
           safeChange(cells.effort, ctx, () => effort);
           return { ok: true };
         },
+        interrupt: async (_input, ctx) => {
+          const chat = await conversation;
+          await Effect.runPromise(mind.converse.interrupt(chat));
+          safeChange(cells.phase, ctx, () => "idle");
+          safeChange(cells.lastError, ctx, () => null);
+          return { ok: true };
+        },
         approve: async ({ callId, approved }, ctx) => {
           const id = await conversationId;
           mind.approvals.decide(id, callId, approved);
@@ -206,9 +213,15 @@ function settle(
       }
       safeChange(cells.phase, ctx, () => "idle");
     } catch (error) {
-      console.error("agent turn failed:", error);
-      safeChange(cells.lastError, ctx, () => String(error));
-      safeChange(cells.phase, ctx, () => "error");
+      // A user stop is not an error: the abort surfaces as an unanswered
+      // submission and the phase is already idle.
+      if (!String(error).includes("abort")) {
+        console.error("agent turn failed:", error);
+        safeChange(cells.lastError, ctx, () => String(error));
+        safeChange(cells.phase, ctx, () => "error");
+      } else {
+        safeChange(cells.phase, ctx, () => "idle");
+      }
     }
   });
 }

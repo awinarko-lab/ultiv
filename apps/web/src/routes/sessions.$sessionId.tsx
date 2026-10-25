@@ -21,7 +21,7 @@ function SessionPage() {
   };
 
   return (
-    <main className="mx-auto flex h-dvh max-w-2xl flex-col gap-4 p-8">
+    <main className="mx-auto flex h-dvh w-full max-w-5xl flex-col gap-4 p-8">
       <header className="flex items-center justify-between">
         <h1 className="font-heading text-xl font-semibold tracking-tight">Session</h1>
         <div className="flex items-center gap-2">
@@ -44,6 +44,7 @@ function SessionPage() {
         onInput={session.input}
         onDecide={session.decide}
         onConfigure={session.configure}
+        onInterrupt={session.interrupt}
       />
       <Link
         className="w-fit text-sm text-muted-foreground underline-offset-4 hover:underline"

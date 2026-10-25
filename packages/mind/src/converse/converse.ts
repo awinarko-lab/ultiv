@@ -59,6 +59,10 @@ export interface ConverseService {
     conversation: Conversation,
     content: string,
   ) => Effect.Effect<Submission, External>;
+  /** Stop the conversation's current turn: withdraw queued inputs, abort, wait for idle. */
+  readonly interrupt: (conversation: Conversation) => Effect.Effect<void, External>;
+  /** The app key -> conversation mapping, read-only: undefined when unmapped. */
+  readonly conversationIdOf: (key: string) => Effect.Effect<string | undefined, External>;
   /** Settle an admitted submission: wait for the agent, commit the assistant entry. */
   readonly settle: (
     conversation: Conversation,
@@ -188,6 +192,16 @@ const converseService = (harness: Harness, agent: AgentChange): ConverseService 
       : id) as unknown as ConversationId;
     return asEffect("conversation open", harness.conversation(conversationId, BACKGROUND_CONTEXT));
   },
+  interrupt: (conversation) =>
+    Effect.tryPromise({
+      try: () => conversation.abort(BACKGROUND_CONTEXT),
+      catch: (cause) => new External({ op: "conversation abort", cause }),
+    }),
+  conversationIdOf: (key) =>
+    Effect.map(
+      asEffect("session map read", harness.snapshot(SessionMapDoc, key, BACKGROUND_CONTEXT)),
+      (known) => known?.conversationId as unknown as string | undefined,
+    ),
   submit: (conversation, content) => submitOf(conversation, content),
   settle: (conversation, submission) => settleOf(conversation, submission),
   turn: (conversation, content) =>

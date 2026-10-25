@@ -26,6 +26,8 @@ export interface TasksService {
   }) => Effect.Effect<TaskInfo, External>;
   readonly get: (id: string) => Effect.Effect<TaskInfo | undefined, External>;
   readonly list: () => Effect.Effect<TaskList, External>;
+  /** True when the conversation belongs to a background task: tasks cannot spawn sub-tasks. */
+  readonly isTaskConversation: (conversationId: string) => Effect.Effect<boolean, External>;
 }
 
 export class Tasks extends Context.Service<Tasks, TasksService>()("ultiv/mind/Tasks") {}
@@ -154,6 +156,15 @@ export const tasksService = (converse: ConverseService): TasksService => ({
     }),
   get: (id) => Effect.map(readTasks(converse), (tasks) => tasks.find((task) => task.id === id)),
   list: () => readTasks(converse),
+  isTaskConversation: (conversationId) =>
+    Effect.flatMap(readTasks(converse), (tasks) =>
+      Effect.map(
+        Effect.forEach(tasks, (task) => converse.conversationIdOf(taskConversationKey(task.id)), {
+          concurrency: "unbounded",
+        }),
+        (ids) => ids.some((id) => id === conversationId),
+      ),
+    ),
 });
 
 /**
