@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { Host } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { defineDoc, type Harness } from "@earendil-works/pi-durable";
+import { defineDoc } from "@earendil-works/pi-durable";
+import { Effect } from "effect";
 import { Sessions, SessionListSchema, type SessionInfo } from "@ultiv/contracts";
-import { ensureConversation } from "./session.ts";
+import type { MindService } from "@ultiv/mind";
 import type { Principal } from "./main.ts";
 
 /** Durable session registry (session doc singleton; SQLite-backed). */
@@ -22,41 +22,44 @@ function titleFor(seed: string): string {
 
 /** Record last activity for a chat id, registering it on first contact (legacy ids included). */
 export async function touchSession(
-  harness: Harness,
+  mind: MindService,
   chatId: string,
   info: { at: number; titleSeed?: string },
 ): Promise<void> {
-  await harness.commit(async (tx) => {
-    const draft = await tx.doc(SessionsDoc);
-    const sessions = [...draft.sessions];
-    const index = sessions.findIndex((session) => session.id === chatId);
-    if (index >= 0) {
-      const current = sessions[index] as SessionInfo;
-      sessions[index] = {
-        ...current,
-        lastMessageAt: info.at,
-        title:
-          current.title === "" && info.titleSeed !== undefined
-            ? titleFor(info.titleSeed)
-            : current.title,
-      };
-    } else {
-      sessions.push({
-        id: chatId,
-        title: info.titleSeed !== undefined ? titleFor(info.titleSeed) : chatId,
-        createdAt: info.at,
-        lastMessageAt: info.at,
-      });
-    }
-    draft.sessions = sessions;
-  }, BACKGROUND_CONTEXT);
+  await Effect.runPromise(
+    mind.converse.docs.commit(async (tx) => {
+      const draft = await tx.doc(SessionsDoc);
+      const sessions = [...draft.sessions];
+      const index = sessions.findIndex((session) => session.id === chatId);
+      if (index >= 0) {
+        const current = sessions[index] as SessionInfo;
+        sessions[index] = {
+          ...current,
+          lastMessageAt: info.at,
+          title:
+            current.title === "" && info.titleSeed !== undefined
+              ? titleFor(info.titleSeed)
+              : current.title,
+        };
+      } else {
+        sessions.push({
+          id: chatId,
+          title: info.titleSeed !== undefined ? titleFor(info.titleSeed) : chatId,
+          createdAt: info.at,
+          lastMessageAt: info.at,
+        });
+      }
+      draft.sessions = sessions;
+    }),
+  );
 }
 
 /** Registers the durable registry of chat sessions (one per host). */
-export function serveSessions(host: Host<Principal>, harness: Harness): void {
+export function serveSessions(host: Host<Principal>, mind: MindService): void {
   host.serve(Sessions, (_input, _principal, self) => {
     const sessions = self.state("sessions", SessionListSchema, {
-      init: async () => (await harness.snapshot(SessionsDoc, BACKGROUND_CONTEXT))?.sessions ?? [],
+      init: async () =>
+        (await Effect.runPromise(mind.converse.docs.snapshot(SessionsDoc)))?.sessions ?? [],
     });
     return {
       variant: "default",
@@ -64,19 +67,21 @@ export function serveSessions(host: Host<Principal>, harness: Harness): void {
       create: async ({ title }, ctx) => {
         const id = randomUUID();
         const at = Date.now();
-        await ensureConversation(harness, id);
-        await harness.commit(async (tx) => {
-          const draft = await tx.doc(SessionsDoc);
-          draft.sessions = [
-            ...draft.sessions,
-            {
-              id,
-              title: title ?? "",
-              createdAt: at,
-              lastMessageAt: at,
-            },
-          ];
-        }, BACKGROUND_CONTEXT);
+        await Effect.runPromise(mind.converse.ensure(id));
+        await Effect.runPromise(
+          mind.converse.docs.commit(async (tx) => {
+            const draft = await tx.doc(SessionsDoc);
+            draft.sessions = [
+              ...draft.sessions,
+              {
+                id,
+                title: title ?? "",
+                createdAt: at,
+                lastMessageAt: at,
+              },
+            ];
+          }),
+        );
         sessions.change(ctx, (current) => [
           ...current,
           {

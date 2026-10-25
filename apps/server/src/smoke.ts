@@ -1,5 +1,5 @@
 // Boots the full server stack on an ephemeral port and closes it cleanly.
-// Run: pnpm --filter @ultiv/server smoke  (or npm run smoke at the root)
+// Run: vpr smoke  (root), or vp run --filter @ultiv/server smoke
 import { buildStack } from "./main.ts";
 import { MemoryStorage } from "@earendil-works/pi-durable";
 import { Session } from "@ultiv/contracts";

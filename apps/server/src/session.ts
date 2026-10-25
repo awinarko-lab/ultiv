@@ -1,30 +1,24 @@
 import type { Cell, Host } from "@earendil-works/chord";
 import { invalid, isChordError } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import {
-  AssistantEntry,
-  defineDocFamily,
-  type Conversation,
-  type ConversationId,
-  type ConversationView,
-  type EntryRecord,
-  type Harness,
-  type LiveState,
-  type Submission,
+import type {
+  Conversation,
+  ConversationView,
+  LiveState,
+  Submission,
 } from "@earendil-works/pi-durable";
+import { Effect } from "effect";
 import {
   Session,
   SessionErrorSchema,
   PendingApprovalSchema,
   PhaseSchema,
-  TranscriptEntrySchema,
   TranscriptSchema,
   type PendingApproval,
   type Phase,
   type TranscriptEntry,
 } from "@ultiv/contracts";
-import { decideApproval, pendingFor } from "./approvals.ts";
-import { defaultAgent } from "./ai/agent.ts";
+import { projectTranscript, type MindService } from "@ultiv/mind";
 import { touchSession } from "./sessions.ts";
 import type { Principal } from "./main.ts";
 
@@ -34,180 +28,6 @@ type SessionCells = {
   lastError: Cell<string | null>;
   pending: Cell<PendingApproval>;
 };
-
-/** Durable session-id -> conversation-id mapping (session doc family; SQLite-backed). */
-const SessionMapDoc = defineDocFamily<
-  { conversationId: ConversationId },
-  { conversationId: ConversationId }
->({
-  kind: "ultiv.session-map",
-  version: 1,
-  scope: "session",
-  family: true,
-  initial: (seed) => ({ conversationId: seed.conversationId }),
-  checkpointWhen: () => true,
-});
-
-function textOf(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content.map((b) => String((b as { text?: string }).text ?? "")).join("");
-  }
-  return JSON.stringify(content);
-}
-
-/** Durable transcript entries + the live generation partial -> rendered session steps. */
-function projectTranscript(
-  entries: readonly EntryRecord[],
-  live: LiveState | undefined,
-  working: boolean,
-): TranscriptEntry[] {
-  const results = new Map<
-    string,
-    { content: unknown; isError: boolean; durationMs: number | null }
-  >();
-  for (const entry of entries) {
-    for (const message of (entry.model ?? []) as readonly unknown[]) {
-      const record = message as {
-        role?: string;
-        toolCallId?: unknown;
-        content?: unknown;
-        isError?: boolean;
-        durationMs?: unknown;
-      };
-      if (record.role !== "toolResult" || record.toolCallId === undefined) continue;
-      results.set(String(record.toolCallId), {
-        content: record.content,
-        isError: record.isError === true,
-        durationMs: typeof record.durationMs === "number" ? record.durationMs : null,
-      });
-    }
-  }
-  const out: TranscriptEntry[] = [];
-  for (const entry of entries) {
-    for (const message of (entry.model ?? []) as readonly unknown[]) {
-      const record = message as {
-        role?: string;
-        content?: unknown;
-        timestamp?: unknown;
-      };
-      // Tool results surface through the paired toolCall step's collapsible.
-      if (record.role === "toolResult" || record.role === "system") continue;
-      const at = typeof record.timestamp === "number" ? record.timestamp : Date.now();
-      const blocks = Array.isArray(record.content)
-        ? (record.content as readonly unknown[])
-        : [{ type: "text", text: textOf(record.content) }];
-      let blockIndex = 0;
-      for (const block of blocks) {
-        const id = entry.id * 100 + blockIndex++;
-        if (record.role === "user") {
-          const text = String((block as { text?: unknown }).text ?? "").trim();
-          if (text !== "") out.push({ id, kind: "input", at, text });
-          break;
-        }
-        const kind = (block as { type?: string }).type;
-        if (kind === "thinking") {
-          const text = String((block as { thinking?: unknown }).thinking ?? "").trim();
-          if (text !== "") out.push({ id, kind: "thinking", at, text });
-        } else if (kind === "toolCall") {
-          const callId = String((block as { id?: unknown }).id ?? id);
-          const result = results.get(callId);
-          out.push({
-            id,
-            kind: "tool",
-            at,
-            step: {
-              callId,
-              name: String((block as { name?: unknown }).name ?? "tool"),
-              status: result === undefined ? "running" : result.isError ? "error" : "done",
-              input: (block as { arguments?: unknown }).arguments ?? null,
-              output: result === undefined ? null : textOf(result.content).trim(),
-              durationMs: result === undefined ? null : result.durationMs,
-            },
-          });
-        } else if (kind === "text") {
-          const text = String((block as { text?: unknown }).text ?? "").trim();
-          if (text !== "") {
-            out.push({ id, kind: "output", at, text, streaming: false });
-          }
-        }
-      }
-    }
-  }
-  // The in-flight generation partial (pi.live doc) streams before any entry lands.
-  const partial = live?.generation?.message as
-    | { content?: unknown; timestamp?: unknown }
-    | undefined;
-  if (partial !== undefined) {
-    const at = typeof partial.timestamp === "number" ? partial.timestamp : Date.now();
-    const blocks = Array.isArray(partial.content) ? (partial.content as readonly unknown[]) : [];
-    let partialIndex = 0;
-    for (const block of blocks) {
-      const id = -1000 - partialIndex++;
-      const kind = (block as { type?: string }).type;
-      if (kind === "thinking") {
-        const text = String((block as { thinking?: unknown }).thinking ?? "");
-        if (text !== "") out.push({ id, kind: "thinking", at, text });
-      } else if (kind === "text") {
-        const text = String((block as { text?: unknown }).text ?? "");
-        const last = out[out.length - 1] as TranscriptEntry | undefined;
-        // Skip when the settled entry already carries this text (it is a prefix of it):
-        // covers the commit/clear overlap without dropping genuine growth.
-        if (text !== "" && !(last?.kind === "output" && last.text.startsWith(text))) {
-          out.push({ id, kind: "output", at, text, streaming: true });
-        }
-      } else if (kind === "toolCall") {
-        const callId = String((block as { id?: unknown }).id ?? id);
-        out.push({
-          id,
-          kind: "tool",
-          at,
-          step: {
-            callId,
-            name: String((block as { name?: unknown }).name ?? "tool"),
-            status: "running",
-            input: (block as { arguments?: unknown }).arguments ?? null,
-            output: null,
-            durationMs: null,
-          },
-        });
-      }
-    }
-  }
-  // The newest agent text is streaming while the agent works.
-  if (working) {
-    for (let index = out.length - 1; index >= 0; index--) {
-      const entry = out[index] as TranscriptEntry;
-      if (entry.kind === "output") {
-        out[index] = { ...entry, streaming: true };
-        break;
-      }
-      if (entry.kind !== "thinking") break;
-    }
-  }
-  return out;
-}
-
-/** Resolve the durable conversation behind one session id, creating and mapping it on first use. */
-export async function ensureConversation(
-  harness: Harness,
-  sessionId: string,
-): Promise<Conversation> {
-  const known = await harness.snapshot(SessionMapDoc, sessionId, BACKGROUND_CONTEXT);
-  if (known) {
-    const existing = await harness.conversation(known.conversationId, BACKGROUND_CONTEXT);
-    if (existing) return existing;
-  }
-  const created = await harness.createConversation(
-    { ownership: { kind: "ownerless" }, agent: defaultAgent() },
-    BACKGROUND_CONTEXT,
-  );
-  await harness.commit(async (tx) => {
-    const draft = await tx.doc(SessionMapDoc, sessionId, { conversationId: created.id });
-    draft.conversationId = created.id;
-  }, BACKGROUND_CONTEXT);
-  return created;
-}
 
 /** First hydrated revision of a conversation's structural view. */
 async function viewSnapshot(conversation: Conversation): Promise<ConversationView> {
@@ -226,12 +46,25 @@ function liveOf(view: ConversationView): LiveState | undefined {
   return view.docs["pi.live"] as LiveState | undefined;
 }
 
+/** Cell write that survives object disposal: background turns may outlive the last reference. */
+function safeChange<T>(
+  cell: Cell<T>,
+  ctx: Parameters<Cell<T>["change"]>[0],
+  fn: Parameters<Cell<T>["change"]>[1],
+): void {
+  try {
+    cell.change(ctx, fn);
+  } catch (error) {
+    console.warn("cell write skipped:", isChordError(error) ? error.code : error);
+  }
+}
+
 /** Registers per-session Session objects: state is a live projection of the durable transcript. */
-export function serveSession(host: Host<Principal>, harness: Harness): void {
+export function serveSession(host: Host<Principal>, mind: MindService): void {
   host.serve(
     Session,
     (input, _principal, self) => {
-      const conversation = ensureConversation(harness, input.id);
+      const conversation = Effect.runPromise(mind.converse.ensure(input.id));
       const cells: SessionCells = {
         transcript: self.state("transcript", TranscriptSchema, {
           init: async () => {
@@ -263,7 +96,7 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
         ctx.signal.addEventListener("abort", () => unsubscribe(), { once: true });
         // Surface tool calls waiting for the user's approve/deny decision.
         while (!ctx.signal.aborted) {
-          const [waiting] = pendingFor(await conversationId);
+          const [waiting] = mind.approvals.pendingFor(await conversationId);
           safeChange(cells.pending, ctx, () => waiting ?? null);
           await new Promise<void>((resolve) => setTimeout(resolve, 250));
         }
@@ -285,8 +118,8 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
         pending: cells.pending,
         approve: async ({ callId, approved }, ctx) => {
           const id = await conversationId;
-          decideApproval(id, callId, approved);
-          safeChange(cells.pending, ctx, () => pendingFor(id)[0] ?? null);
+          mind.approvals.decide(id, callId, approved);
+          safeChange(cells.pending, ctx, () => mind.approvals.pendingFor(id)[0] ?? null);
           return { ok: true };
         },
         input: async ({ text }, ctx) => {
@@ -296,14 +129,11 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
           cells.phase.change(ctx, () => "working");
           cells.lastError.change(ctx, () => null);
           try {
-            // Admit first: an entry becomes visible through the durable
-            // transcript projection only once it is committed to storage.
-            const conversation2 = await conversation;
-            const submission = await conversation2.submit(
-              { type: "input", content: text },
-              BACKGROUND_CONTEXT,
-            );
-            settle(host, harness, conversation2, submission, input.id, cells, text);
+            // Admit first, in the method: an entry becomes visible through the
+            // durable transcript projection only once it is committed to storage.
+            const chat = await conversation;
+            const submission = await Effect.runPromise(mind.converse.submit(chat, text));
+            settle(host, mind, chat, submission, input.id, cells, text);
           } catch (error) {
             console.error("input failed:", error);
             safeChange(cells.lastError, ctx, () => String(error));
@@ -322,7 +152,7 @@ export function serveSession(host: Host<Principal>, harness: Harness): void {
 /** Settles an admitted submission in the background; the transcript projection picks up the turn. */
 function settle(
   host: Host<Principal>,
-  harness: Harness,
+  mind: MindService,
   conversation: Conversation,
   submission: Submission,
   sessionId: string,
@@ -331,17 +161,9 @@ function settle(
 ): void {
   void host.root(async (ctx) => {
     try {
-      const settled = await submission.wait(BACKGROUND_CONTEXT);
-      if (settled.status !== "done" || settled.type !== "input") {
-        throw new Error(`agent unanswered: ${JSON.stringify(settled).slice(0, 200)}`);
-      }
-      const stored = await conversation.commit(
-        (tx) => tx.entry(AssistantEntry, settled.answer),
-        BACKGROUND_CONTEXT,
-      );
-      const message = stored?.model?.[0] as { content?: unknown } | undefined;
-      if (textOf(message?.content).trim() !== "") {
-        await touchSession(harness, sessionId, { at: Date.now(), titleSeed: text });
+      const result = await Effect.runPromise(mind.converse.settle(conversation, submission));
+      if (result.text.trim() !== "") {
+        await touchSession(mind, sessionId, { at: Date.now(), titleSeed: text });
       }
       safeChange(cells.phase, ctx, () => "idle");
     } catch (error) {
@@ -350,17 +172,4 @@ function settle(
       safeChange(cells.phase, ctx, () => "error");
     }
   });
-}
-
-/** Cell write that survives object disposal: background turns may outlive the last reference. */
-function safeChange<T>(
-  cell: Cell<T>,
-  ctx: Parameters<Cell<T>["change"]>[0],
-  fn: Parameters<Cell<T>["change"]>[1],
-): void {
-  try {
-    cell.change(ctx, fn);
-  } catch (error) {
-    console.warn("cell write skipped:", isChordError(error) ? error.code : error);
-  }
 }

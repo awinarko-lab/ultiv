@@ -1,43 +1,28 @@
 import { createServer } from "node:http";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { acceptWebSockets, createHost } from "@earendil-works/chord";
-import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import type { Storage } from "@earendil-works/pi-durable";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { createModels } from "@earendil-works/pi-ai/models";
-import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { Type } from "typebox";
 import { WebSocketServer } from "ws";
 import { Ping } from "@ultiv/contracts";
+import { httpPlugin } from "@ultiv/ext";
+import { openMind } from "@ultiv/mind";
 import { serveSession } from "./session.ts";
 import { serveSessions } from "./sessions.ts";
-import { jevExtension } from "./ai/agent.ts";
-import { kenariProvider } from "./ai/kenari.ts";
-import { jevClient } from "./ai/typesafe.ts";
 
 export type Principal = { kind: "guest" } | { kind: "server" };
 
-/** File-backed durable storage (HARNESS_DB overrides the default path). */
-async function openStorage(): Promise<Storage> {
-  const path = process.env.HARNESS_DB ?? "var/harness.sqlite";
-  mkdirSync(dirname(path), { recursive: true });
-  return openNodeSqliteStorage(path);
-}
-
-/** Wires the durable harness, the chord host, and the WebSocket + HTTP listeners. */
+/**
+ * Wires the mind (the platform's AI entity), the chord host, and the
+ * WebSocket + HTTP listeners. The app is thin: state and transport live here;
+ * every AI capability lives in @ultiv/mind.
+ */
 export async function buildStack(options?: { readonly storage?: Storage }) {
-  const storage = options?.storage ?? (await openStorage());
-  const models = createModels();
-  if (process.env.OPENAI_API_KEY) models.setProvider(openaiProvider());
-  if (process.env.KENARI_API_KEY) models.setProvider(kenariProvider());
-
-  const registry = createRegistry();
-  const jevExt = jevExtension();
-  if (jevExt !== undefined) registry.install(jevExt);
-  const harness = await Harness.open(storage, { models, registry }, BACKGROUND_CONTEXT);
+  const handle = await openMind({
+    plugins: [httpPlugin],
+    ...(options?.storage !== undefined ? { storage: options.storage } : {}),
+  });
+  const mind = handle.mind;
   const host = createHost<Principal>({ name: "server", self: { kind: "server" } });
   host.serve(Ping, (_input, _principal, self) => {
     const count = self.state("count", Type.Number(), 0);
@@ -49,8 +34,8 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
       },
     };
   });
-  serveSession(host, harness);
-  serveSessions(host, harness);
+  serveSession(host, mind);
+  serveSessions(host, mind);
 
   const http = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
@@ -68,10 +53,9 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
       new Promise<void>((resolve) => wss.close(() => resolve())),
       new Promise<void>((resolve) => http.close(() => resolve())),
     ]);
-    await harness.close(BACKGROUND_CONTEXT);
+    await handle.close();
   };
-  const jev = process.env.TYPESAFE_API_KEY ? jevClient() : undefined;
-  return { host, harness, http, jev, close };
+  return { host, mind, http, close };
 }
 
 const isMain =

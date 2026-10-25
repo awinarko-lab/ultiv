@@ -1,6 +1,6 @@
 # AGENTS.md — ultiv
 
-Effect-first, AI-native web app as a pnpm-workspace monorepo. `apps/server` (Node 24) runs a chord host with WebSocket links and a **pi-durable agent harness — all LLM chat goes through it**; `apps/web` (React 19 + TanStack Router + shadcn on Base UI + Tailwind 4) is the thin client over replicated chord state; `packages/contracts` holds the TypeBox chord contracts shared by both.
+Effect-first, AI-native web app as a pnpm-workspace monorepo. The **core is three packages**: `@ultiv/core` (kernel: shared tagged errors + the `openRuntime` promise↔Effect door), `@ultiv/ext` (the extension platform: tools, connectors, plugins, registry), and `@ultiv/mind` (the platform's ONE AI entity — durable `converse`, independent Jev `decide`, `act` tool surface; **name pending**, `mind` is the working name). `apps/server` (Node 24) is a thin chord host over the mind; `apps/web` (React 19 + TanStack Router + shadcn on Base UI + Tailwind 4) is the thin client over replicated chord state; `packages/contracts` holds the TypeBox chord contracts shared by both.
 
 ## Toolkit: Vite+ (`vp`) only
 
@@ -28,26 +28,29 @@ Effect-first, AI-native web app as a pnpm-workspace monorepo. `apps/server` (Nod
 ## Commands (verified)
 
 - `vp check` — format + lint gate (`--fix` to apply). It does NOT run our project typechecks.
-- `vp exec tsc -p <pkg>/tsconfig.json` — the type gate, for each of `packages/contracts`, `apps/server`, `apps/web`. All three must pass.
-- `vp test` — Vitest across workspaces (currently `packages/contracts`; one package: `vp run --filter @ultiv/contracts test`).
+- `vp exec tsc -p <pkg>/tsconfig.json` — the type gate, for each of `packages/contracts`, `packages/core`, `packages/ext`, `packages/mind`, `apps/server`, `apps/web`. All six must pass.
+- `vp test` — Vitest across workspaces (`packages/contracts`, `packages/core`, `packages/ext`, `packages/mind`; one package: `vp run --filter @ultiv/core test`).
 - `vp -C apps/web build` — production build of `apps/web` (root `vp build` needs the `-C` target; `vpr build` wraps this).
-- `vp run smoke` — boots the whole server stack on an ephemeral port, offline (`apps/server/src/smoke.ts`).
+- `vp run smoke` — boots the whole server stack on an ephemeral port, offline (`apps/server/src/smoke.ts`; delegates to the server workspace script because `vp node` cannot resolve node inside a nested `vp run`).
 - `vp install --frozen-lockfile` — verifies the lockfile is in sync and passes supply-chain policy.
 - `vp -C apps/web exec shadcn <cmd>` — shadcn CLI (e.g. `add <component>`), run where `components.json` lives.
 
 Not run automatically (long-running or live):
 
-- `vp node --env-file=.env apps/server/src/ai/probe.ts` — LIVE provider check (network + keys): kenari through the harness, Jev typed decision.
+- `vp node --env-file=.env packages/mind/src/probe.ts` — LIVE provider check (network + keys): kenari converse through the harness, Jev via the `jev_score` tool, Jev `decide` direct.
 - `vp run --filter @ultiv/server dev` — server with watch + `--env-file`; listens on `PORT` (default 8787).
 - `vp -C apps/web dev` — web dev server.
 
-**Gate for every change:** `vp check` → the three `vp exec tsc -p …` → `vp test` → `vp -C apps/web build` → `vp run smoke`. Re-run smoke after any dependency change; a clean typecheck alone does not prove runtime ESM wiring.
+**Gate for every change:** `vp check` → the six `vp exec tsc -p …` → `vp test` → `vp -C apps/web build` → `vp run smoke`. Re-run smoke after any dependency change; a clean typecheck alone does not prove runtime ESM wiring.
 
 ## Layout
 
+- `packages/core` (`@ultiv/core`) — the kernel, no domain knowledge: `errors.ts` (shared tagged-error taxonomy: `NotFound`, `InvalidInput`, `Duplicate`, `Unavailable`, `AuthMissing`, `External`) and `runtime.ts` (`openRuntime(layer, key)` — builds a fully-provided Layer into a live service under a caller-owned scope; the door promise-land code enters through). Deps: `effect` only.
+- `packages/ext` (`@ultiv/ext`) — the extension platform. `tool.ts` (pi-durable-shaped `Tool` + `gated` flag; pi-durable is a TYPE-ONLY dep here), `connector.ts` (auth specs + TypeBox-typed actions + `invoke`: validate → authenticate → perform), `plugin.ts` (`definePlugin` + capability union `tool | connector` — new kinds extend the union), `registry.ts` (the `Registry` service; duplicate identities fail at build time), `plugins/http.ts` (reference HTTP egress connector). Lifecycle is Effect layering, not plugin callbacks.
+- `packages/mind` (`@ultiv/mind`) — the AI entity (name pending). Faculties: `converse` (pi-durable harness: `root`/`ensure`/`submit`/`settle`/`turn` + `docs` for app-level session-scope documents + `projectTranscript` — the projection every surface renders through), `decide` (Jev: `yesNo`/`pick`/`rate`/`ask`, independent of any conversation), `act` (tools assembled from the Registry; `gated` tools wrapped by the approval broker — gates ACTS, never ASKS). `entity.ts` composes the five services into `Mind`; `openMind(options)` is the promise-land entry (`{ mind, close }`). Enter Effect-natively via `mindLayer(options)`. Owner rule enforced here: `turn` (submit → wait → commit) is the only path an input reaches a model.
 - `packages/contracts` — chord contracts (TypeBox). All `remote()`/`local()` definitions live here; both apps import `@ultiv/contracts` (`workspace:*`).
-- `apps/server/src/main.ts` — `buildStack()`: env-keyed providers → pi-ai `Models` → pi-durable `Harness.open` (MemoryStorage until SQLite lands) → chord `createHost` + `acceptWebSockets` (`ws`) + HTTP health. Dev runs unbundled (Node strips TS types).
-- `apps/server/src/ai/` — `kenari.ts` (provider + agent defaults), `typesafe.ts` (Jev client), `probe.ts` (live verification).
+- `apps/server/src/main.ts` — `buildStack()`: `openMind({ plugins: [httpPlugin] })` → chord `createHost` + `acceptWebSockets` (`ws`) + HTTP health; `close()` tears down links then the mind's scope (harness finalizers). Dev runs unbundled (Node strips TS types).
+- `apps/server/src/session.ts` / `sessions.ts` — the app-facing chord objects (Session replay/approvals, session list); they consume `MindService` only — no direct provider/harness access.
 - `apps/web` — React 19 + `@effect/atom-react`; `vite.config.ts` imports `defineConfig` from `"vite-plus"` (vp rewrites this on `vp migrate`) and loads `tanstackRouter` → `tailwindcss` → `react` plugins. See **Web UI** below.
 - Root `vite.config.ts` — workspace-level vp config; only sets oxfmt `ignorePatterns` (the generated route tree).
 
@@ -63,9 +66,9 @@ Not run automatically (long-running or live):
 
 ## AI providers
 
-- **Owner rule: every LLM chat/generation goes through pi-durable conversations** (`submit` → `wait` → `commit`), never raw `models.complete()` in app code. Conversations pin their model via `agent: kenariAgent()`.
-- **kenari.id** — OpenAI-compatible gateway, wired as a pi-ai `createProvider` (`openAICompletionsApi`), auth `envApiKeyAuth` on `KENARI_API_KEY`. Model id comes from `KENARI_MODEL` (fallback constant `KENARI_FALLBACK_MODEL` is the only other site — grep both when switching). Spec source: models.dev `kenari/deepseek-v4-1-flash` (reasoning model, 1M ctx / 384k out). Before switching models: verify the id exists in `GET $KENARI_BASE_URL/models` and run the probe. Never use `response_format: json_object` — it hangs some kenari models; ask for strict JSON in the prompt. The model misreports its own id (`model_used` says gpt-4o/gpt-4.1) — ignore it; routing follows the requested id.
-- **Typesafe.AI (Jev)** — `@typesafe-ai/sdk`, `client.systemOne({ state, questions })` with `noul`/`choice`/`score`/`box` builders; key `TYPESAFE_API_KEY`, model `jev-latest` (`TYPESAFE_MODEL` overrides). Jev is a typed decision side-channel, not a chat provider; if the harness needs it, expose it as a tool.
+- **Owner rule: the mind is the only provider consumer.** Every LLM chat/generation goes through pi-durable conversations inside `@ultiv/mind` (`converse.turn` = `submit` → `wait` → `commit`), never raw `models.complete()` in app code. Conversations pin their model via the kenari agent (`providers/kenari.ts`), resolved once in `converseLayer` — app code never passes agents. Jev decisions have a second, independent entry: `mind.decide.*` (no conversation required) — the same faculty also appears as `jev`/`jev_score`/`jev_pick`/`jev_rate` agent tools via the decision plugin.
+- **kenari.id** — OpenAI-compatible gateway, wired as a pi-ai `createProvider` (`openAICompletionsApi`), auth `envApiKeyAuth` on `KENARI_API_KEY`. Model id comes from `KENARI_MODEL` (fallback constant `KENARI_FALLBACK_MODEL` lives in `packages/mind/src/config.ts` — the only other site; grep both when switching). Spec source: models.dev `kenari/deepseek-v4-1-flash` (reasoning model, 1M ctx / 384k out). Before switching models: verify the id exists in `GET $KENARI_BASE_URL/models` and run the probe. Never use `response_format: json_object` — it hangs some kenari models; ask for strict JSON in the prompt. The model misreports its own id (`model_used` says gpt-4o/gpt-4.1) — ignore it; routing follows the requested id.
+- **Typesafe.AI (Jev)** — `@typesafe-ai/sdk`, `client.systemOne({ state, questions })` with `noul`/`choice`/`score`/`box` builders; key `TYPESAFE_API_KEY`, model `jev-latest` (`TYPESAFE_MODEL` overrides). Jev is a typed decision model, not a chat provider: `decide/decide.ts` wraps it behind the narrow `JevGateway` seam (`decide/gateway.ts`) so tests substitute fakes. Unconfigured keys fail LOUDLY but lazily: `decideService(undefined)` fails every call with `Unavailable`; the decision plugin simply isn't installed.
 - `.env` holds provider keys — server-side only; never commit, print, or ship to the client. Load it with `vp node --env-file=…` (or the `dev`/`start` scripts), never by echoing it.
 
 ## Conventions
@@ -80,7 +83,7 @@ Not run automatically (long-running or live):
 
 - **vp only** — no `npm`/`npx`/`pnpm`/bare `node` in commands, scripts, docs, or CI. If vp lacks a command, use `vp pm …` and note why.
 - MAX 500 LoC per file; MAX 100 LoC per function/component — at 80 LoC, split.
-- Code must be linted (`vp check`), typechecked (`vp exec tsc -p …` ×3), and tested (`vp test`) — the gate above is the proof. Never claim code is "tested" without it.
+- Code must be linted (`vp check`), typechecked (`vp exec tsc -p …` ×6), and tested (`vp test`) — the gate above is the proof. Never claim code is "tested" without it.
 - Work done = work committed: atomic commits, conventional-commit messages (`feat:`, `fix:`, `chore:`, `build:`, `docs:`).
 
 ## Pitfalls
@@ -93,3 +96,7 @@ Not run automatically (long-running or live):
 - Files Node executes directly (server, probe, smoke) must be erasable-syntax-only TS: no enums/namespaces/parameter properties.
 - Annotate chord `principal` callbacks with the app `Principal` type — inline object literals widen string literals and break `Host<P>` inference.
 - `tsconfig.json` files must stay strict JSON (tooling validates them; no comments).
+- Effect 4 (the repo's version) drifts from Effect 3 habits: there is NO `Effect.catchAll` (use `Effect.match` / `catchTag` / `catchIf`); `ConfigError` imports from `"effect/Config"`, not the root; `Layer.merge` is binary (chain `.pipe(Layer.merge(…))` or `mergeAll`); `Layer.buildWithScope` yields a `Context` — extract the service with its key; `Config`'s env provider snapshots `process.env` at FIRST use, so tests must set env at module load, never mid-test; `Data.TaggedError` instances yield directly (`return yield* new NotFound(…)`).
+- Effect Layers compose services; a parameterized layer is a function returning a Layer. Long-lived runtimes (server, probe) go through `openRuntime(layer, key)` in `@ultiv/core` — never `Effect.scoped` around a service that must outlive the call.
+- Structured tool outputs must be JsonValue-compatible: use `type` aliases, not `interface`, for result shapes (interfaces lack implicit index signatures).
+- `vp node` cannot resolve node when invoked INSIDE a `vp run` script — root scripts delegate (`vpr smoke` → the server workspace script) instead of nesting `vp node`.

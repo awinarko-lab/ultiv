@@ -7,7 +7,7 @@
     "check": "vp check",
     "build": "vp -C apps/web build",
     "test": "vp test",
-    "smoke": "node apps/server/src/smoke.ts"
+    "smoke": "vp run --filter @ultiv/server smoke"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
