@@ -5,6 +5,7 @@
  * at first use.
  */
 import { Context, Effect, Layer } from "effect";
+import type { PromptSection } from "@earendil-works/pi-durable";
 import { Duplicate } from "@ultiv/core";
 import type { Connector } from "./connector.ts";
 import type { Plugin } from "./plugin.ts";
@@ -15,6 +16,7 @@ export interface RegistryService {
   readonly register: (plugin: Plugin) => Effect.Effect<void, Duplicate>;
   readonly plugins: () => readonly Plugin[];
   readonly tools: () => readonly Tool[];
+  readonly sections: () => readonly PromptSection[];
   readonly connector: (id: string) => Connector | undefined;
 }
 
@@ -25,6 +27,7 @@ interface RegistryState {
   pluginIds: Set<string>;
   toolNames: Set<string>;
   connectors: Map<string, Connector>;
+  sections: PromptSection[];
 }
 
 const registerInto = (state: RegistryState, plugin: Plugin): Effect.Effect<void, Duplicate> =>
@@ -37,8 +40,10 @@ const registerInto = (state: RegistryState, plugin: Plugin): Effect.Effect<void,
         if (state.toolNames.has(capability.tool.name)) {
           return yield* new Duplicate({ kind: "tool", id: capability.tool.name });
         }
-      } else if (state.connectors.has(capability.connector.id)) {
-        return yield* new Duplicate({ kind: "connector", id: capability.connector.id });
+      } else if (capability.kind === "connector") {
+        if (state.connectors.has(capability.connector.id)) {
+          return yield* new Duplicate({ kind: "connector", id: capability.connector.id });
+        }
       }
     }
     // Commit only after the whole plugin validated.
@@ -46,7 +51,9 @@ const registerInto = (state: RegistryState, plugin: Plugin): Effect.Effect<void,
     state.plugins.push(plugin);
     for (const capability of plugin.capabilities) {
       if (capability.kind === "tool") state.toolNames.add(capability.tool.name);
-      else state.connectors.set(capability.connector.id, capability.connector);
+      else if (capability.kind === "connector") {
+        state.connectors.set(capability.connector.id, capability.connector);
+      } else state.sections.push(capability.section);
     }
   });
 
@@ -59,6 +66,7 @@ export const makeRegistry = (
       pluginIds: new Set(),
       toolNames: new Set(),
       connectors: new Map(),
+      sections: [],
     };
     const service: RegistryService = {
       register: (plugin) => registerInto(state, plugin),
@@ -67,6 +75,10 @@ export const makeRegistry = (
         state.plugins
           .flatMap((plugin) => plugin.capabilities)
           .flatMap((capability) => (capability.kind === "tool" ? [capability.tool] : [])),
+      sections: () =>
+        state.plugins
+          .flatMap((plugin) => plugin.capabilities)
+          .flatMap((capability) => (capability.kind === "section" ? [capability.section] : [])),
       connector: (id) => state.connectors.get(id),
     };
     for (const plugin of plugins) yield* registerInto(state, plugin);

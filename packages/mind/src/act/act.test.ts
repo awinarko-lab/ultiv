@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
 import { Type } from "typebox";
+import type { PromptSection } from "@earendil-works/pi-durable";
 import { defineTool, type RegistryService } from "@ultiv/ext";
 import { makeApprovals } from "../approvals.ts";
-import { actService, ENTITY_NAME, identitySection } from "./act.ts";
+import { actService } from "./act.ts";
+import { ENTITY_NAME, identityPlugin, identitySection } from "./identity.ts";
 
 const echo = defineTool({
   name: "echo",
@@ -12,16 +14,20 @@ const echo = defineTool({
   execute: async () => ({ output: [{ type: "text", text: "echo" }] }),
 });
 
-const registry = (tools: readonly ReturnType<typeof defineTool>[]): RegistryService => ({
+const registry = (
+  tools: readonly ReturnType<typeof defineTool>[],
+  sections: readonly PromptSection[] = [],
+): RegistryService => ({
   register: () => Effect.succeed(undefined),
   plugins: () => [],
   tools: () => tools,
+  sections: () => sections,
   connector: () => undefined,
 });
 
 describe("Act", () => {
-  it("carries the entity's identity into every system prompt", () => {
-    const act = actService(registry([echo]), makeApprovals());
+  it("carries registry sections into the extension", () => {
+    const act = actService(registry([echo], [identitySection()]), makeApprovals());
     const section = act.extension().sections?.[0];
     expect(section?.key).toBe("identity");
     expect(section?.render({} as never, {} as never)).toBe(`You are ${ENTITY_NAME}.`);
@@ -40,8 +46,15 @@ describe("Act", () => {
     const gated = act.extension().tools?.find((tool) => tool.name === "echo");
     expect(gated?.execute).not.toBe(echo.execute);
   });
+});
 
-  it("exposes the identity section builder standalone", () => {
-    expect(identitySection().render({} as never, {} as never)).toBe("You are Ultius.");
+describe("Identity plugin", () => {
+  it("declares the entity's name as a section capability", () => {
+    const plugin = identityPlugin();
+    expect(plugin.id).toBe("ultiv.mind.identity");
+    const section = plugin.capabilities[0];
+    expect(section?.kind).toBe("section");
+    if (section?.kind !== "section") throw new Error("missing section capability");
+    expect(section.section.render({} as never, {} as never)).toBe("You are Ultius.");
   });
 });

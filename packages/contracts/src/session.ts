@@ -1,6 +1,40 @@
 import { hostNamed, method, remote } from "@earendil-works/chord";
 import { Type, type Static } from "typebox";
 
+export const ThinkingLevelSchema = Type.Union([
+  Type.Literal("off"),
+  Type.Literal("low"),
+  Type.Literal("medium"),
+  Type.Literal("high"),
+]);
+
+export type ThinkingLevel = Static<typeof ThinkingLevelSchema>;
+
+export const ModelInfoSchema = Type.Object({
+  id: Type.String(),
+  label: Type.String(),
+  efforts: Type.Array(ThinkingLevelSchema),
+  defaultEffort: ThinkingLevelSchema,
+});
+
+export type ModelInfo = Static<typeof ModelInfoSchema>;
+
+/** Cumulative token/cost spend of one session, from the committed transcript. */
+export const UsageSummarySchema = Type.Object({
+  input: Type.Number(),
+  output: Type.Number(),
+  cacheRead: Type.Number(),
+  reasoning: Type.Union([Type.Number(), Type.Null()]),
+  totalTokens: Type.Number(),
+  costUsd: Type.Number(),
+});
+
+export type UsageSummary = Static<typeof UsageSummarySchema>;
+
+export const ModelIdSchema = Type.Union([Type.String(), Type.Null()]);
+
+export const EffortSchema = Type.Union([ThinkingLevelSchema, Type.Null()]);
+
 export const ToolStepSchema = Type.Object({
   callId: Type.String(),
   name: Type.String(),
@@ -69,7 +103,7 @@ export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 3,
+  version: 4,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {
@@ -79,11 +113,18 @@ export const Session = remote("ultiv.session", {
         phase: PhaseSchema,
         lastError: SessionErrorSchema,
         pending: PendingApprovalSchema,
+        usage: UsageSummarySchema,
+        model: ModelIdSchema,
+        effort: EffortSchema,
       },
       methods: {
         input: method(Type.Object({ text: Type.String() })),
         approve: method(
           Type.Object({ callId: Type.String(), approved: Type.Boolean() }),
+          Type.Object({ ok: Type.Boolean() }),
+        ),
+        configure: method(
+          Type.Object({ model: ModelIdSchema, effort: EffortSchema }),
           Type.Object({ ok: Type.Boolean() }),
         ),
       },

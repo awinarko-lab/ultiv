@@ -24,17 +24,29 @@ import {
   type Submission,
   type Tx,
 } from "@earendil-works/pi-durable";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { External } from "@ultiv/core";
 import { actService } from "../act/act.ts";
 import { harnessDb } from "../config.ts";
 import { Approvals } from "../approvals.ts";
-import { kenariAgent, kenariWiring, type KenariWiring } from "../providers/kenari.ts";
+import {
+  kenariAgent,
+  kenariCompaction,
+  kenariWiring,
+  type KenariWiring,
+} from "../providers/kenari.ts";
 import { MindModels } from "../providers/models.ts";
 import { Registry } from "@ultiv/ext";
 
 export interface TurnResult {
   /** The committed assistant text; empty when the turn produced none. */
   readonly text: string;
+}
+
+/** The conversation's current model/effort selection; null = the mind's default. */
+export interface AgentSelection {
+  readonly model: string | null;
+  readonly effort: ModelThinkingLevel | null;
 }
 
 export interface ConverseService {
@@ -57,6 +69,17 @@ export interface ConverseService {
     conversation: Conversation,
     content: string,
   ) => Effect.Effect<TurnResult, External>;
+  /** The conversation's current model/effort selection. */
+  readonly agentOf: (conversation: Conversation) => Effect.Effect<AgentSelection, External>;
+  /**
+   * Apply a model/effort selection to a conversation — durable, in the
+   * conversation's own commit. Partial: absent fields stay unchanged; null
+   * resets a field to the mind's default.
+   */
+  readonly configure: (
+    conversation: Conversation,
+    selection: { readonly model?: string | null; readonly effort?: ModelThinkingLevel | null },
+  ) => Effect.Effect<void, External>;
   /** App-level durable documents ride the same harness storage. */
   readonly docs: {
     readonly snapshot: <T extends JsonObject>(
@@ -147,6 +170,13 @@ function textOf(content: unknown): string {
   return JSON.stringify(content);
 }
 
+/** The model id off the resolved agent's model (a pi-ai `Model` or a `ModelRef`). */
+const modelIdOf = (agent: { readonly model?: unknown }): string | null => {
+  const model = agent.model as { readonly modelId?: string; readonly id?: string } | undefined;
+  if (model === undefined || model === null) return null;
+  return model.modelId ?? model.id ?? null;
+};
+
 const converseService = (harness: Harness, agent: AgentChange): ConverseService => ({
   root: () => asEffect("root conversation", harness.root(BACKGROUND_CONTEXT, { agent })),
   ensure: (key) => ensureConversation(harness, key, agent),
@@ -156,6 +186,27 @@ const converseService = (harness: Harness, agent: AgentChange): ConverseService 
     Effect.flatMap(submitOf(conversation, content), (submission) =>
       settleOf(conversation, submission),
     ),
+  agentOf: (conversation) =>
+    Effect.flatMap(asEffect("agent read", conversation.agent(BACKGROUND_CONTEXT)), (resolved) =>
+      Effect.succeed({
+        model: modelIdOf(resolved),
+        effort: (resolved.thinkingLevel ?? null) as ModelThinkingLevel | null,
+      }),
+    ),
+  configure: (conversation, selection) => {
+    const change: AgentChange = {
+      ...(selection.model !== undefined
+        ? {
+            model:
+              selection.model === null ? null : { provider: "kenari", modelId: selection.model },
+          }
+        : {}),
+      ...(selection.effort !== undefined ? { thinkingLevel: selection.effort } : {}),
+    };
+    return Effect.asVoid(
+      asEffect("agent configure", conversation.configure(change, BACKGROUND_CONTEXT)),
+    );
+  },
   docs: {
     // The token is family-parametric; the harness call is typed once at this boundary.
     snapshot: <T extends JsonObject>(doc: SessionDocToken<T>) =>
@@ -198,7 +249,11 @@ export const converseLayer = (
       const harness = yield* Effect.acquireRelease(
         asEffect(
           "open harness",
-          Harness.open(resolvedStorage, { models, registry: piRegistry }, BACKGROUND_CONTEXT),
+          Harness.open(
+            resolvedStorage,
+            { models, registry: piRegistry, settings: { compaction: kenariCompaction() } },
+            BACKGROUND_CONTEXT,
+          ),
         ),
         (harness) => Effect.ignore(asEffect("close harness", harness.close(BACKGROUND_CONTEXT))),
       );

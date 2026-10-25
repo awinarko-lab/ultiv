@@ -12,7 +12,8 @@ import type { Storage } from "@earendil-works/pi-durable";
 import { openRuntime, Duplicate, External, Unavailable, type Runtime } from "@ultiv/core";
 import { makeRegistry, Registry, type Plugin } from "@ultiv/ext";
 import { Approvals, approvalsLayer, type ApprovalsService } from "./approvals.ts";
-import { actService, ENTITY_NAME } from "./act/act.ts";
+import { actService } from "./act/act.ts";
+import { ENTITY_NAME, identityPlugin } from "./act/identity.ts";
 import { decisionPlugin } from "./act/decision-tools.ts";
 import { Converse, converseLayer, type ConverseService } from "./converse/converse.ts";
 import { decideLayer, Decide, type DecideService } from "./decide/decide.ts";
@@ -86,8 +87,8 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
     Effect.gen(function* () {
       const decide = yield* Decide;
       const plugins = decide.available
-        ? [...(options.plugins ?? []), decisionPlugin(decide)]
-        : (options.plugins ?? []);
+        ? [identityPlugin(), decisionPlugin(decide), ...(options.plugins ?? [])]
+        : [identityPlugin(), ...(options.plugins ?? [])];
       return yield* makeRegistry(plugins);
     }),
   ).pipe(Layer.provide(decideLayer));

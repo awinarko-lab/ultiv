@@ -1,5 +1,10 @@
 export { Session } from "./session.ts";
 export {
+  EffortSchema,
+  ModelIdSchema,
+  ModelInfoSchema,
+  ThinkingLevelSchema,
+  UsageSummarySchema,
   PhaseSchema,
   PendingApprovalSchema,
   SessionErrorSchema,
@@ -7,7 +12,15 @@ export {
   TranscriptEntrySchema,
   TranscriptSchema,
 } from "./session.ts";
-export type { PendingApproval, Phase, ToolStep, TranscriptEntry } from "./session.ts";
-export { Sessions, SessionListSchema, SessionInfoSchema } from "./sessions.ts";
-export type { SessionInfo } from "./sessions.ts";
+export type {
+  ModelInfo,
+  ThinkingLevel,
+  UsageSummary,
+  PendingApproval,
+  Phase,
+  ToolStep,
+  TranscriptEntry,
+} from "./session.ts";
+export { Sessions, ModelListSchema, SessionListSchema, SessionInfoSchema } from "./sessions.ts";
+export type { Models, SessionInfo } from "./sessions.ts";
 export { Ping } from "./ping.ts";
