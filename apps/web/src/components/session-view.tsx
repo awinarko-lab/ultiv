@@ -63,7 +63,7 @@ function SessionMeta({
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
 }) {
   const selected = models.find((candidate) => candidate.id === model);
-  const efforts = selected?.efforts ?? (["off", "low", "medium", "high"] as const);
+  const efforts = selected?.efforts ?? (["off", "low", "high", "max"] as const);
   const select =
     "rounded-md border bg-transparent px-2 py-1 text-xs text-muted-foreground outline-none";
   return (
@@ -106,8 +106,8 @@ function SessionMeta({
       </div>
       {usage !== null && (
         <span className="text-xs text-muted-foreground">
-          {formatTokens(usage.input)} in · {formatTokens(usage.output)} out · $
-          {usage.costUsd.toFixed(4)}
+          {formatTokens(usage.totalTokens)} tokens · {formatTokens(usage.input)} in ·{" "}
+          {formatTokens(usage.output)} out
         </span>
       )}
     </div>

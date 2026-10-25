@@ -142,7 +142,7 @@ function markStreaming(out: Step[], working: boolean): Step[] {
   return out;
 }
 
-/** Token/cost spend summed over committed assistant messages (pi-ai `Usage`). */
+/** Token spend summed over committed assistant messages (pi-ai `Usage`). Tokens only. */
 export interface UsageSummary {
   readonly input: number;
   readonly output: number;
@@ -150,7 +150,6 @@ export interface UsageSummary {
   /** Reasoning tokens, when the provider reports them; null when never reported. */
   readonly reasoning: number | null;
   readonly totalTokens: number;
-  readonly costUsd: number;
 }
 
 /** Sum the usage recorded on each committed assistant message. */
@@ -159,7 +158,6 @@ export function usageOf(entries: readonly EntryRecord[]): UsageSummary | undefin
   let output = 0;
   let cacheRead = 0;
   let totalTokens = 0;
-  let costUsd = 0;
   let reasoning: number | null = null;
   let seen = false;
   for (const entry of entries) {
@@ -171,13 +169,12 @@ export function usageOf(entries: readonly EntryRecord[]): UsageSummary | undefin
       output += Number(usage.output ?? 0);
       cacheRead += Number(usage.cacheRead ?? 0);
       totalTokens += Number(usage.totalTokens ?? 0);
-      costUsd += Number((usage.cost as { total?: number } | undefined)?.total ?? 0);
       if (typeof usage.reasoning === "number") {
         reasoning = (reasoning ?? 0) + usage.reasoning;
       }
     }
   }
-  return seen ? { input, output, cacheRead, reasoning, totalTokens, costUsd } : undefined;
+  return seen ? { input, output, cacheRead, reasoning, totalTokens } : undefined;
 }
 
 /** Project the conversation view: committed transcript + live partial + phase. */

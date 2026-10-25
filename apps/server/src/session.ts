@@ -93,7 +93,6 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
                 cacheRead: 0,
                 reasoning: null,
                 totalTokens: 0,
-                costUsd: 0,
               }
             );
           },

@@ -4,8 +4,8 @@ import { Type, type Static } from "typebox";
 export const ThinkingLevelSchema = Type.Union([
   Type.Literal("off"),
   Type.Literal("low"),
-  Type.Literal("medium"),
   Type.Literal("high"),
+  Type.Literal("max"),
 ]);
 
 export type ThinkingLevel = Static<typeof ThinkingLevelSchema>;
@@ -19,14 +19,13 @@ export const ModelInfoSchema = Type.Object({
 
 export type ModelInfo = Static<typeof ModelInfoSchema>;
 
-/** Cumulative token/cost spend of one session, from the committed transcript. */
+/** Cumulative token spend of one session, from the committed transcript. Tokens only — cost stays internal. */
 export const UsageSummarySchema = Type.Object({
   input: Type.Number(),
   output: Type.Number(),
   cacheRead: Type.Number(),
   reasoning: Type.Union([Type.Number(), Type.Null()]),
   totalTokens: Type.Number(),
-  costUsd: Type.Number(),
 });
 
 export type UsageSummary = Static<typeof UsageSummarySchema>;

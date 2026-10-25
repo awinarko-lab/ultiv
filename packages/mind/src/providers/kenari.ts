@@ -21,18 +21,15 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import type { AgentChange, CompactionSettings } from "@earendil-works/pi-durable";
 import { kenariBaseUrl, kenariModel } from "../config.ts";
 
-/** USD per 1M tokens. */
-export interface ModelCost {
-  readonly input: number;
-  readonly output: number;
-  readonly cacheRead: number;
-  readonly cacheWrite: number;
-}
+/**
+ * Efforts the platform offers, from the gateway's per-model
+ * `supported_reasoning_levels` (checked 2026-10-25): deepseek-v4-1-flash
+ * none/low/high/max, glm-5-3-flash and kimi-k3-1-pro low/high/max (no off —
+ * they always reason). `off` maps to the gateway's `none`.
+ */
+export type SessionEffort = "off" | "low" | "high" | "max";
 
-/** The efforts the platform's surfaces offer; `off` leaves the provider's native default. */
-export type SessionEffort = "off" | "low" | "medium" | "high";
-
-/** One selectable model of the mind, with the efforts it offers. */
+/** One selectable model of the mind, with the efforts IT offers. */
 export interface KenariModelSpec {
   readonly id: string;
   readonly label: string;
@@ -41,10 +38,10 @@ export interface KenariModelSpec {
   readonly reasoning: boolean;
   readonly efforts: readonly SessionEffort[];
   readonly defaultEffort: SessionEffort;
-  readonly cost: ModelCost;
 }
 
-const EFFORTS = ["off", "low", "medium", "high"] as const;
+const EFFORTS_TOGGLEABLE = ["off", "low", "high", "max"] as const;
+const EFFORTS_ALWAYS = ["low", "high", "max"] as const;
 
 export const KENARI_MODELS: readonly KenariModelSpec[] = [
   {
@@ -53,9 +50,8 @@ export const KENARI_MODELS: readonly KenariModelSpec[] = [
     contextWindow: 1_000_000,
     maxTokens: 384_000,
     reasoning: true,
-    efforts: EFFORTS,
+    efforts: EFFORTS_TOGGLEABLE,
     defaultEffort: "off",
-    cost: { input: 0.15714286, output: 0.31428571, cacheRead: 0.00371429, cacheWrite: 0 },
   },
   {
     id: "glm-5-3-flash",
@@ -63,9 +59,8 @@ export const KENARI_MODELS: readonly KenariModelSpec[] = [
     contextWindow: 1_000_000,
     maxTokens: 128_000,
     reasoning: true,
-    efforts: EFFORTS,
-    defaultEffort: "off",
-    cost: { input: 0.11428571, output: 0.34285714, cacheRead: 0.02285714, cacheWrite: 0 },
+    efforts: EFFORTS_ALWAYS,
+    defaultEffort: "low",
   },
   {
     id: "kimi-k3-1-pro",
@@ -73,11 +68,30 @@ export const KENARI_MODELS: readonly KenariModelSpec[] = [
     contextWindow: 1_048_576,
     maxTokens: 943_718,
     reasoning: true,
-    efforts: EFFORTS,
-    defaultEffort: "off",
-    cost: { input: 0.66666667, output: 6.72727273, cacheRead: 0.06666667, cacheWrite: 0 },
+    efforts: EFFORTS_ALWAYS,
+    defaultEffort: "low",
   },
 ];
+
+/**
+ * USD per 1M tokens (models.dev; kimi-k3-1-pro derived from gateway IDR).
+ * pi-ai computes per-usage cost internally from these rates; the platform
+ * surfaces TOKENS only — cost is deliberately not part of any contract.
+ */
+const COST_RATES: Record<
+  string,
+  { input: number; output: number; cacheRead: number; cacheWrite: number }
+> = {
+  "deepseek-v4-1-flash": {
+    input: 0.15714286,
+    output: 0.31428571,
+    cacheRead: 0.00371429,
+    cacheWrite: 0,
+  },
+  "glm-5-3-flash": { input: 0.11428571, output: 0.34285714, cacheRead: 0.02285714, cacheWrite: 0 },
+  "kimi-k3-1-pro": { input: 0.66666667, output: 6.72727273, cacheRead: 0.06666667, cacheWrite: 0 },
+};
+const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 /**
  * Compaction at 75%: generation blocks to compact once a conversation
@@ -124,7 +138,7 @@ export const kenariProvider = (wiring: KenariWiring) => {
     baseUrl: wiring.baseUrl,
     reasoning: spec.reasoning,
     input: ["text", "image"],
-    cost: spec.cost,
+    cost: COST_RATES[spec.id] ?? ZERO_COST,
     contextWindow: spec.contextWindow,
     maxTokens: spec.maxTokens,
   }));
