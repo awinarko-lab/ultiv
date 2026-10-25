@@ -1,0 +1,18 @@
+{
+  "name": "@ultiv/ext",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@earendil-works/pi-durable": "^1.4.0",
+    "@ultiv/core": "workspace:*",
+    "effect": "^4.0.6",
+    "typebox": "1.3.27"
+  }
+}
