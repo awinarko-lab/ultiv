@@ -1,4 +1,4 @@
-import type { ModelInfo, SessionInfo, TaskInfo } from "@ultiv/contracts";
+import type { ModelInfo, ProfileInfo, SessionInfo, TaskInfo } from "@ultiv/contracts";
 
 /**
  * The session registry and model catalog are plain REST on the server's HTTP
@@ -22,13 +22,33 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  sessions: (): Promise<SessionInfo[]> => getJson<SessionInfo[]>("/api/sessions"),
+  sessions: (profile?: string): Promise<SessionInfo[]> =>
+    getJson<SessionInfo[]>(
+      profile !== undefined
+        ? `/api/sessions?profile=${encodeURIComponent(profile)}`
+        : "/api/sessions",
+    ),
+  profiles: (): Promise<ProfileInfo[]> => getJson<ProfileInfo[]>("/api/profiles"),
+  createProfile: async (input: { name: string; persona?: string }): Promise<ProfileInfo> => {
+    const response = await fetch(`${base()}/api/profiles`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) throw new Error(`POST /api/profiles: ${response.status}`);
+    return (await response.json()) as ProfileInfo;
+  },
+  mainChat: async (profileId: string): Promise<SessionInfo> => {
+    const response = await fetch(`${base()}/api/profiles/${encodeURIComponent(profileId)}/main`);
+    if (!response.ok) throw new Error(`GET main: ${response.status}`);
+    return (await response.json()) as SessionInfo;
+  },
   models: (): Promise<ModelInfo[]> => getJson<ModelInfo[]>("/api/models"),
-  create: async (title: string | null): Promise<{ id: string }> => {
+  create: async (title: string | null, profileId?: string): Promise<{ id: string }> => {
     const response = await fetch(`${base()}/api/sessions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, ...(profileId !== undefined ? { profileId } : {}) }),
     });
     if (!response.ok) throw new Error(`POST /api/sessions: ${response.status}`);
     return (await response.json()) as { id: string };
