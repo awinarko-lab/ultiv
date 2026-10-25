@@ -1,6 +1,7 @@
 import { Link, useNavigate, createFileRoute } from "@tanstack/react-router";
 import { Ping } from "@ultiv/contracts";
 import { Trash2Icon } from "lucide-react";
+import { Fragment } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,32 +53,34 @@ function HomePage() {
         {ordered.length > 0 && (
           <CardContent className="flex flex-col gap-1">
             {ordered.map((session, index) => (
-              <div key={session.id} className="flex items-center gap-1">
+              <Fragment key={session.id}>
                 {index > 0 && <Separator className="my-1" />}
-                <Button
-                  variant="ghost"
-                  className="min-w-0 flex-1 justify-between"
-                  nativeButton={false}
-                  render={<Link to="/sessions/$sessionId" params={{ sessionId: session.id }} />}
-                >
-                  <span className="truncate">
-                    {session.title === "" ? "Untitled session" : session.title}
-                  </span>
-                  <time className="text-muted-foreground">
-                    {new Date(session.lastMessageAt).toLocaleString()}
-                  </time>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Delete ${session.title === "" ? "session" : session.title}`}
-                  onClick={async () => {
-                    await sessions.remove(session.id);
-                  }}
-                >
-                  <Trash2Icon />
-                </Button>
-              </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    className="min-w-0 flex-1 justify-between"
+                    nativeButton={false}
+                    render={<Link to="/sessions/$sessionId" params={{ sessionId: session.id }} />}
+                  >
+                    <span className="truncate">
+                      {session.title === "" ? "Untitled session" : session.title}
+                    </span>
+                    <time className="text-muted-foreground">
+                      {new Date(session.lastMessageAt).toLocaleString()}
+                    </time>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Delete ${session.title === "" ? "session" : session.title}`}
+                    onClick={async () => {
+                      await sessions.remove(session.id);
+                    }}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </div>
+              </Fragment>
             ))}
           </CardContent>
         )}
