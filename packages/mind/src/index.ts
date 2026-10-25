@@ -12,6 +12,7 @@ export * from "./converse/pi-registry.ts";
 export * from "./converse/steps.ts";
 export * from "./profiles/profiles.ts";
 export * from "./profiles/docs.ts";
+export * from "./profiles/rooms.ts";
 export * from "./profiles/section.ts";
 export * from "./mailbox/mailbox.ts";
 export * from "./mailbox/tools.ts";

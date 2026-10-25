@@ -10,6 +10,7 @@ const fastMailbox = (handle: Awaited<ReturnType<typeof openMind>>) =>
   mailboxService({
     converse: handle.mind.converse,
     profiles: handle.mind.profiles,
+    rooms: handle.mind.rooms,
     audit: handle.mind.audit,
     options: { retryDelayMs: 0 },
   });
@@ -242,12 +243,12 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
     await handle.close();
   });
 
-  it("dead-letters after retries and NACKs the sender's main chat (offline: turns fail)", async () => {
+  it("dead-letters after retries and NACKs the sender inside the room seat (offline: turns fail)", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const mailbox = fastMailbox(handle);
-    const { profiles } = handle.mind;
-    const a = await profiles.create("harry", { name: "CoS" });
-    const b = await profiles.create("harry", { name: "Researcher" });
+    const { profiles, rooms } = handle.mind;
+    const a = await profiles.create("harry", { name: "CoS", onboard: false });
+    const b = await profiles.create("harry", { name: "Researcher", onboard: false });
     await mailbox.send({
       owner: "harry",
       from: a.id,
@@ -264,14 +265,24 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
       dead = (await mailbox.dead("harry")).length > 0;
     }
     expect(dead).toBe(true);
-    // The sender's main chat was woken with the NACK.
+    // The NACK wakes the sender in their room SEAT — never the main chat.
+    const [room] = await rooms.list("harry", a.id);
+    expect(room).toBeDefined();
+    const seats = await rooms.seats("harry", room!);
+    const mine = seats.find((seat) => seat.profileId === a.id);
+    expect(mine?.conversationId).not.toBeNull();
+    const seatConversation = await Effect.runPromise(
+      handle.mind.converse.ensure(`harry:room:${room!.id}:${a.id}`),
+    );
+    const view = await seatConversation.viewState(BACKGROUND_CONTEXT);
+    expect(JSON.stringify(view.value?.entries ?? [])).toContain("[nack from Researcher");
+    // The main chat stays clean of bot-to-bot traffic.
     const main = await profiles.ensureMain("harry", a.id);
-    const key = await profiles.keyOfRow(main);
-    const conversation = await Effect.runPromise(handle.mind.converse.ensure(key));
-    const view = await conversation.viewState(BACKGROUND_CONTEXT);
-    const inputs = view.value?.entries ?? [];
-    const text = JSON.stringify(inputs);
-    expect(text).toContain("[nack from Researcher");
+    const mainConversation = await Effect.runPromise(
+      handle.mind.converse.ensure(await profiles.keyOfRow(main)),
+    );
+    const mainView = await mainConversation.viewState(BACKGROUND_CONTEXT);
+    expect(JSON.stringify(mainView.value?.entries ?? [])).not.toContain("[nack from Researcher");
     await handle.close();
   });
 });

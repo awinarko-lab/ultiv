@@ -66,7 +66,24 @@ export async function profileRoutes(args: RouteArgs): Promise<boolean> {
     }
     return true;
   }
+  if (rest === "/main" && method === "POST") {
+    await mind.profiles.setMain(args.owner, id);
+    json(200, { ok: true, profileId: id });
+    return true;
+  }
   if (rest === "" && method === "DELETE") {
+    // The main bot and the last remaining bot are protected: switch main
+    // first, and a workspace always keeps one bot.
+    const main = await mind.profiles.mainOf(args.owner);
+    if (main === id) {
+      json(409, { error: "the main bot cannot be removed — switch main to another bot first" });
+      return true;
+    }
+    const owned = await mind.profiles.list(args.owner);
+    if (owned.length <= 1) {
+      json(409, { error: "the last bot cannot be removed" });
+      return true;
+    }
     json(200, await purgeProfile(args, id));
     return true;
   }
@@ -163,12 +180,13 @@ async function purgeProfile(args: RouteArgs, id: string): Promise<unknown> {
   const { mind } = args;
   const sessions = await mind.profiles.remove(args.owner, id);
   const sessionIds = sessions.map((row) => row.id);
-  const [mailbox, memory, vault, cron, webhooks] = await Promise.all([
+  const [mailbox, memory, vault, cron, webhooks, rooms] = await Promise.all([
     mind.mailbox.purgeProfile(args.owner, id),
     mind.memory.removeProfile(args.owner, id),
     Promise.resolve(mind.vault?.removeProfile(args.owner, id) ?? 0),
     removeCronJobsForSessions(mind, sessionIds),
     removeWebhooksForSessions(mind, sessionIds),
+    mind.rooms.purgeProfile(args.owner, id),
   ]);
   let artifacts = 0;
   try {
@@ -186,6 +204,7 @@ async function purgeProfile(args: RouteArgs, id: string): Promise<unknown> {
     vault,
     cron,
     webhooks,
+    rooms,
     artifacts,
     note: "transcripts stay in harness storage (retention); registry rows and files are gone",
   };

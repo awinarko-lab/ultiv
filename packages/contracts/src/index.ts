@@ -61,6 +61,8 @@ export type {
 } from "./vault.ts";
 export { MemoryRecordSchema, MemoryListSchema } from "./memory.ts";
 export type { MemoryRecord, MemoryList } from "./memory.ts";
+export { RoomInfoSchema, RoomListSchema, RoomSeatSchema } from "./rooms.ts";
+export type { RoomInfo, RoomList, RoomSeat } from "./rooms.ts";
 export { TaskInfoSchema, TaskListSchema, TaskStatusSchema } from "./tasks.ts";
 export type { TaskInfo, TaskList, TaskStatus } from "./tasks.ts";
 export { ArtifactInfoSchema, ArtifactListSchema } from "./artifacts.ts";

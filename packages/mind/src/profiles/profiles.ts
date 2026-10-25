@@ -18,13 +18,13 @@ import {
   MAIN_PREFIX,
   ProfilesDoc,
   SessionsDoc,
+  SettingsDoc,
   commitProfiles,
   commitSessions,
   defaultPolicies,
   defaultTimezone,
   legacyKey,
   pairKey,
-  pairSessionId,
   readProfiles,
   readSessions,
   scopedKey,
@@ -80,8 +80,22 @@ export interface ProfilesService {
   readonly keyOfRow: (row: SessionInfo) => Promise<string>;
   /** Key for an id under an owner: registered row, else the default profile scope. */
   readonly keyForSession: (owner: string, id: string) => Promise<string>;
-  /** Ensure the DM thread between two profiles exists; returns its session row. */
-  readonly ensureDm: (owner: string, a: string, b: string) => Promise<SessionInfo>;
+  /**
+   * Adopt a conversation into a profile's scope (rooms use this): ensure the
+   * key, index it for persona/audit/memory/artifact scoping.
+   */
+  readonly adoptConversation: (
+    key: string,
+    scope: {
+      readonly owner: string;
+      readonly profileId: string;
+      readonly kind: SessionInfo["kind"];
+      readonly participants: readonly string[] | null;
+    },
+  ) => Promise<void>;
+  /** The owner's main bot — the default surface; exactly one at a time. */
+  readonly mainOf: (owner: string) => Promise<string>;
+  readonly setMain: (owner: string, profileId: string) => Promise<void>;
   /** The conversation scope index: persona, audit and artifact scoping read this. */
   readonly scopeOf: (conversationId: string) => ConversationScope | undefined;
   readonly profileOf: (conversationId: string) => ProfileInfo | undefined;
@@ -188,6 +202,64 @@ export const profilesService = (deps: {
     return profile;
   };
 
+  /** The spawn-time first turn, from the provided identity details. */
+  const onboard = async (owner: string, profile: ProfileInfo): Promise<void> => {
+    try {
+      const main = await service.ensureMain(owner, profile.id);
+      const key = scopedKey(owner, profile.id, main.id);
+      const conversation = await run(converse.ensure(key));
+      const description = profile.description !== "" ? `\n\nYour role: ${profile.description}` : "";
+      const persona =
+        profile.persona !== ""
+          ? `\n\nYour identity and persona, as the owner wrote it:\n${profile.persona}`
+          : "\n\nNo persona was provided yet; the owner will shape you over time.";
+      const submission = await run(
+        converse.submit(
+          conversation,
+          `[onboarding] You are ${profile.name} — a new bot in this workspace, created by the ` +
+            `owner just now.${description}${persona}\n\nIntroduce yourself in one or two lines ` +
+            `(who you are, what you are for), then stand by. Use no tools for this.`,
+        ),
+      );
+      void run(converse.settle(conversation, submission)).catch(() => undefined);
+    } catch {
+      // Admission is best-effort at spawn time; creation itself never fails.
+    }
+  };
+
+  /**
+   * Single-flight per (owner, profile): onboarding's spawn-time ensureMain
+   * races the caller's — concurrent creation must yield ONE main chat.
+   */
+  const mainInFlight = new Map<string, Promise<SessionInfo>>();
+  const ensureMainOnce = async (owner: string, profileId: string): Promise<SessionInfo> => {
+    await ensureProfileRow(owner, profileId);
+    const rows = await run(readSessions(converse));
+    const existing = rows.find(
+      (row) => row.owner === owner && row.profile === profileId && row.kind === "main",
+    );
+    if (existing !== undefined) return existing;
+    const profile = await ensureProfileRow(owner, profileId);
+    const row: SessionInfo = {
+      id: `${MAIN_PREFIX}${randomUUID().slice(0, 8)}`,
+      owner,
+      profile: profileId,
+      kind: "main",
+      participants: null,
+      title: profile.name,
+      createdAt: Date.now(),
+      lastMessageAt: Date.now(),
+    };
+    await run(commitSessions(converse, (sessions) => [...sessions, row]));
+    await ensureConversationFor(scopedKey(owner, profileId, row.id), profile, {
+      owner,
+      profileId,
+      kind: "main",
+      participants: null,
+    });
+    return row;
+  };
+
   const service: ProfilesService = {
     list: async (owner) => {
       // Listing is a touch: owners see their default profile materialized.
@@ -218,9 +290,13 @@ export const profilesService = (deps: {
         createdAt: Date.now(),
         archivedAt: null,
       };
-      return run(commitProfiles(converse, (profiles) => [...profiles, profile])).then(
-        () => profile,
-      );
+      return run(commitProfiles(converse, (profiles) => [...profiles, profile])).then(async () => {
+        // Spawning initiates the conversation: the bot's first turn runs
+        // under its own identity, built from the provided details. Best
+        // effort — admission succeeds even when the model call cannot run.
+        if (input.onboard !== false) void onboard(owner, profile);
+        return profile;
+      });
     },
     update: async (owner, id, patch) => {
       if (patch.timezone !== undefined && !validTimezone(patch.timezone)) {
@@ -301,32 +377,15 @@ export const profilesService = (deps: {
           () => profile,
         );
       }),
-    ensureMain: async (owner, profileId) => {
-      await ensureProfileRow(owner, profileId);
-      const rows = await run(readSessions(converse));
-      const existing = rows.find(
-        (row) => row.owner === owner && row.profile === profileId && row.kind === "main",
-      );
-      if (existing !== undefined) return existing;
-      const profile = await ensureProfileRow(owner, profileId);
-      const row: SessionInfo = {
-        id: `${MAIN_PREFIX}${randomUUID().slice(0, 8)}`,
-        owner,
-        profile: profileId,
-        kind: "main",
-        participants: null,
-        title: profile.name,
-        createdAt: Date.now(),
-        lastMessageAt: Date.now(),
-      };
-      await run(commitSessions(converse, (sessions) => [...sessions, row]));
-      await ensureConversationFor(scopedKey(owner, profileId, row.id), profile, {
-        owner,
-        profileId,
-        kind: "main",
-        participants: null,
+    ensureMain: (owner, profileId) => {
+      const flightKey = `${owner}:${profileId}`;
+      const inFlight = mainInFlight.get(flightKey);
+      if (inFlight !== undefined) return inFlight;
+      const promise = ensureMainOnce(owner, profileId).finally(() => {
+        mainInFlight.delete(flightKey);
       });
-      return row;
+      mainInFlight.set(flightKey, promise);
+      return promise;
     },
     resetMain: async (owner, profileId) => {
       // The old main row stays listed as a plain session (history kept);
@@ -366,12 +425,17 @@ export const profilesService = (deps: {
     },
     listSessions: (owner, profileId) =>
       run(readSessions(converse)).then((rows) =>
-        rows.filter((row) =>
-          profileId === undefined
-            ? row.owner === owner
-            : row.owner === owner &&
-              (row.profile === profileId || row.participants?.includes(profileId) === true),
-        ),
+        rows
+          // Legacy pair-DM rows predate rooms; they were never the owner's
+          // chats (and carried the shared-identity bug) — keep them out of
+          // the list. DELETE /api/sessions/:id still removes them.
+          .filter((row) => row.kind !== "dm")
+          .filter((row) =>
+            profileId === undefined
+              ? row.owner === owner
+              : row.owner === owner &&
+                (row.profile === profileId || row.participants?.includes(profileId) === true),
+          ),
       ),
     removeSession: (owner, id) =>
       run(
@@ -422,33 +486,34 @@ export const profilesService = (deps: {
       }
       return scopedKey(owner, "default", id);
     },
-    ensureDm: async (owner, a, b) => {
-      const [profileA, profileB] = await Promise.all([
-        ensureProfileRow(owner, a),
-        ensureProfileRow(owner, b),
-      ]);
-      const id = pairSessionId(a, b);
-      const rows = await run(readSessions(converse));
-      const existing = rows.find((row) => row.id === id && row.owner === owner);
-      if (existing !== undefined) return existing;
-      const row: SessionInfo = {
-        id,
-        owner,
-        profile: a,
-        kind: "dm",
-        participants: [a, b],
-        title: `${profileA.name} ↔ ${profileB.name}`,
-        createdAt: Date.now(),
-        lastMessageAt: Date.now(),
-      };
-      await run(commitSessions(converse, (sessions) => [...sessions, row]));
-      await ensureConversationFor(pairKey(owner, a, b), profileA, {
-        owner,
-        profileId: a,
-        kind: "dm",
-        participants: [a, b],
+    adoptConversation: async (key, scope) => {
+      const profile = await service.get(scope.owner, scope.profileId);
+      if (profile === undefined) throw new NotFound({ what: `profile ${scope.profileId}` });
+      await ensureConversationFor(key, profile, {
+        owner: scope.owner,
+        profileId: scope.profileId,
+        kind: scope.kind,
+        participants: scope.participants,
       });
-      return row;
+    },
+    mainOf: async (owner) => {
+      const stored = await run(converse.docs.snapshot(SettingsDoc));
+      const main = stored?.main[owner];
+      if (main !== undefined && main !== "") return main;
+      const rows = await run(readProfiles(converse));
+      const owned = rows.filter((p) => p.owner === owner);
+      const fallback = owned.find((p) => p.id === "default") ?? owned[0];
+      return fallback?.id ?? "default";
+    },
+    setMain: async (owner, profileId) => {
+      const profile = await service.get(owner, profileId);
+      if (profile === undefined) throw new NotFound({ what: `profile ${profileId}` });
+      await run(
+        converse.docs.commit(async (tx) => {
+          const draft = await tx.doc(SettingsDoc);
+          draft.main = { ...draft.main, [owner]: profileId };
+        }),
+      );
     },
     scopeOf: (conversationId) => scopeIndex.get(String(conversationId)),
     profileOf: (conversationId) => profileByConversation.get(String(conversationId)),

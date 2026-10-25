@@ -23,6 +23,13 @@ const MessageParams = Type.Object({
     description:
       "The full, self-contained message. The recipient sees only this, not your context.",
   }),
+  topic: Type.Optional(
+    Type.String({
+      description:
+        'The conversation context, e.g. "Q3 report". Same topic shares one thread; different ' +
+        "topics open separate threads. Omit for a general thread.",
+    }),
+  ),
   artifacts: Type.Optional(
     Type.Array(Type.String(), {
       description: "Artifact ids to grant the recipient (read access to exactly these).",
@@ -34,10 +41,10 @@ const messageTool = (mailbox: MailboxService, profiles: ProfilesService): Tool =
   defineTool({
     name: "message",
     description:
-      "Send a message to a sibling entity in your workspace. Asynchronous: your message " +
-      "lands in your shared DM thread, the sibling answers there, and you are WOKEN with the " +
-      "reply as a new input — END YOUR TURN after sending; never wait or poll. Requests cost " +
-      "a model turn for the sibling; prefer notify when no answer is needed.",
+      "Send a message to a sibling bot in your workspace. Asynchronous: it lands in your " +
+      "shared thread for the topic, the sibling answers there, and you are WOKEN with the " +
+      "reply as a new input in that same thread — END YOUR TURN after sending; never wait or " +
+      "poll. Requests cost a model turn for the sibling; prefer notify when no answer is needed.",
     parameters: MessageParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), status: Type.String() }),
     execute: (args, api) => {
@@ -47,7 +54,7 @@ const messageTool = (mailbox: MailboxService, profiles: ProfilesService): Tool =
           output: [
             {
               type: "text" as const,
-              text: "refused: this conversation belongs to no profile — messaging is a profile capability.",
+              text: "refused: this conversation belongs to no bot — messaging is a bot capability.",
             },
           ],
           isError: true as const,
@@ -60,6 +67,7 @@ const messageTool = (mailbox: MailboxService, profiles: ProfilesService): Tool =
           to: args.to,
           kind: args.kind,
           body: args.body,
+          ...(args.topic !== undefined ? { topic: args.topic } : {}),
           ...(args.artifacts !== undefined ? { artifacts: args.artifacts } : {}),
           origin: "tool",
         })

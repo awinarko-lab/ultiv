@@ -39,6 +39,7 @@ import { PiRegistry, piRegistryLayer } from "./converse/pi-registry.ts";
 import { Tasks, tasksLayer, type TasksService } from "./tasks/tasks.ts";
 import { profilesService, type ProfilesService } from "./profiles/profiles.ts";
 import { profilesExtension } from "./profiles/section.ts";
+import { roomsService, type RoomsService } from "./profiles/rooms.ts";
 import { mailboxService, type MailboxService } from "./mailbox/mailbox.ts";
 import { messageTools } from "./mailbox/tools.ts";
 import { memoryService, type MemoryService } from "./memory/memory.ts";
@@ -74,6 +75,8 @@ export interface MindService {
   readonly tasks: TasksService;
   /** User-defined entities above sessions: registry, Bot Mode, DM threads. */
   readonly profiles: ProfilesService;
+  /** Contextual rooms between bots — one conversation per participant. */
+  readonly rooms: RoomsService;
   /** Inter-entity messaging on per-pair DM threads. */
   readonly mailbox: MailboxService;
   /** The memory seam: profile and owner stores with write authority. */
@@ -140,7 +143,8 @@ const mindLayerRaw = (
         tools: () => act.extension().tools ?? [],
       });
       const profilesRef: ProfilesService = profiles;
-      const mailbox = mailboxService({ converse, profiles, audit });
+      const rooms = roomsService({ converse, profiles });
+      const mailbox = mailboxService({ converse, profiles, rooms, audit });
       const memory = memoryService({ converse, profiles });
       // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
       // through the holder the registry was built with — set now that the
@@ -190,6 +194,7 @@ const mindLayerRaw = (
         generate,
         tasks,
         profiles,
+        rooms,
         mailbox,
         memory,
         vault: wiring.vaultStore,

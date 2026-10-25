@@ -55,22 +55,28 @@ describe("Profiles (offline, MemoryStorage)", () => {
     await handle.close();
   });
 
-  it("creates one DM thread per pair, shared by both directions", async () => {
+  it("rooms are contextual: one per pair+topic, and never sessions", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
-    const { profiles } = handle.mind;
-    const a = await profiles.create("harry", { name: "CoS" });
-    const b = await profiles.create("harry", { name: "Researcher" });
-    const dm1 = await profiles.ensureDm("harry", a.id, b.id);
-    const dm2 = await profiles.ensureDm("harry", b.id, a.id);
-    expect(dm1.id).toBe(dm2.id);
-    expect(dm1.participants).toContain(a.id);
-    // The DM shows under both participants' session lists.
-    expect((await profiles.listSessions("harry", a.id)).some((row) => row.id === dm1.id)).toBe(
-      true,
-    );
-    expect((await profiles.listSessions("harry", b.id)).some((row) => row.id === dm1.id)).toBe(
-      true,
-    );
+    const { profiles, rooms } = handle.mind;
+    const a = await profiles.create("harry", { name: "CoS", onboard: false });
+    const b = await profiles.create("harry", { name: "Researcher", onboard: false });
+    const report = await rooms.ensure("harry", [a.id, b.id], "Q3 report");
+    // Same participants + topic → the same room; different topic → a new one.
+    expect((await rooms.ensure("harry", [b.id, a.id], "Q3 report")).id).toBe(report.id);
+    const onboard = await rooms.ensure("harry", [a.id, b.id], "onboarding");
+    expect(onboard.id).not.toBe(report.id);
+    // Rooms are invisible in session lists (bot-to-bot traffic is not "my chats").
+    expect((await profiles.listSessions("harry")).every((row) => row.kind !== "room")).toBe(true);
+    // Each participant's seat is scoped to THEIR profile — identity and memory
+    // are per-entity, never shared.
+    for (const seat of await rooms.seats("harry", report)) {
+      const scope = handle.mind.profiles.scopeOf(seat.conversationId ?? "");
+      expect(scope?.kind).toBe("room");
+      expect(scope?.participants).toContain(a.id);
+      expect(scope?.participants).toContain(b.id);
+    }
+    expect(await rooms.purgeProfile("harry", a.id)).toBe(2);
+    expect((await rooms.list("harry")).length).toBe(0);
     await handle.close();
   });
 
@@ -84,7 +90,7 @@ describe("Profiles (offline, MemoryStorage)", () => {
       threw = (error as { reason?: string }).reason === "unknown timezone: Mars/Olympus";
     }
     expect(threw).toBe(true);
-    const profile = await profiles.create("harry", { name: "Temp" });
+    const profile = await profiles.create("harry", { name: "Temp", onboard: false });
     await profiles.createSession("harry", profile.id, null);
     const removed = await profiles.remove("harry", profile.id);
     expect(removed.length).toBe(1);

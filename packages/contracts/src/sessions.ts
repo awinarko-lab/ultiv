@@ -5,6 +5,7 @@ export const SessionKindSchema = Type.Union([
   Type.Literal("main"),
   Type.Literal("session"),
   Type.Literal("dm"),
+  Type.Literal("room"),
 ]);
 
 export type SessionKind = Static<typeof SessionKindSchema>;

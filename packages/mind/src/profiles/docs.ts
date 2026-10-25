@@ -99,6 +99,15 @@ export const validTimezone = (tz: string): boolean => {
   }
 };
 
+/** Owner-level settings: which profile is the main bot (exactly one at a time). */
+export const SettingsDoc = defineDoc<{ main: Record<string, string> }>({
+  kind: "ultiv.settings",
+  version: 1,
+  scope: "session",
+  initial: () => ({ main: {} }),
+  checkpointWhen: () => true,
+});
+
 /** One mapped conversation's profile scope. */
 export interface ConversationScope {
   readonly owner: string;

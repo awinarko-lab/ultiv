@@ -146,7 +146,7 @@ const cosProfile = await call("POST", "/api/profiles", { name: "CoS" }, headers)
 const message = await call(
   "POST",
   `/api/profiles/${cosProfile.json.id}/messages`,
-  { to: rid, kind: "request", body: "status?" },
+  { to: rid, kind: "request", body: "status?", topic: "smoke check" },
   headers,
 );
 expect("mailbox send admitted", message.status === 200 && message.json.status === "pending");
@@ -159,6 +159,46 @@ const refused = await call(
 expect("mailbox refuses unknown target", refused.status === 400);
 const mailboxList = await call("GET", "/api/mailbox", undefined, headers);
 expect("mailbox list", mailboxList.status === 200 && mailboxList.json.length >= 1);
+
+// Rooms: the exchange lives in a contextual room with per-bot seats —
+// never in either bot's session list.
+await new Promise((resolve) => setTimeout(resolve, 300));
+const roomsList = await call("GET", "/api/rooms", undefined, headers);
+expect("room created for the exchange", roomsList.status === 200 && roomsList.json.length >= 1);
+const roomId = roomsList.json[0].id as string;
+const roomDetail = await call("GET", `/api/rooms/${roomId}`, undefined, headers);
+expect(
+  "room has per-bot seats",
+  roomDetail.status === 200 &&
+    roomDetail.json.seats.length === 2 &&
+    roomDetail.json.seats.every((seat: { transcript: unknown[] }) =>
+      Array.isArray(seat.transcript),
+    ),
+);
+const allSessions = await call("GET", "/api/sessions", undefined, headers);
+expect(
+  "rooms never appear in sessions",
+  allSessions.json.every((row: { kind: string }) => row.kind !== "room"),
+);
+const said = await call(
+  "POST",
+  `/api/rooms/${roomId}/say`,
+  { to: rid, text: "supervision ping" },
+  headers,
+);
+expect("room say", said.status === 200 && said.json.ok === true);
+
+// Main bot: switchable, one at a time; the main bot is not removable.
+const mainBefore = await call("GET", "/api/main", undefined, headers);
+expect("main defaults", mainBefore.json.profileId === "default");
+const deleteMain = await call("DELETE", "/api/profiles/default", undefined, headers);
+expect("main bot protected", deleteMain.status === 409);
+const setMain = await call("POST", `/api/profiles/${rid}/main`, undefined, headers);
+expect("set main", setMain.status === 200);
+const mainAfter = await call("GET", "/api/main", undefined, headers);
+expect("main switched", mainAfter.json.profileId === rid);
+const deleteOld = await call("DELETE", "/api/profiles/default", undefined, headers);
+expect("non-main bot removable", deleteOld.status === 200 && deleteOld.json.ok === true);
 
 // Vault: secrets seal; responses carry masks only.
 const login = await call(

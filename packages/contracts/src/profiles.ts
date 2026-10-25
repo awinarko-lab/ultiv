@@ -61,6 +61,8 @@ export const ProfileCreateSchema = Type.Object({
   model: Type.Optional(ProfileModelSchema),
   toolAllowlist: Type.Optional(Type.Union([Type.Array(Type.String()), Type.Null()])),
   policies: Type.Optional(ProfilePoliciesSchema),
+  /** Spawn-time first turn under the bot's own identity (default true). */
+  onboard: Type.Optional(Type.Boolean()),
 });
 
 export type ProfileCreate = Static<typeof ProfileCreateSchema>;

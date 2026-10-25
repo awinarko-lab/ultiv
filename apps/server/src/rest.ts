@@ -15,6 +15,7 @@ import { artifactRoutes } from "./rest/artifacts.ts";
 import { cronRoutes } from "./rest/cron.ts";
 import { mailboxRoutes } from "./rest/mailbox.ts";
 import { memoryRoutes, profileRoutes } from "./rest/profiles.ts";
+import { roomRoutes } from "./rest/rooms.ts";
 import { taskRoutes } from "./rest/tasks.ts";
 import { vaultRoutes } from "./rest/vault.ts";
 import { webhookRoutes } from "./rest/webhooks.ts";
@@ -121,6 +122,7 @@ async function route(args: RouteArgs): Promise<void> {
   if (await profileRoutes(args)) return;
   if (await memoryRoutes(args)) return;
   if (await mailboxRoutes(args)) return;
+  if (await roomRoutes(args)) return;
   if (await taskRoutes(args, segment)) return;
   if (await artifactRoutes(args, segment)) return;
   if (await webhookRoutes(args, segment)) return;
