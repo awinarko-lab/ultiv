@@ -36,6 +36,11 @@ function clientHost(): Promise<Host<GuestPrincipal>> {
         once: true,
       });
     });
+    // A server restart kills this socket; drop the cache so the next
+    // navigation builds a fresh host instead of reusing the dead one.
+    socket.addEventListener("close", () => {
+      if (hostPromise !== undefined) hostPromise = undefined;
+    });
     host.connect(webSocketLink(socket as unknown as WebSocketLike), {
       principal: { kind: "guest" },
     });
