@@ -1,6 +1,7 @@
 /**
- * The mind — the platform's one AI entity (name pending; `mind` is the
- * working name). Chat is only one of its forms: `converse` (durable
+ * The mind — the platform's one AI entity, named **Ultius** (`@ultiv/mind`
+ * keeps its working package name; the entity it implements is Ultius).
+ * Chat is only one of its forms: `converse` (durable
  * conversations), `decide` (typed Jev decisions, independent of chat),
  * `act` (its executable tool surface). Everything enters through this
  * service; nothing reaches a provider raw.
@@ -11,7 +12,7 @@ import type { Storage } from "@earendil-works/pi-durable";
 import { openRuntime, Duplicate, External, Unavailable, type Runtime } from "@ultiv/core";
 import { makeRegistry, Registry, type Plugin } from "@ultiv/ext";
 import { Approvals, approvalsLayer, type ApprovalsService } from "./approvals.ts";
-import { actService } from "./act/act.ts";
+import { actService, ENTITY_NAME } from "./act/act.ts";
 import { decisionPlugin } from "./act/decision-tools.ts";
 import { Converse, converseLayer, type ConverseService } from "./converse/converse.ts";
 import { decideLayer, Decide, type DecideService } from "./decide/decide.ts";
@@ -66,7 +67,7 @@ const mindLayerRaw: Layer.Layer<
       act,
       approvals,
       describe: () => ({
-        entity: "mind", // name pending
+        entity: ENTITY_NAME,
         decide: decide.available,
         tools: act.tools().map((tool) => tool.name),
       }),

@@ -110,7 +110,7 @@ export function askTool(decide: DecideService): ToolRegistration<typeof AskParam
   return {
     name: "jev",
     description:
-      "Ask Jev, a typed decision model, several questions in one call. Each question is a noul (yes/no probability), choice (pick one of options), or score (rubric rating). Batch related decisions here instead of many single calls.",
+      "Your typed decision faculty (Jev), several questions in one call. Each question is a noul (yes/no probability), choice (pick one of options), or score (rubric rating). Batch related decisions here instead of many single calls.",
     parameters: AskParams,
     structuredOutputSchema: AskOutput,
     execute: async (args) => {

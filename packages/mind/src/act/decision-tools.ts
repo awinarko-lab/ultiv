@@ -23,7 +23,7 @@ export function scoreTool(decide: DecideService): ToolRegistration<typeof ScoreP
   return {
     name: "jev_score",
     description:
-      "Ask Jev, a typed decision model, for the probability (0..1) that a statement holds. Prefer this over guessing for yes/no judgments.",
+      "Your typed judgment: the probability (0..1) that a statement holds — your own decision faculty, Jev. Prefer it over guessing for yes/no judgments.",
     parameters: ScoreParams,
     structuredOutputSchema: Type.Object({ probability: Type.Number() }),
     execute: async (args) => {
@@ -49,7 +49,7 @@ export function pickTool(decide: DecideService): ToolRegistration<typeof PickPar
   return {
     name: "jev_pick",
     description:
-      "Ask Jev, a typed decision model, to pick exactly one of the given options for a question.",
+      "Your typed decision faculty (Jev): pick exactly one of the given options for a question.",
     parameters: PickParams,
     structuredOutputSchema: Type.Object({ choice: Type.String() }),
     execute: async (args) => {
@@ -82,7 +82,7 @@ export function rateTool(decide: DecideService): ToolRegistration<typeof RatePar
   return {
     name: "jev_rate",
     description:
-      "Ask Jev, a typed decision model, to rate a state against an ordered rubric. Returns the expected score (may fall between levels) with a confidence.",
+      "Your typed judgment (Jev): rate a state against an ordered rubric. Returns the expected score (may fall between levels), with a confidence.",
     parameters: RateParams,
     structuredOutputSchema: RatingOutput,
     execute: async (args) => {

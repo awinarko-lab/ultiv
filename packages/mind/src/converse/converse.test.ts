@@ -28,7 +28,7 @@ describe("Converse (offline, MemoryStorage)", () => {
     const snapshot = await Effect.runPromise(handle.mind.converse.docs.snapshot(TestDoc));
     expect(snapshot?.items).toEqual(["one"]);
     const described = handle.mind.describe();
-    expect(described.entity).toBe("mind");
+    expect(described.entity).toBe("Ultius");
     expect(described.decide).toBe(false); // no TYPESAFE_API_KEY in tests
     await handle.close();
   });
