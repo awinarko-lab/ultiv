@@ -1,158 +1,50 @@
 /**
  * The Profiles faculty: user-defined AI entities above sessions. One runtime,
  * one entity per profile — each profile owns its main chat ("Bot Mode"),
- * sessions, per-pair DM threads, artifacts scope and persona. This module owns
- * the session registry doc (v3: profile/kind/participants) and the
- * conversation→profile index that persona rendering, audit stamping and the
- * artifact scope resolver all read.
+ * sessions, per-pair DM threads, artifacts scope and persona. The service owns
+ * the conversation→profile index that persona rendering, audit stamping and
+ * the artifact scope resolver all read; docs and pure helpers live in docs.ts.
  */
 import { randomUUID } from "node:crypto";
-import { defineDoc } from "@earendil-works/pi-durable";
 import type { AgentChange } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
-import { Type } from "typebox";
 import { InvalidInput, NotFound } from "@ultiv/core";
-import type { ProfileCreate, ProfileInfo, ProfilePolicies, SessionInfo } from "@ultiv/contracts";
+import type { ProfileCreate, ProfileInfo, SessionInfo } from "@ultiv/contracts";
 import { KENARI_MODELS } from "../providers/kenari.ts";
 import { TasksDoc, taskConversationKey } from "../tasks/tasks.ts";
 import type { ConverseService } from "../converse/converse.ts";
 import type { GenerateService } from "../generate/generate.ts";
+import {
+  MAIN_PREFIX,
+  ProfilesDoc,
+  SessionsDoc,
+  commitProfiles,
+  commitSessions,
+  defaultPolicies,
+  defaultTimezone,
+  legacyKey,
+  pairKey,
+  pairSessionId,
+  readProfiles,
+  readSessions,
+  scopedKey,
+  titleFor,
+  validTimezone,
+} from "./docs.ts";
+import type { ConversationScope } from "./docs.ts";
 
-/** Registry doc: every profile row, owner-partitioned like the sessions doc. */
-export const ProfilesDoc = defineDoc<{ profiles: ProfileInfo[] }>({
-  kind: "ultiv.profiles",
-  version: 1,
-  scope: "session",
-  initial: () => ({ profiles: [] }),
-  checkpointWhen: () => true,
-});
-
-/**
- * The session registry (v3). Migrates stamp `profile: "default"` and
- * `kind: "session"` onto pre-profile rows — the same move the v1→v2 owner
- * stamp made, one level deeper.
- */
-export const SessionsDoc = defineDoc<{ sessions: SessionInfo[] }>({
-  kind: "ultiv.sessions",
-  version: 3,
-  scope: "session",
-  initial: () => ({ sessions: [] }),
-  // Rows may arrive from v1 (no owner) or v2 (no profile/kind/participants);
-  // stamp every missing field. Pre-profile sessions belonged to the default
-  // profile by definition.
-  migrate: (value) => {
-    const stored = (value.sessions ?? []) as unknown as ReadonlyArray<Record<string, unknown>>;
-    const sessions = stored.map((row) => ({
-      ...row,
-      owner: typeof row.owner === "string" ? row.owner : "guest",
-      profile: typeof row.profile === "string" ? row.profile : "default",
-      kind: row.kind === "main" || row.kind === "dm" ? row.kind : "session",
-      participants: Array.isArray(row.participants) ? row.participants : null,
-    }));
-    return { sessions } as unknown as { sessions: SessionInfo[] };
-  },
-  checkpointWhen: () => true,
-});
-
-/** The main-chat session id prefix; each reset rotates to a fresh id. */
-const MAIN_PREFIX = "main-";
-
-/** Conversation keys. Scoped form `{owner}:{profile}:{id}`; DM pairs share one thread. */
-export const scopedKey = (owner: string, profile: string, id: string): string =>
-  `${owner}:${profile}:${id}`;
-export const legacyKey = (owner: string, id: string): string => `${owner}:${id}`;
-export const pairKey = (owner: string, a: string, b: string): string =>
-  `${owner}:pair:${[a, b].sort().join("|")}`;
-export const pairSessionId = (a: string, b: string): string => `dm-${[a, b].sort().join("|")}`;
-
-export const defaultPolicies = (): ProfilePolicies => ({
-  canInitiate: [],
-  autoApprove: [],
-  approvalTimeout: "deny",
-  dailyTurnBudget: null,
-  memoryKeeper: false,
-});
-
-export const defaultTimezone = (): string => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
-  } catch {
-    return "UTC";
-  }
-};
-
-const validTimezone = (tz: string): boolean => {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-/** Normalize stored rows on every read (defence below the migrate). */
-const normalizeRow = (row: SessionInfo): SessionInfo => ({
-  ...row,
-  owner: typeof row.owner === "string" ? row.owner : "guest",
-  profile: typeof row.profile === "string" ? row.profile : "default",
-  kind: row.kind === "main" || row.kind === "dm" ? row.kind : "session",
-  participants: Array.isArray(row.participants) ? row.participants : null,
-});
-
-const readSessions = (converse: ConverseService) =>
-  Effect.map(converse.docs.snapshot(SessionsDoc), (doc) => (doc?.sessions ?? []).map(normalizeRow));
-
-const readProfiles = (converse: ConverseService) =>
-  Effect.map(converse.docs.snapshot(ProfilesDoc), (doc) => doc?.profiles ?? []);
-
-const commitSessions = (
-  converse: ConverseService,
-  change: (sessions: SessionInfo[]) => SessionInfo[],
-) =>
-  converse.docs.commit(async (tx) => {
-    const draft = await tx.doc(SessionsDoc);
-    draft.sessions = change(draft.sessions.map(normalizeRow));
-  });
-
-const commitProfiles = (
-  converse: ConverseService,
-  change: (profiles: ProfileInfo[]) => ProfileInfo[],
-) =>
-  converse.docs.commit(async (tx) => {
-    const draft = await tx.doc(ProfilesDoc);
-    draft.profiles = change(draft.profiles);
-  });
-
-/** A short title for a conversation's first message; truncation on any failure. */
-async function titleFor(generate: GenerateService, seed: string): Promise<string> {
-  const fallback = (text: string): string => {
-    const trimmed = text.trim();
-    return trimmed.length > 48 ? `${trimmed.slice(0, 48)}…` : trimmed;
-  };
-  try {
-    const generated = await Effect.runPromise(
-      generate.extract({
-        schema: Type.Object({ title: Type.String() }),
-        maxTokens: 64,
-        prompt:
-          `Write a 3-6 word title for a conversation that starts with the message below. ` +
-          `Reply as JSON {"title": "..."}.\n\n<message>\n${seed.slice(0, 500)}\n</message>`,
-      }),
-    );
-    const title = generated.title.trim().slice(0, 80);
-    return title === "" ? fallback(seed) : title;
-  } catch {
-    return fallback(seed);
-  }
-}
-
-/** One mapped conversation's profile scope. */
-export interface ConversationScope {
-  readonly owner: string;
-  readonly profileId: string;
-  readonly kind: SessionInfo["kind"];
-  readonly participants: readonly string[] | null;
-}
+export {
+  MAIN_PREFIX,
+  ProfilesDoc,
+  SessionsDoc,
+  defaultPolicies,
+  defaultTimezone,
+  legacyKey,
+  pairKey,
+  pairSessionId,
+  scopedKey,
+} from "./docs.ts";
+export type { ConversationScope } from "./docs.ts";
 
 export interface ProfilesService {
   readonly list: (owner: string) => Promise<ProfileInfo[]>;
