@@ -1,6 +1,5 @@
 import { Type } from "typebox";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
-import { requestApproval } from "../approvals.ts";
 import { jevAsk, jevClient, jevPick, jevRate, jevYesNo, type JevQuestionSpec } from "./typesafe.ts";
 
 const ScoreParams = Type.Object({
@@ -44,19 +43,7 @@ export function jevPickTool(): ToolRegistration<typeof PickParams> {
       "Ask Jev, a typed decision model, to pick exactly one of the given options for a question.",
     parameters: PickParams,
     structuredOutputSchema: Type.Object({ choice: Type.String() }),
-    execute: async (args, api) => {
-      // Gated: jev_pick spends a decision on the user's behalf — wait for approval.
-      const approved = await requestApproval(String(api.conversationId), api.callId, {
-        callId: api.callId,
-        name: "jev_pick",
-        input: args,
-      });
-      if (!approved) {
-        return {
-          isError: true,
-          output: [{ type: "text", text: "denied by the user" }],
-        };
-      }
+    execute: async (args) => {
       const picked = await jevPick(jevClient(), args.question, args.options);
       return {
         output: [{ type: "text", text: picked }],
@@ -208,25 +195,11 @@ export function jevAskTool(): ToolRegistration<typeof AskParams> {
   return {
     name: "jev",
     description:
-      "Ask Jev, a typed decision model, several questions in one call. Each question is a noul (yes/no probability), choice (pick one of options — acts for the user, needs approval), or score (rubric rating). Batch related decisions here instead of many single calls.",
+      "Ask Jev, a typed decision model, several questions in one call. Each question is a noul (yes/no probability), choice (pick one of options), or score (rubric rating). Batch related decisions here instead of many single calls.",
     parameters: AskParams,
     structuredOutputSchema: AskOutput,
-    execute: async (args, api) => {
+    execute: async (args) => {
       const specs = specsOf(args.questions);
-      if (specs.some((spec) => spec.type === "choice")) {
-        // A choice decides on the user's behalf — same gate as jev_pick, once per batch.
-        const approved = await requestApproval(String(api.conversationId), api.callId, {
-          callId: api.callId,
-          name: "jev",
-          input: args,
-        });
-        if (!approved) {
-          return {
-            isError: true,
-            output: [{ type: "text", text: "denied by the user" }],
-          };
-        }
-      }
       const answers = await jevAsk(jevClient(), args.state, specs);
       return {
         output: [{ type: "text", text: answers.map(lineOf).join("\n") }],

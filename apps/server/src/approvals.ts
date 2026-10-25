@@ -3,7 +3,16 @@
  * Session object that surfaces them to the user. Keyed by conversation id —
  * both sides know it: tools get it from `ToolExecutionApi`, the object from
  * the conversation it created.
+ *
+ * Placement rule: approval gates ACTS, never ASKS. A tool that only consults
+ * or computes (Jev scores, picks, rates; search; fetch) is a read — gating it
+ * interrupts the loop while protecting nothing, because the act that uses the
+ * result stays ungated. Wrap the side-effecting tool (send, write, pay,
+ * delete) with `withApproval` instead; leave reads clean.
  */
+
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { TSchema } from "typebox";
 
 export type ApprovalRequest = {
   callId: string;
@@ -52,4 +61,29 @@ export function decideApproval(conversationId: string, callId: string, approved:
 export function pendingFor(conversationId: string): ApprovalRequest[] {
   const prefix = `${conversationId}:`;
   return [...pending].filter(([k]) => k.startsWith(prefix)).map(([, request]) => request);
+}
+
+/**
+ * Wrap a side-effecting tool so its execution waits for the user's approval
+ * first. This is the ONLY way a tool should gate: one seam, applied at the
+ * act. Reads must not be wrapped.
+ */
+export function withApproval<P extends TSchema>(tool: ToolRegistration<P>): ToolRegistration<P> {
+  return {
+    ...tool,
+    execute: async (args, api, context) => {
+      const approved = await requestApproval(String(api.conversationId), api.callId, {
+        callId: api.callId,
+        name: tool.name,
+        input: args,
+      });
+      if (!approved) {
+        return {
+          isError: true,
+          output: [{ type: "text", text: "denied by the user" }],
+        };
+      }
+      return tool.execute(args, api, context);
+    },
+  };
 }
