@@ -11,14 +11,20 @@ import { AuthMissing, External, InvalidInput, NotFound } from "@ultiv/core";
 
 export type ActionError = AuthMissing | External | InvalidInput;
 
-/** How a connector authenticates. `env` reads a key from the environment. */
+/** How a connector authenticates. `env` reads a key from the environment; `vault` redeems a sealed vault item. */
 export type AuthSpec =
   | { readonly kind: "none" }
-  | { readonly kind: "env"; readonly env: string; readonly displayName: string };
+  | { readonly kind: "env"; readonly env: string; readonly displayName: string }
+  | { readonly kind: "vault"; readonly item: string; readonly displayName: string };
 
 /** Resolved credentials handed to an action's `perform`. */
 export interface ConnectorContext {
   readonly apiKey?: string;
+}
+
+/** Vault-backed credential resolution: the act layer provides one per owner. */
+export interface AuthSource {
+  readonly resolveItem: (itemId: string) => { readonly apiKey?: string } | undefined;
 }
 
 export interface Action<Input extends TSchema = TSchema, Output extends TSchema = TSchema> {
@@ -47,10 +53,22 @@ export const defineAction = <const Input extends TSchema, const Output extends T
 
 export const defineConnector = (connector: Connector): Connector => connector;
 
-/** Resolve the connector's credentials from the environment; empty counts as absent. */
-export const resolveAuth = (connector: Connector): Effect.Effect<ConnectorContext, AuthMissing> =>
+/** Resolve the connector's credentials; empty counts as absent. */
+export const resolveAuth = (
+  connector: Connector,
+  source?: AuthSource,
+): Effect.Effect<ConnectorContext, AuthMissing> =>
   Effect.gen(function* () {
     if (connector.auth.kind === "none") return {};
+    if (connector.auth.kind === "vault") {
+      // Vault-backed: redeem in-process. An absent source or item is a missing
+      // credential — the secret itself never crosses a model-facing surface.
+      const resolved = source?.resolveItem(connector.auth.item);
+      if (resolved === undefined || resolved.apiKey === undefined || resolved.apiKey === "") {
+        return yield* new AuthMissing({ connector: connector.id, env: connector.auth.item });
+      }
+      return { apiKey: resolved.apiKey };
+    }
     // An unreadable provider counts as absent: the caller hears AuthMissing either way.
     const key = yield* Effect.match(Config.option(Config.String(connector.auth.env)), {
       onFailure: () => Option.none<string>(),
@@ -67,6 +85,7 @@ export const invoke = (
   connector: Connector,
   actionName: string,
   input: unknown,
+  source?: AuthSource,
 ): Effect.Effect<unknown, ActionError | NotFound> =>
   Effect.gen(function* () {
     const action = connector.actions.find((candidate) => candidate.name === actionName);
@@ -78,6 +97,6 @@ export const invoke = (
         reason: `${connector.id}.${actionName}: input does not match the action schema`,
       });
     }
-    const context = yield* resolveAuth(connector);
+    const context = yield* resolveAuth(connector, source);
     return yield* action.perform(input as never, context);
   });

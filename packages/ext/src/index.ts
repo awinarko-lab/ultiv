@@ -2,6 +2,8 @@ export * from "./connector.ts";
 export * from "./plugin.ts";
 export * from "./registry.ts";
 export * from "./tool.ts";
+export * from "./vault.ts";
 export * from "./plugins/artifacts.ts";
 export * from "./plugins/http.ts";
 export * from "./plugins/tinyfish.ts";
+export * from "./plugins/vault.ts";

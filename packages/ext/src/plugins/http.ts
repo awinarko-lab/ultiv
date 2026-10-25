@@ -61,3 +61,35 @@ export const httpPlugin = definePlugin({
     "Generic HTTP egress connector (reference implementation of the connector standard).",
   capabilities: [connectorCapability(httpConnector)],
 });
+
+/** The request action with vault-backed bearer auth. */
+const bearerRequest = defineAction({
+  name: "request",
+  description:
+    "Perform one HTTP request with the vault's bearer token; returns the status and body text.",
+  input: RequestInput,
+  output: RequestOutput,
+  perform: (input, context) =>
+    Effect.tryPromise({
+      try: async () => {
+        const headers = { ...input.headers };
+        if (headers.authorization === undefined && context.apiKey !== undefined) {
+          headers.authorization = `Bearer ${context.apiKey}`;
+        }
+        const init: RequestInit = { method: input.method, headers };
+        if (input.body !== undefined) init.body = input.body;
+        const response = await fetch(input.url, init);
+        return { status: response.status, body: await response.text() };
+      },
+      catch: (cause) => new External({ op: `http ${input.method} ${input.url}`, cause }),
+    }),
+});
+
+/** HTTP egress with the credential redeemed from the vault — never model-visible. */
+export const vaultedHttpConnector: Connector = defineConnector({
+  id: "http-bearer",
+  name: "HTTP (vault bearer)",
+  description: "HTTP egress authenticated by a sealed vault item (kind `key`).",
+  auth: { kind: "vault", item: "http-bearer", displayName: "HTTP Bearer (vault item)" },
+  actions: [bearerRequest],
+});

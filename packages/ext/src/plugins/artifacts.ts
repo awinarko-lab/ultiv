@@ -16,6 +16,15 @@ import { ArtifactInfoSchema } from "@ultiv/contracts";
 import type { ArtifactInfo } from "@ultiv/contracts";
 import { definePlugin, toolCapability, type Plugin } from "../plugin.ts";
 import { defineTool, type Tool } from "../tool.ts";
+import type { ScopeHolder } from "./vault.ts";
+import { scopeDir } from "./vault.ts";
+
+export interface ArtifactsOptions {
+  /** Workspace root; default ARTIFACTS_DIR. */
+  readonly root?: string;
+  /** Profile-scope resolver; when set, artifacts partition by {owner}/{profile}. */
+  readonly holder?: ScopeHolder;
+}
 
 /** The workspace directory (relative to the server's cwd, like HARNESS_DB). */
 export const artifactsDir = (): string => {
@@ -192,7 +201,7 @@ const WriteParams = Type.Object({
   }),
 });
 
-const artifactWriteTool = (dir: string): Tool =>
+const artifactWriteTool = (dirOf: (conversationId: string) => string, holder?: ScopeHolder): Tool =>
   defineTool({
     name: "artifact_write",
     gated: true,
@@ -208,10 +217,14 @@ const artifactWriteTool = (dir: string): Tool =>
           isError: true as const,
         });
       }
-      const info = writeArtifact(dir, {
+      const conversationId = String(api.conversationId);
+      const scope = holder?.get()?.scopeOf(conversationId);
+      const info = writeArtifact(dirOf(conversationId), {
         name: args.name,
         content: args.content,
-        conversationId: String(api.conversationId),
+        conversationId,
+        owner: scope?.owner ?? null,
+        profile: scope?.profile ?? null,
       });
       return Promise.resolve({
         output: [{ type: "text" as const, text: `artifact ${info.id} (${info.name})` }],
@@ -220,13 +233,13 @@ const artifactWriteTool = (dir: string): Tool =>
     },
   });
 
-const artifactReadTool = (dir: string): Tool =>
+const artifactReadTool = (dirOf: (conversationId: string) => string): Tool =>
   defineTool({
     name: "artifact_read",
     description: "Read a workspace artifact's content by id (UTF-8, capped).",
     parameters: Type.Object({ id: Type.String({ description: "The artifact id." }) }),
-    execute: (args) => {
-      const found = readArtifact(dir, args.id);
+    execute: (args, api) => {
+      const found = readArtifact(dirOf(String(api.conversationId)), args.id);
       if (found === undefined) {
         return Promise.resolve({
           output: [{ type: "text" as const, text: `unknown artifact: ${args.id}` }],
@@ -252,17 +265,18 @@ const ListParams = Type.Object({
   ),
 });
 
-const artifactListTool = (dir: string): Tool =>
+const artifactListTool = (dirOf: (conversationId: string) => string): Tool =>
   defineTool({
     name: "artifact_list",
     description:
       "List or search the workspace's artifacts (id, name, type, size, recency). Defaults to " +
-      'THIS conversation\'s artifacts; widen with scope "all" when needed.',
+      'THIS conversation\'s artifacts; widen with scope "all" when needed — that searches this ' +
+      "profile's whole workspace.",
     parameters: ListParams,
     structuredOutputSchema: Type.Array(ArtifactInfoShape),
     execute: (args, api) => {
       const scopeAll = args.scope === "all";
-      const items = searchArtifacts(dir, {
+      const items = searchArtifacts(dirOf(String(api.conversationId)), {
         ...(scopeAll ? {} : { conversationId: String(api.conversationId) }),
         ...(args.query !== undefined ? { query: args.query } : {}),
       });
@@ -274,14 +288,14 @@ const artifactListTool = (dir: string): Tool =>
     },
   });
 
-const artifactDeleteTool = (dir: string): Tool =>
+const artifactDeleteTool = (dirOf: (conversationId: string) => string): Tool =>
   defineTool({
     name: "artifact_delete",
     gated: true,
     description: "Delete one workspace artifact by id. Destructive; the user approves each call.",
     parameters: Type.Object({ id: Type.String({ description: "The artifact id." }) }),
-    execute: (args) => {
-      const deleted = deleteArtifact(dir, args.id);
+    execute: (args, api) => {
+      const deleted = deleteArtifact(dirOf(String(api.conversationId)), args.id);
       if (!deleted) {
         return Promise.resolve({
           output: [{ type: "text" as const, text: `unknown artifact: ${args.id}` }],
@@ -297,17 +311,23 @@ const artifactDeleteTool = (dir: string): Tool =>
 
 export type ArtifactWriteInput = Static<typeof WriteParams>;
 
-/** The workspace plugin: always on; the store is the server's shared dir. */
-export const artifactsPlugin = (dir: string = artifactsDir()): Plugin =>
-  definePlugin({
+/** The workspace plugin: always on; the store resolves per conversation when a holder is set. */
+export const artifactsPlugin = (options: ArtifactsOptions = {}): Plugin => {
+  const root = options.root ?? artifactsDir();
+  const holder = options.holder;
+  const dirOf = (conversationId: string): string =>
+    holder === undefined ? root : scopeDir(holder, conversationId, root);
+  return definePlugin({
     id: "ultiv.artifacts",
-    version: "1.1.0",
+    version: "1.2.0",
     description:
-      "The artifact workspace: gated writes and deletes, reads, and session-scoped search.",
+      "The artifact workspace: gated writes and deletes, reads, and session-scoped search, " +
+      "partitioned per profile when a scope resolver is wired.",
     capabilities: [
-      toolCapability(artifactWriteTool(dir)),
-      toolCapability(artifactReadTool(dir)),
-      toolCapability(artifactListTool(dir)),
-      toolCapability(artifactDeleteTool(dir)),
+      toolCapability(artifactWriteTool(dirOf, holder)),
+      toolCapability(artifactReadTool(dirOf)),
+      toolCapability(artifactListTool(dirOf)),
+      toolCapability(artifactDeleteTool(dirOf)),
     ],
   });
+};

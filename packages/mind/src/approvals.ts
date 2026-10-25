@@ -87,9 +87,7 @@ export const makeApprovals = (
     decide: (conversationId, callId, approved) => settle(key(conversationId, callId), approved),
     pendingFor: (conversationId) => {
       const prefix = `${conversationId}:`;
-      return [...pending]
-        .filter(([k]) => k.startsWith(prefix))
-        .map(([, entry]) => entry.request);
+      return [...pending].filter(([k]) => k.startsWith(prefix)).map(([, entry]) => entry.request);
     },
     pendingAll: () => [...pending.values()],
   };

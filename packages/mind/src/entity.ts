@@ -13,17 +13,24 @@ import { defineExtension, type Storage } from "@earendil-works/pi-durable";
 import { openRuntime, Duplicate, External, Unavailable, type Runtime } from "@ultiv/core";
 import {
   artifactsPlugin,
+  createScopeHolder,
   makeRegistry,
   Registry,
   tinyfishConfigured,
   tinyfishPlugin,
+  vaultConfigured,
+  vaultDir,
+  makeVaultStore,
+  vaultPlugin,
   type Plugin,
+  type VaultStore,
 } from "@ultiv/ext";
 import { Approvals, approvalsLayer, type ApprovalsService } from "./approvals.ts";
 import { actService } from "./act/act.ts";
 import { codemodeExtension } from "./act/codemode.ts";
 import { taskTools } from "./act/task-tools.ts";
 import { ENTITY_NAME } from "./act/identity.ts";
+import type { ScopeHolder } from "@ultiv/ext";
 import { decisionPlugin } from "./act/decision-tools.ts";
 import { temporalPlugin } from "./act/temporal.ts";
 import { Audit, auditLayer, type AuditService } from "./audit/audit.ts";
@@ -71,6 +78,8 @@ export interface MindService {
   readonly mailbox: MailboxService;
   /** The memory seam: profile and owner stores with write authority. */
   readonly memory: MemoryService;
+  /** The credential vault, when VAULT_KEY is configured; else null. */
+  readonly vault: VaultStore | null;
   /** The append-only trail of the mind's acts. */
   readonly audit: AuditService;
   readonly describe: () => MindDescription;
@@ -85,90 +94,114 @@ export interface MindOptions {
   readonly plugins?: readonly Plugin[];
   /** Options for the generate faculty (token cap). */
   readonly generate?: GenerateOptions;
+  /** Options for the vault (directory override). */
+  readonly vault?: { readonly dir?: string };
 }
 
 /** Everything that can fail while booting the mind. */
 export type MindError = External | ConfigError | Unavailable | Duplicate;
 
-const mindLayerRaw: Layer.Layer<
+/** Wiring built in `mindLayer` that the entity composition consumes. */
+interface MindWiring {
+  readonly holder: ScopeHolder;
+  readonly vaultStore: VaultStore | null;
+}
+
+const mindLayerRaw = (
+  wiring: MindWiring,
+): Layer.Layer<
   Mind,
   never,
   Decide | Approvals | MindModels | Registry | Converse | Generate | Tasks | Audit | PiRegistry
-> = Layer.effect(
-  Mind,
-  Effect.gen(function* () {
-    const converse = yield* Converse;
-    const decide = yield* Decide;
-    const approvals = yield* Approvals;
-    const registry = yield* Registry;
-    const generate = yield* Generate;
-    const tasks = yield* Tasks;
-    const audit = yield* Audit;
-    const act = actService(registry, approvals, audit, (conversationId) =>
-      profilesRef?.profileOf(conversationId)?.id ?? null,
-    );
-    // One runtime, one entity per profile: the profiles service owns the
-    // session registry and the conversation→profile index; its identity
-    // section (persona + roster, or the substrate baseline) reaches every
-    // conversation through a late registry install.
-    const profiles = profilesService({
-      converse,
-      generate,
-      tools: () => act.extension().tools ?? [],
-    });
-    const profilesRef: ProfilesService = profiles;
-    const mailbox = mailboxService({ converse, profiles, audit });
-    const memory = memoryService({ converse, profiles });
-    // Per-profile approval policy (auto-approve lists, timeout escalation).
-    approvals.setHooks({
-      autoApprove: (conversationId, request) =>
-        profiles.profileOf(conversationId)?.policies.autoApprove.includes(request.name) === true,
-      onExpire: (conversationId, request) => {
-        audit.record({
-          at: Date.now(),
-          kind: "escalation",
-          conversationId,
-          profile: profiles.profileOf(conversationId)?.id ?? null,
-          callId: request.callId,
-          name: request.name,
-          durationMs: null,
-          ok: false,
-          error: "approval timed out",
-        });
-      },
-    });
-    // Everything rides one pi-durable registry; late installs are legal —
-    // the harness reconsiders its tools as the registry changes.
-    const piRegistry = yield* PiRegistry;
-    piRegistry.install(act.extension());
-    piRegistry.install(codemodeExtension());
-    piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
-    piRegistry.install(defineExtension({ name: "ultius.mind.tasks", tools: taskTools(tasks) }));
-    piRegistry.install(
-      defineExtension({ name: "ultius.mind.mailbox", tools: messageTools(mailbox, profiles) }),
-    );
-    piRegistry.install(
-      defineExtension({ name: "ultius.mind.memory", tools: memoryTools(memory, profiles) }),
-    );
-    return {
-      converse,
-      decide,
-      act,
-      approvals,
-      generate,
-      tasks,
-      profiles,
-      mailbox,
-      memory,
-      audit,
-      describe: () => ({
-        entity: ENTITY_NAME,
-        decide: decide.available,
-        tools: act.tools().map((tool) => tool.name),
-      }),
-    };
-  }),
-);
+> =>
+  Layer.effect(
+    Mind,
+    Effect.gen(function* () {
+      const converse = yield* Converse;
+      const decide = yield* Decide;
+      const approvals = yield* Approvals;
+      const registry = yield* Registry;
+      const generate = yield* Generate;
+      const tasks = yield* Tasks;
+      const audit = yield* Audit;
+      const act = actService(
+        registry,
+        approvals,
+        audit,
+        (conversationId) => profilesRef?.profileOf(conversationId)?.id ?? null,
+      );
+      // One runtime, one entity per profile: the profiles service owns the
+      // session registry and the conversation→profile index; its identity
+      // section (persona + roster, or the substrate baseline) reaches every
+      // conversation through a late registry install.
+      const profiles = profilesService({
+        converse,
+        generate,
+        tools: () => act.extension().tools ?? [],
+      });
+      const profilesRef: ProfilesService = profiles;
+      const mailbox = mailboxService({ converse, profiles, audit });
+      const memory = memoryService({ converse, profiles });
+      // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
+      // through the holder the registry was built with — set now that the
+      // conversation→profile index exists.
+      wiring.holder.set({
+        scopeOf: (conversationId) => {
+          const scope = profiles.scopeOf(conversationId);
+          return scope === undefined ? undefined : { owner: scope.owner, profile: scope.profileId };
+        },
+      });
+      // Per-profile approval policy (auto-approve lists, timeout escalation).
+      approvals.setHooks({
+        autoApprove: (conversationId, request) =>
+          profiles.profileOf(conversationId)?.policies.autoApprove.includes(request.name) === true,
+        onExpire: (conversationId, request) => {
+          audit.record({
+            at: Date.now(),
+            kind: "escalation",
+            conversationId,
+            profile: profiles.profileOf(conversationId)?.id ?? null,
+            callId: request.callId,
+            name: request.name,
+            durationMs: null,
+            ok: false,
+            error: "approval timed out",
+          });
+        },
+      });
+      // Everything rides one pi-durable registry; late installs are legal —
+      // the harness reconsiders its tools as the registry changes.
+      const piRegistry = yield* PiRegistry;
+      piRegistry.install(act.extension());
+      piRegistry.install(codemodeExtension());
+      piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
+      piRegistry.install(defineExtension({ name: "ultius.mind.tasks", tools: taskTools(tasks) }));
+      piRegistry.install(
+        defineExtension({ name: "ultius.mind.mailbox", tools: messageTools(mailbox, profiles) }),
+      );
+      piRegistry.install(
+        defineExtension({ name: "ultius.mind.memory", tools: memoryTools(memory, profiles) }),
+      );
+      return {
+        converse,
+        decide,
+        act,
+        approvals,
+        generate,
+        tasks,
+        profiles,
+        mailbox,
+        memory,
+        vault: wiring.vaultStore,
+        audit,
+        describe: () => ({
+          entity: ENTITY_NAME,
+          decide: decide.available,
+          tools: act.tools().map((tool) => tool.name),
+        }),
+      };
+    }),
+  );
 
 /**
  * The whole mind from options. Wiring: decide -> registry (the decision
@@ -183,15 +216,22 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
   const audit = auditLayer;
   const piRegistry = piRegistryLayer;
   const generate = generateLayer(options.generate).pipe(Layer.provide(models));
+  // The scope holder is created before the registry so ext plugins (artifacts
+  // dirs, vault lists) can partition per profile; the entity sets it once the
+  // conversation→profile index exists. Same lifecycle for the vault store.
+  const holder = createScopeHolder();
+  const vaultStore = vaultConfigured() ? makeVaultStore(options.vault?.dir ?? vaultDir()) : null;
+  const wiring: MindWiring = { holder, vaultStore };
   const registry = Layer.effect(
     Registry,
     Effect.gen(function* () {
       const decideService = yield* Decide;
-      // First-party faculties ride always (identity, temporal, artifacts);
+      // First-party faculties ride always (temporal, artifacts); the vault and
       // TinyFish live-web egress and Jev install only when keys are present.
       const base = [
         temporalPlugin(),
-        artifactsPlugin(),
+        artifactsPlugin({ holder }),
+        ...(vaultStore !== null ? [vaultPlugin(vaultStore, holder)] : []),
         ...(tinyfishConfigured() ? [tinyfishPlugin] : []),
       ];
       const plugins = decideService.available
@@ -219,7 +259,7 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
     .pipe(Layer.merge(piRegistry))
     .pipe(Layer.merge(generate))
     .pipe(Layer.merge(tasks));
-  return mindLayerRaw.pipe(Layer.provide(dependencies));
+  return mindLayerRaw(wiring).pipe(Layer.provide(dependencies));
 };
 
 export interface MindHandle {
