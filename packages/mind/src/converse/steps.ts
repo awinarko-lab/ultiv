@@ -62,10 +62,15 @@ function committedSteps(entries: readonly EntryRecord[], results: Map<string, To
         const id = entry.id * 100 + blockIndex++;
         if (record.role === "user") {
           const text = String((block as { text?: unknown }).text ?? "").trim();
-          // The onboarding seed is an identity instruction, not chat the user
-          // typed — the model still sees it (durable transcript); the UI doesn't.
+          // Bracketed inputs are machinery, not things the user typed. The
+          // onboarding seed is dropped outright; relays and room wakes render
+          // as muted notes. The model still sees all of them.
           if (text !== "" && !text.startsWith("[onboarding]")) {
-            out.push({ id, kind: "input", at, text });
+            if (/^\[(relay|message from|reply from|nack from|owner|cron )/.test(text)) {
+              out.push({ id, kind: "note", at, text });
+            } else {
+              out.push({ id, kind: "input", at, text });
+            }
           }
           break;
         }

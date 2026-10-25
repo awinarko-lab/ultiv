@@ -24,6 +24,16 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
   const [say, setSay] = useState("");
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  const toggle = (index: number): void => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
 
   const load = useCallback(async () => {
     setDetail(await api.room(room.id));
@@ -61,27 +71,49 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
         {detail.timeline.length === 0 ? (
           <p className="text-muted-foreground text-xs">(no messages yet)</p>
         ) : (
-          detail.timeline.map((line, index) => (
+          detail.timeline.map((line, index) => {
             // biome-ignore lint/suspicious/noArrayIndexKey: append-only timeline
-            <div key={index} className="mb-2">
-              {line.system ? (
-                <p className="text-muted-foreground text-xs italic">{line.text}</p>
-              ) : (
-                <>
-                  <span
-                    className={
-                      line.speaker === "owner"
-                        ? "text-accent-foreground font-semibold"
-                        : "font-semibold"
-                    }
-                  >
-                    {line.speaker}
-                  </span>
-                  <p className="whitespace-pre-wrap break-words">{line.text}</p>
-                </>
-              )}
-            </div>
-          ))
+            const long = line.text.length > 1_200;
+            const open = expanded.has(index);
+            const body = long && !open ? `${line.text.slice(0, 1_200)}…` : line.text;
+            return (
+              <div key={index} className="mb-2">
+                {line.system ? (
+                  <p className="text-muted-foreground text-xs italic">{line.text}</p>
+                ) : (
+                  <>
+                    <span
+                      className={
+                        line.speaker === "owner"
+                          ? "text-accent-foreground font-semibold"
+                          : "font-semibold"
+                      }
+                    >
+                      {line.speaker}
+                    </span>
+                    <span className="text-muted-foreground ml-2 text-[10px]">
+                      {new Date(line.at).toLocaleString([], {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <p className="whitespace-pre-wrap break-words">{body}</p>
+                    {long && (
+                      <button
+                        type="button"
+                        className="text-muted-foreground text-xs underline underline-offset-2"
+                        onClick={() => toggle(index)}
+                      >
+                        {open ? "show less" : "show more"}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
       <div className="flex gap-2">

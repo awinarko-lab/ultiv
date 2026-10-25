@@ -4,6 +4,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Effect } from "effect";
 import { openMind } from "../entity.ts";
 import { HOP_CAP, PAIR_RATE_PER_HOUR, mailboxService } from "./mailbox.ts";
+import { messageTools } from "./tools.ts";
+import { projectTranscript } from "../converse/steps.ts";
 
 /** A mailbox with zero retry delay, for dead-letter tests. */
 const fastMailbox = (handle: Awaited<ReturnType<typeof openMind>>) =>
@@ -157,16 +159,72 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
         }),
       );
 
-    // Three tool sends into the same topic are fine…
-    for (let index = 0; index < 3; index += 1) {
-      expect(await send("pricing")).toBe("");
-    }
-    // …the fourth is refused with a clear reason…
-    expect(await send("pricing")).toContain("room exchange cap reached");
-    // …a different topic is a different room…
+    // Three tool sends to the sibling are fine, across topics…
+    expect(await send("pricing")).toBe("");
+    expect(await send("pricing")).toBe("");
     expect(await send("onboarding")).toBe("");
+    // …the fourth is refused regardless of topic (per-pair cap)…
+    expect(await send("pricing")).toContain("pair exchange cap reached");
     // …and deliberate (human/REST) sends are exempt.
     expect(await send("pricing", "human")).toBe("");
+    await handle.close();
+  });
+
+  it("relays outcomes to the bot's main thread as a note, and refuses on the main thread itself", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const mailbox = fastMailbox(handle);
+    const { converse, profiles } = handle.mind;
+    const a = await profiles.create("harry", { name: "One", onboard: false });
+    const b = await profiles.create("harry", { name: "Two", onboard: false });
+    const tools = messageTools(mailbox, profiles, converse);
+    const relay = tools.find((tool) => tool.name === "relay");
+    expect(relay).toBeDefined();
+
+    // Relay from the bot's OWN main thread is refused — it is already there.
+    const main = await profiles.ensureMain("harry", a.id);
+    const mainKey = await profiles.keyOfRow(main);
+    const mainChat = await Effect.runPromise(converse.ensure(mainKey));
+    const onMain = await relay!.execute(
+      { body: "already here" },
+      {
+        conversationId: mainChat.id,
+      } as never,
+      undefined as never,
+    );
+    expect(onMain.isError).toBe(true);
+
+    // Relay from a room seat lands in the main thread and projects as a note.
+    expect(
+      await settle(
+        mailbox.send({
+          owner: "harry",
+          from: b.id,
+          to: a.id,
+          kind: "notify",
+          body: "knock",
+          origin: "tool",
+        }),
+      ),
+    ).toBe("");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const [room] = await handle.mind.rooms.list("harry", a.id);
+    const seat = await Effect.runPromise(converse.ensure(`harry:room:${room!.id}:${a.id}`));
+    const relayed = await relay!.execute(
+      { body: "Two says hi", topic: "greetings" },
+      {
+        conversationId: seat.id,
+      } as never,
+      undefined as never,
+    );
+    expect((relayed as { isError?: boolean }).isError).not.toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const view = await mainChat.viewState(BACKGROUND_CONTEXT);
+    const entries = projectTranscript(view.value?.entries ?? [], undefined, false);
+    const note = entries.find((entry) => entry.kind === "note");
+    expect(note).toBeDefined();
+    expect((note as { text: string }).text).toContain("[relay • greetings]");
+    // The bracketed relay is a note, never a user bubble.
+    expect(entries.some((entry) => entry.kind === "input")).toBe(false);
     await handle.close();
   });
 

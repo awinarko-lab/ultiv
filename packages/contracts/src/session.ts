@@ -84,6 +84,12 @@ export const TranscriptEntrySchema = Type.Union([
   }),
   Type.Object({
     id: Type.Number(),
+    kind: Type.Literal("note"),
+    at: Type.Number(),
+    text: Type.String(),
+  }),
+  Type.Object({
+    id: Type.Number(),
     kind: Type.Literal("tool"),
     at: Type.Number(),
     step: ToolStepSchema,

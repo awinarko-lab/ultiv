@@ -333,3 +333,11 @@ Also in this wave, from owner feedback:
 - **UI:** bots panel (spawn with identity, edit identity, set-main, delete), rooms popup
   with per-seat transcripts + supervision say, vault manager (shared by default, scoping
   optional), "Bot" terminology throughout.
+
+## 17. Addendum (post-live fixes, 2026-10-26)
+
+- **Work vs. rooms.** Rooms are coordination surfaces only: substantive work is delegated to background tasks (`task_spawn`) from the seat, and the result is delivered back into the room. The request envelope says so explicitly.
+- **Per-pair exchange cap.** Tool-initiated sends between two bots are capped at 3 per sender per sibling (all topics combined) — human/REST sends are exempt, and the `message` tool output reports the remaining budget so a bot can acknowledge the limit and conclude.
+- **Relay.** The `relay` tool is the way outcomes reach the owner: it posts a `[relay]` summary onto the acting bot's main thread (a muted note in the transcript, never a user bubble) and the bot's main turn writes the owner-facing summary. Reply wakes carry this hint.
+- **Transcript notes.** Bracketed machinery inputs (`[relay]`, `[owner]`, `[cron]`, room wakes) project as `note` entries; `[onboarding]` is dropped from display entirely. The model still sees all of them.
+- **Timestamps.** Session transcripts and room timelines render entry timestamps.

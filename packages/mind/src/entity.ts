@@ -181,7 +181,10 @@ const mindLayerRaw = (
       piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
       piRegistry.install(defineExtension({ name: "ultius.mind.tasks", tools: taskTools(tasks) }));
       piRegistry.install(
-        defineExtension({ name: "ultius.mind.mailbox", tools: messageTools(mailbox, profiles) }),
+        defineExtension({
+          name: "ultius.mind.mailbox",
+          tools: messageTools(mailbox, profiles, converse),
+        }),
       );
       piRegistry.install(
         defineExtension({ name: "ultius.mind.memory", tools: memoryTools(memory, profiles) }),

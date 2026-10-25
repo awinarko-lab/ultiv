@@ -43,6 +43,17 @@ export const MailboxEntrySchema = Type.Object({
   deliveredAt: Type.Union([Type.Number(), Type.Null()]),
   settledAt: Type.Union([Type.Number(), Type.Null()]),
   error: Type.Union([Type.String(), Type.Null()]),
+  /** Owning principal (entries predate this field normalize to ""). */
+  owner: Type.Optional(Type.String()),
+  /** How the send entered: tool sends are exchange-capped, deliberate ones are not. */
+  origin: Type.Optional(
+    Type.Union([
+      Type.Literal("tool"),
+      Type.Literal("human"),
+      Type.Literal("cron"),
+      Type.Literal("external"),
+    ]),
+  ),
 });
 
 export type MailboxEntry = Static<typeof MailboxEntrySchema>;

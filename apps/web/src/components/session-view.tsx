@@ -189,6 +189,26 @@ function Tool({ step }: { step: ToolStep }) {
 /** Consecutive tool steps render as one Trace so a run reads as a sequence. */
 type Group = { key: string; tools: ToolStep[] } | { key: string; entry: TranscriptEntry };
 
+/** Short timestamp: HH:MM, with the date when the entry isn't from today. */
+const stampOf = (at: number): string => {
+  const date = new Date(at);
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  return sameDay
+    ? time
+    : `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+};
+
+/** Bracket headers ([relay • topic], [reply from …]) are stripped for display. */
+const noteText = (text: string): string => {
+  const end = text.indexOf("]");
+  return text.startsWith("[") && end > 0 ? text.slice(end + 1).trim() : text;
+};
+
 function groupTranscript(transcript: TranscriptEntry[]): Group[] {
   const groups: Group[] = [];
   for (const entry of transcript) {
@@ -302,14 +322,28 @@ export function SessionView({
                 ) : group.entry.kind === "input" ? (
                   <li key={group.key} className={roleStyles.user}>
                     {group.entry.text}
+                    <span className="text-muted-foreground ml-2 align-baseline text-[10px]">
+                      {stampOf(group.entry.at)}
+                    </span>
                   </li>
                 ) : group.entry.kind === "output" ? (
                   <li key={group.key} className={roleStyles.agent}>
                     <Output text={group.entry.text} streaming={group.entry.streaming} />
+                    <span className="text-muted-foreground ml-2 align-baseline text-[10px]">
+                      {stampOf(group.entry.at)}
+                    </span>
                   </li>
                 ) : group.entry.kind === "thinking" ? (
                   <li key={group.key} className="w-full">
                     <Thinking text={group.entry.text} />
+                  </li>
+                ) : group.entry.kind === "note" ? (
+                  <li
+                    key={group.key}
+                    className="text-muted-foreground w-full text-center text-xs italic"
+                  >
+                    — {noteText(group.entry.text)}{" "}
+                    <span className="not-italic">{stampOf(group.entry.at)}</span> —
                   </li>
                 ) : null,
               )}
