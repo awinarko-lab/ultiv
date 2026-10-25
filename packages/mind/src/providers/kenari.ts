@@ -10,12 +10,7 @@
  */
 import { Effect } from "effect";
 import { ConfigError } from "effect/Config";
-import {
-  createProvider,
-  envApiKeyAuth,
-  type Model,
-  type ModelThinkingLevel,
-} from "@earendil-works/pi-ai";
+import { createProvider, envApiKeyAuth, type Model } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import type { AgentChange, CompactionSettings } from "@earendil-works/pi-durable";
 import { kenariBaseUrl, kenariModel } from "../config.ts";

@@ -112,6 +112,26 @@ expect("profile create", researcher.status === 200 && researcher.json.owner === 
 const rid = researcher.json.id as string;
 const patched = await call("PATCH", `/api/profiles/${rid}`, { description: "deep dives" }, headers);
 expect("profile patch", patched.status === 200 && patched.json.description === "deep dives");
+// Per-bot model preference: durable on the profile, and applied to the bot's
+// existing conversations (configure, not prompt-hacking).
+const modelPatched = await call(
+  "PATCH",
+  `/api/profiles/${rid}`,
+  { model: { id: "glm-5-3-flash", effort: "high" } },
+  headers,
+);
+expect(
+  "bot model preference sticks",
+  modelPatched.status === 200 &&
+    modelPatched.json.model?.id === "glm-5-3-flash" &&
+    modelPatched.json.model?.effort === "high",
+);
+const mainAgain = await call("GET", `/api/profiles/${rid}/main`, undefined, headers);
+const mainConv = await call("GET", `/api/sessions?profile=${rid}`, undefined, headers);
+expect(
+  "bot sessions still listed after model patch",
+  mainAgain.status === 200 && Array.isArray(mainConv.json),
+);
 const main = await call("GET", `/api/profiles/${rid}/main`, undefined, headers);
 expect("bot mode ensure", main.status === 200 && main.json.kind === "main");
 const reset = await call("POST", `/api/profiles/${rid}/main/reset`, undefined, headers);

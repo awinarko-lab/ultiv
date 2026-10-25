@@ -1,11 +1,11 @@
 /**
- * The bots panel: create (with full identity onboarding), edit identity,
- * set-main, delete — the "profile" surfaced as what it is, a bot. Creation
- * sends name/description/persona; the server seeds the bot's first main-chat
- * turn from those details.
+ * The bots panel: create (with full identity onboarding), edit identity and
+ * model preference, set-main, delete — the "profile" surfaced as what it is,
+ * a bot. Creation sends name/description/persona/model; the server seeds the
+ * bot's first main-chat turn from those details.
  */
 import { BotIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,30 +14,39 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import type { ProfileInfo } from "@ultiv/contracts";
+import type { ModelInfo, ProfileInfo } from "@ultiv/contracts";
 
 interface BotForm {
   name: string;
   description: string;
   persona: string;
+  /** "" = workspace default model. */
+  modelId: string;
+  effort: string;
 }
 
-const emptyForm: BotForm = { name: "", description: "", persona: "" };
+const emptyForm: BotForm = { name: "", description: "", persona: "", modelId: "", effort: "" };
 
 function BotDialog({
   title,
   initial,
+  models,
   confirm,
   children,
 }: {
   title: string;
   initial: BotForm;
+  models: ModelInfo[];
   confirm: (form: BotForm) => Promise<void>;
   children: React.ReactElement;
 }) {
   const [form, setForm] = useState<BotForm>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const efforts = useMemo(
+    () => models.find((model) => model.id === form.modelId)?.efforts ?? [],
+    [models, form.modelId],
+  );
   const submit = async (): Promise<void> => {
     if (form.name.trim() === "") return;
     setBusy(true);
@@ -81,6 +90,39 @@ function BotDialog({
               placeholder={"You are meticulous. You check rather than guess…"}
             />
           </label>
+          <div className="flex gap-2">
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              Model
+              <select
+                className="bg-background rounded-md border px-2 py-2 text-sm"
+                value={form.modelId}
+                onChange={(event) => setForm({ ...form, modelId: event.target.value, effort: "" })}
+              >
+                <option value="">Workspace default</option>
+                {models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              Effort
+              <select
+                className="bg-background rounded-md border px-2 py-2 text-sm"
+                value={form.effort}
+                disabled={efforts.length === 0}
+                onChange={(event) => setForm({ ...form, effort: event.target.value })}
+              >
+                <option value="">Model default</option>
+                {efforts.map((effort) => (
+                  <option key={effort} value={effort}>
+                    {effort}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {error !== null && <p className="text-destructive text-sm">{error}</p>}
           <div className="flex justify-end gap-2">
             <DialogClose
@@ -97,7 +139,8 @@ function BotDialog({
           </div>
           <p className="text-muted-foreground text-xs">
             A new bot introduces itself in its main chat from these details; the persona applies to
-            its existing chats too (sections re-render per request).
+            its existing chats too (sections re-render per request). The model choice becomes the
+            bot's durable default across its chats.
           </p>
         </div>
       </DialogContent>
@@ -107,11 +150,13 @@ function BotDialog({
 
 export function BotsPanel({
   profiles,
+  models,
   mainId,
   refresh,
   onOpenMain,
 }: {
   profiles: ProfileInfo[];
+  models: ModelInfo[];
   mainId: string | null;
   refresh: () => Promise<void>;
   onOpenMain: (profileId: string) => Promise<void>;
@@ -129,6 +174,16 @@ export function BotsPanel({
     }
   };
 
+  const modelPayload = (form: BotForm) =>
+    form.modelId === ""
+      ? { model: null }
+      : {
+          model: {
+            id: form.modelId,
+            ...(form.effort !== "" ? { effort: form.effort } : {}),
+          },
+        };
+
   return (
     <Card>
       <CardHeader>
@@ -138,11 +193,13 @@ export function BotsPanel({
         <BotDialog
           title="Spawn a bot"
           initial={emptyForm}
+          models={models}
           confirm={async (form) => {
             await api.createProfile({
               name: form.name.trim(),
               ...(form.description !== "" ? { description: form.description } : {}),
               ...(form.persona !== "" ? { persona: form.persona } : {}),
+              ...modelPayload(form),
             });
           }}
         >
@@ -166,6 +223,7 @@ export function BotsPanel({
                   <span className="truncate font-medium">{bot.name}</span>
                   {bot.id === mainId && <Badge variant="secondary">main</Badge>}
                   {bot.archivedAt !== null && <Badge variant="outline">archived</Badge>}
+                  {bot.model !== null && <Badge variant="outline">{bot.model.id}</Badge>}
                   {bot.description !== "" && (
                     <span className="text-muted-foreground truncate text-xs">
                       {bot.description}
@@ -184,16 +242,20 @@ export function BotsPanel({
                 )}
                 <BotDialog
                   title={`Edit ${bot.name}`}
+                  models={models}
                   initial={{
                     name: bot.name,
                     description: bot.description,
                     persona: bot.persona,
+                    modelId: bot.model?.id ?? "",
+                    effort: bot.model?.effort ?? "",
                   }}
                   confirm={async (form) => {
                     await api.updateProfile(bot.id, {
                       name: form.name.trim(),
                       ...(form.description !== "" ? { description: form.description } : {}),
                       ...(form.persona !== "" ? { persona: form.persona } : {}),
+                      ...modelPayload(form),
                     });
                   }}
                 >

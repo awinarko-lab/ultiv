@@ -65,10 +65,16 @@ export const api = {
     name: string;
     description?: string;
     persona?: string;
+    model?: { id: string; effort?: string } | null;
   }): Promise<ProfileInfo> => send<ProfileInfo>("/api/profiles", "POST", input),
   updateProfile: (
     id: string,
-    patch: { name?: string; description?: string; persona?: string },
+    patch: {
+      name?: string;
+      description?: string;
+      persona?: string;
+      model?: { id: string; effort?: string } | null;
+    },
   ): Promise<ProfileInfo> =>
     send<ProfileInfo>(`/api/profiles/${encodeURIComponent(id)}`, "PATCH", patch),
   deleteProfile: (id: string): Promise<boolean> => drop(`/api/profiles/${encodeURIComponent(id)}`),

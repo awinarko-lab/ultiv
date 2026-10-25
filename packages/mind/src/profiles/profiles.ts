@@ -7,6 +7,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { AgentChange } from "@earendil-works/pi-durable";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { Effect } from "effect";
 import { InvalidInput, NotFound } from "@ultiv/core";
 import type { ProfileCreate, ProfileInfo, SessionInfo } from "@ultiv/contracts";
@@ -539,7 +540,13 @@ export const profilesService = (deps: {
               ) as unknown as NonNullable<AgentChange["tools"]>);
       return {
         ...(profile.model !== null
-          ? { model: { provider: "kenari", modelId: profile.model.id } }
+          ? {
+              model: { provider: "kenari", modelId: profile.model.id },
+              // An empty effort string means "the model's default".
+              ...(profile.model.effort !== ""
+                ? { thinkingLevel: profile.model.effort as ModelThinkingLevel }
+                : {}),
+            }
           : {}),
         ...(tools !== undefined ? { tools } : {}),
       };

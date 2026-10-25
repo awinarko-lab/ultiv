@@ -137,6 +137,39 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
     await handle.close();
   });
 
+  it("caps ad-hoc room exchanges at 3 per bot per topic (tool sends only)", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const mailbox = fastMailbox(handle);
+    const { profiles } = handle.mind;
+    const a = await profiles.create("harry", { name: "One" });
+    const b = await profiles.create("harry", { name: "Two" });
+
+    const send = (topic: string, origin: "tool" | "human" = "tool") =>
+      settle(
+        mailbox.send({
+          owner: "harry",
+          from: a.id,
+          to: b.id,
+          kind: "notify",
+          body: "x",
+          topic,
+          origin,
+        }),
+      );
+
+    // Three tool sends into the same topic are fine…
+    for (let index = 0; index < 3; index += 1) {
+      expect(await send("pricing")).toBe("");
+    }
+    // …the fourth is refused with a clear reason…
+    expect(await send("pricing")).toContain("room exchange cap reached");
+    // …a different topic is a different room…
+    expect(await send("onboarding")).toBe("");
+    // …and deliberate (human/REST) sends are exempt.
+    expect(await send("pricing", "human")).toBe("");
+    await handle.close();
+  });
+
   it("caps pair rate per hour and per-profile daily budgets", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const mailbox = fastMailbox(handle);

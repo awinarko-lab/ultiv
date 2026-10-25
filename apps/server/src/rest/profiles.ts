@@ -5,6 +5,7 @@
  */
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { Effect } from "effect";
 import { artifactsDir } from "@ultiv/ext";
 import type { ProfileCreate } from "@ultiv/contracts";
 import { removeCronJobsForSessions } from "../cron.ts";
@@ -60,7 +61,13 @@ export async function profileRoutes(args: RouteArgs): Promise<boolean> {
   }
   if (rest === "" && method === "PATCH") {
     try {
-      json(200, await mind.profiles.update(args.owner, id, await args.readJson(req)));
+      const patch = await args.readJson<Record<string, unknown>>(req);
+      const updated = await mind.profiles.update(args.owner, id, patch as never);
+      // The per-bot model preference is durable agent state: a change applies
+      // to every existing conversation too (main, sessions, room seats), not
+      // just future ones.
+      if (patch.model !== undefined) await applyModelPreference(args, updated);
+      json(200, updated);
     } catch (cause) {
       json(400, { error: errorOf(cause) });
     }
@@ -173,6 +180,41 @@ export async function memoryRoutes(args: RouteArgs): Promise<boolean> {
     return true;
   }
   return false;
+}
+
+/** Apply a bot's model/effort preference to all its existing conversations. */
+async function applyModelPreference(
+  args: RouteArgs,
+  profile: { id: string; owner: string; model: { id: string; effort: string } | null },
+): Promise<void> {
+  const { mind } = args;
+  const selection =
+    profile.model === null
+      ? { model: null }
+      : { model: profile.model.id, effort: profile.model.effort as never };
+  const configure = async (conversationId: string): Promise<void> => {
+    try {
+      const chat = await Effect.runPromise(mind.converse.open(conversationId));
+      if (chat === undefined) return;
+      await Effect.runPromise(mind.converse.configure(chat, selection));
+    } catch {
+      // Best-effort per conversation; one stale seat never blocks the rest.
+    }
+  };
+  const rows = await mind.profiles.listSessions(profile.owner, profile.id);
+  for (const row of rows) {
+    if (row.profile !== profile.id) continue;
+    const key = await mind.profiles.keyOfRow(row);
+    const cid = await Effect.runPromise(mind.converse.conversationIdOf(key));
+    if (cid !== undefined) await configure(cid);
+  }
+  for (const room of await mind.rooms.list(profile.owner, profile.id)) {
+    for (const seat of await mind.rooms.seats(profile.owner, room)) {
+      if (seat.profileId === profile.id && seat.conversationId !== null) {
+        await configure(seat.conversationId);
+      }
+    }
+  }
 }
 
 /** The purge cascade: every store a profile touches. */

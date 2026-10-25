@@ -91,6 +91,7 @@ function HomePage() {
 
       <BotsPanel
         profiles={sessions.profiles}
+        models={sessions.models}
         mainId={mainId}
         refresh={refreshAll}
         onOpenMain={openMain}

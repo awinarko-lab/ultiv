@@ -36,6 +36,12 @@ export const PAIR_RATE_PER_HOUR = 10;
 export const EXTERNAL_RATE_PER_HOUR = 5;
 export const MAX_RETRIES = 3;
 export const WAKE_DIGEST_CHARS = 4_000;
+/**
+ * Ad-hoc room exchange cap: a bot may send at most this many tool-initiated
+ * messages into one room (pair + topic), so two bots never loop forever.
+ * Deliberate paths (REST/owner sends) are exempt.
+ */
+export const ROOM_EXCHANGE_CAP = 3;
 
 const isExternal = (id: string): boolean => id.startsWith("external:");
 
@@ -102,7 +108,12 @@ const run = <A>(effect: Effect.Effect<A, unknown>): Promise<A> =>
   Effect.runPromise(effect) as Promise<A>;
 
 const readEntries = (converse: ConverseService): Promise<MailboxEntry[]> =>
-  run(converse.docs.snapshot(MailboxDoc)).then((doc) => doc?.items ?? []);
+  run(converse.docs.snapshot(MailboxDoc)).then((doc) =>
+    (doc?.items ?? []).map((entry) => ({
+      ...entry,
+      envelope: { ...entry.envelope, topic: entry.envelope.topic ?? "" },
+    })),
+  );
 
 const writeEntries = (
   converse: ConverseService,
@@ -128,7 +139,13 @@ const envelopeText = (envelope: MailboxEnvelope, fromName: string, topic: string
   const grants =
     envelope.artifacts.length > 0 ? `\n\nGranted artifacts: ${envelope.artifacts.join(", ")}` : "";
   const room = topic === "" ? "" : ` • ${topic}`;
-  return `[message from ${fromName}${room} • ${envelope.kind} • re: ${envelope.id}]${grants}\n\n${envelope.body}`;
+  // The answer expectation is explicit: the recipient must never have to
+  // guess whether this thread is asking them or informing them.
+  const expectation =
+    envelope.kind === "request"
+      ? "\n\n(This is a direct request TO YOU. Reply in this conversation with your answer — nothing else is needed.)"
+      : "\n\n(This is a notification. NO reply is needed — do not message back.)";
+  return `[message from ${fromName}${room} • ${envelope.kind} • re: ${envelope.id}]${grants}\n\n${envelope.body}${expectation}`;
 };
 
 const dayStart = (): number => {
@@ -269,6 +286,7 @@ export const mailboxService = (deps: {
     chain: readonly string[],
     artifacts: readonly string[],
     origin: MailboxOrigin,
+    topic: string,
   ): Promise<void> => {
     if (from === to) throw new InvalidInput({ reason: "cannot message yourself" });
     if (chain.includes(to)) {
@@ -312,6 +330,23 @@ export const mailboxService = (deps: {
     );
     if (between.length >= pairRate) {
       throw new InvalidInput({ reason: `pair rate limit reached (${pairRate}/hour)` });
+    }
+    if (origin === "tool") {
+      // Ad-hoc rooms don't run forever: cap each bot's sends per room
+      // (pair + topic) so back-and-forth converges instead of looping.
+      const inRoom = entries.filter(
+        (candidate) =>
+          candidate.envelope.from === from &&
+          candidate.envelope.to === to &&
+          (candidate.envelope.topic ?? "") === topic,
+      );
+      if (inRoom.length >= ROOM_EXCHANGE_CAP) {
+        throw new InvalidInput({
+          reason:
+            `room exchange cap reached (${ROOM_EXCHANGE_CAP} messages per bot per thread) — ` +
+            "conclude here; open a new topic if more is needed",
+        });
+      }
     }
     const budget = fromProfile?.policies.dailyTurnBudget ?? null;
     if (budget !== null && !isExternal(from)) {
@@ -358,6 +393,7 @@ export const mailboxService = (deps: {
 
   const service: MailboxService = {
     send: async (input) => {
+      const topic = (input.topic ?? "").trim();
       await validate(
         input.owner,
         input.from,
@@ -365,6 +401,7 @@ export const mailboxService = (deps: {
         [input.from],
         input.artifacts ?? [],
         input.origin,
+        topic,
       );
       const envelope: MailboxEnvelope = {
         id: randomUUID(),
@@ -373,16 +410,18 @@ export const mailboxService = (deps: {
         to: input.to,
         kind: input.kind,
         replyTo: null,
+        ...(topic !== "" ? { topic } : {}),
         body: input.body.slice(0, 20_000),
         artifacts: [...(input.artifacts ?? [])],
         at: Date.now(),
       };
-      return admit(input.owner, envelope, input.topic ?? "");
+      return admit(input.owner, envelope, topic);
     },
     deliverExternal: async (input) => {
       const sender = `external:${input.from.replace(/^external:/, "")}`;
       const chain = [...input.chain, sender];
-      await validate(input.owner, sender, input.to, chain, [], "external");
+      const topic = (input.topic ?? "").trim();
+      await validate(input.owner, sender, input.to, chain, [], "external", topic);
       const envelope: MailboxEnvelope = {
         id: randomUUID(),
         chain,
@@ -390,11 +429,12 @@ export const mailboxService = (deps: {
         to: input.to,
         kind: input.kind,
         replyTo: null,
+        ...(topic !== "" ? { topic } : {}),
         body: input.body.slice(0, 20_000),
         artifacts: [],
         at: Date.now(),
       };
-      return admit(input.owner, envelope, input.topic ?? "");
+      return admit(input.owner, envelope, topic);
     },
     list: async (owner) => {
       const entries = await readEntries(converse);

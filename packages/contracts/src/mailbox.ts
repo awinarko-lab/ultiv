@@ -19,6 +19,8 @@ export const MailboxEnvelopeSchema = Type.Object({
     Type.Literal("nack"),
   ]),
   replyTo: Type.Union([Type.String(), Type.Null()]),
+  /** The room topic this envelope belongs to (rooms are contextual). */
+  topic: Type.Optional(Type.String()),
   body: Type.String(),
   /** Cross-profile artifact grants; internal senders only. */
   artifacts: Type.Array(Type.String()),
