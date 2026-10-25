@@ -10,7 +10,7 @@ export type ProfileModel = Static<typeof ProfileModelSchema>;
 
 /** Behavior policy of one profile: initiation rights, approvals, budget. */
 export const ProfilePoliciesSchema = Type.Object({
-  /** Sibling profile ids this entity may message autonomously (org chart as config). */
+  /** Sibling ids this entity may message autonomously; ["*"] (default) = all, [] = locked. */
   canInitiate: Type.Array(Type.String()),
   /** Gated tool names pre-approved for this profile. */
   autoApprove: Type.Array(Type.String()),

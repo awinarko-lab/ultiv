@@ -261,8 +261,14 @@ export const mailboxService = (deps: {
     if (isExternal(from) && artifacts.length > 0) {
       throw new InvalidInput({ reason: "external senders cannot carry artifact grants" });
     }
-    if (origin === "tool" && fromProfile?.policies.canInitiate.includes(to) !== true) {
-      throw new InvalidInput({ reason: `not allowed to initiate contact with ${to}` });
+    if (origin === "tool") {
+      // Open by default: `*` reaches every sibling; an explicit list
+      // restricts; an empty list locks the profile out of the mailbox.
+      const allowed = fromProfile?.policies.canInitiate ?? [];
+      const mayInitiate = allowed.includes("*") || allowed.includes(to);
+      if (!mayInitiate) {
+        throw new InvalidInput({ reason: `not allowed to initiate contact with ${to}` });
+      }
     }
     const entries = await readEntries(converse);
     const hourAgo = Date.now() - 3_600_000;

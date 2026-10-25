@@ -74,29 +74,16 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
     await handle.close();
   });
 
-  it("autonomous sends require canInitiate; human sends do not", async () => {
+  it("open by default: tool sends reach any sibling; canInitiate restricts or locks", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const mailbox = fastMailbox(handle);
     const { profiles } = handle.mind;
     const cos = await profiles.create("harry", { name: "CoS" });
     const researcher = await profiles.create("harry", { name: "Researcher" });
 
-    const refused = await settle(
-      mailbox.send({
-        owner: "harry",
-        from: cos.id,
-        to: researcher.id,
-        kind: "notify",
-        body: "x",
-        origin: "tool",
-      }),
-    );
-    expect(refused).toContain("not allowed to initiate");
-
-    await profiles.update("harry", cos.id, {
-      policies: { ...cos.policies, canInitiate: [researcher.id] },
-    });
-    const admitted = await mailbox.send({
+    // Default policy is ["*"]: an owner-instructed relay ("tell Researcher…")
+    // rides the model's own tool call and must go through.
+    const open = await mailbox.send({
       owner: "harry",
       from: cos.id,
       to: researcher.id,
@@ -104,7 +91,48 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
       body: "hello",
       origin: "tool",
     });
-    expect(admitted.status).toBe("pending");
+    expect(open.status).toBe("pending");
+
+    // An explicit empty list locks the profile out of the mailbox…
+    await profiles.update("harry", cos.id, {
+      policies: { ...cos.policies, canInitiate: [] },
+    });
+    expect(
+      await settle(
+        mailbox.send({
+          owner: "harry",
+          from: cos.id,
+          to: researcher.id,
+          kind: "notify",
+          body: "x",
+          origin: "tool",
+        }),
+      ),
+    ).toContain("not allowed to initiate");
+    // …while human-instructed (REST) sends still pass.
+    const human = await mailbox.send({
+      owner: "harry",
+      from: cos.id,
+      to: researcher.id,
+      kind: "notify",
+      body: "y",
+      origin: "human",
+    });
+    expect(human.status).toBe("pending");
+
+    // An explicit list admits exactly its members.
+    await profiles.update("harry", cos.id, {
+      policies: { ...cos.policies, canInitiate: [researcher.id] },
+    });
+    const listed = await mailbox.send({
+      owner: "harry",
+      from: cos.id,
+      to: researcher.id,
+      kind: "notify",
+      body: "z",
+      origin: "tool",
+    });
+    expect(listed.status).toBe("pending");
     await handle.close();
   });
 

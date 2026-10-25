@@ -14,9 +14,22 @@ import type { ConverseService } from "../converse/converse.ts";
 /** Registry doc: every profile row, owner-partitioned like the sessions doc. */
 export const ProfilesDoc = defineDoc<{ profiles: ProfileInfo[] }>({
   kind: "ultiv.profiles",
-  version: 1,
+  version: 2,
   scope: "session",
   initial: () => ({ profiles: [] }),
+  // v1 rows carry the pre-permissive default (canInitiate: []) — which
+  // blocked even owner-instructed relays. Empty or missing lists become the
+  // open default; a deliberately set non-empty list is preserved.
+  migrate: (value) => {
+    const stored = (value.profiles ?? []) as unknown as ReadonlyArray<Record<string, unknown>>;
+    const profiles = stored.map((row) => {
+      const policies = (row.policies ?? {}) as Record<string, unknown>;
+      const list = policies.canInitiate;
+      const canInitiate = Array.isArray(list) && list.length > 0 ? list : ["*"];
+      return { ...row, policies: { ...defaultPolicies(), ...policies, canInitiate } };
+    });
+    return { profiles } as unknown as { profiles: ProfileInfo[] };
+  },
   checkpointWhen: () => true,
 });
 
@@ -59,7 +72,10 @@ export const pairKey = (owner: string, a: string, b: string): string =>
 export const pairSessionId = (a: string, b: string): string => `dm-${[a, b].sort().join("|")}`;
 
 export const defaultPolicies = (): ProfilePolicies => ({
-  canInitiate: [],
+  // Open by default: every entity may message its siblings. This is the
+  // loop guards' job (hop caps, rates, budgets), not the org chart's; an
+  // owner restricts a profile by setting an explicit list (or [] to lock).
+  canInitiate: ["*"],
   autoApprove: [],
   approvalTimeout: "deny",
   dailyTurnBudget: null,

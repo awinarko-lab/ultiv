@@ -142,9 +142,13 @@ the background; a failed turn is a NACK, never a lost delivery. Idempotency by `
 - **Lineage:** refuse delivery when the target is already in `chain` (cycle) or
   `chain.length ≥ 3` (hops). Legitimate relays are ≤ 2 hops; workers reply _up_, never
   sideways — the roster section teaches the org chart, the chain cap enforces it.
-- **Initiation tiers:** human-instructed and cron always allowed; autonomous sending only
-  to siblings in `policies.canInitiate` (the org chart as config: orchestrators initiate,
-  workers respond).
+- **Initiation tiers:** the mailbox cannot prove from a tool call whether the
+  model is executing an owner instruction or acting on its own — so initiation
+  is **open by default** (`canInitiate: ["*"]`): every entity can message every
+  sibling, and an owner _restricts_ by setting an explicit list (`[]` locks a
+  profile out of the mailbox entirely; human/REST sends always pass). Loop
+  safety never depended on this list — it lives in the lineage caps, rates and
+  budgets below.
 - **Budgets:** per-pair rate limit (default 10 msgs/hour) + per-profile
   `dailyTurnBudget`, enforced at the mailbox, audited per send. Every message is a model
   turn; three entities chatting is 3× token burn per exchange.
