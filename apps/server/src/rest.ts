@@ -161,6 +161,22 @@ async function taskRoutes(args: RouteArgs, segment: (after: string) => string): 
     else json(200, task);
     return true;
   }
+  if (path.startsWith("/api/tasks/") && method === "DELETE") {
+    // Stop a running task from the app. Agent-owned tasks are stoppable by
+    // any identified principal; guests may only stop their own.
+    const id = segment("/api/tasks/");
+    const task = await Effect.runPromise(mind.tasks.get(id));
+    if (task === undefined) {
+      json(404, { error: "unknown task" });
+      return true;
+    }
+    if (task.owner !== args.owner && !(task.owner === "agent" && args.owner !== "guest")) {
+      json(403, { error: "not your task" });
+      return true;
+    }
+    json(200, { ok: await Effect.runPromise(mind.tasks.cancel(id)) });
+    return true;
+  }
   return false;
 }
 

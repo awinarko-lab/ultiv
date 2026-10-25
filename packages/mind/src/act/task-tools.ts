@@ -141,6 +141,28 @@ const statusTool = (tasks: TasksService): Tool =>
       ),
   });
 
+const cancelTool = (tasks: TasksService): Tool =>
+  defineTool({
+    name: "task_cancel",
+    description:
+      "Stop a running background task by id: its conversation is aborted and the task is marked " +
+      "cancelled. The user can also stop tasks from the app.",
+    parameters: StatusParams,
+    structuredOutputSchema: Type.Object({ id: Type.String(), cancelled: Type.Boolean() }),
+    execute: (args) =>
+      Effect.runPromise(
+        Effect.map(tasks.cancel(args.id), (cancelled) => ({
+          output: [
+            {
+              type: "text" as const,
+              text: cancelled ? `task ${args.id} cancelled` : `task ${args.id} was not running`,
+            },
+          ],
+          structuredOutput: { id: args.id, cancelled },
+        })),
+      ),
+  });
+
 const listTool = (tasks: TasksService): Tool =>
   defineTool({
     name: "task_list",
@@ -180,6 +202,7 @@ const listTool = (tasks: TasksService): Tool =>
 export const taskTools = (tasks: TasksService): readonly Tool[] => [
   spawnTool(tasks),
   statusTool(tasks),
+  cancelTool(tasks),
   listTool(tasks),
 ];
 

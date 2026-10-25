@@ -94,4 +94,39 @@ describe("Tasks (offline, MemoryStorage)", () => {
     expect(transcript).toContain("[task stuck-task failed]");
     await Promise.allSettled([first.close(), second.close()]);
   });
+
+  it("cancels a running task and wakes the parent with the cancellation", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const parent = await Effect.runPromise(handle.mind.converse.ensure("parent"));
+    // A "running" row whose runner is not attached (inserted post-boot).
+    await Effect.runPromise(
+      handle.mind.converse.docs.commit(async (tx) => {
+        const draft = await tx.doc(TasksDoc);
+        draft.tasks = [
+          {
+            id: "stoppable",
+            sessionId: "s",
+            owner: "guest",
+            conversationId: String(parent.id),
+            prompt: "long research",
+            status: "running",
+            result: null,
+            error: null,
+            createdAt: Date.now(),
+            finishedAt: null,
+          },
+        ];
+      }),
+    );
+    const cancelled = await Effect.runPromise(handle.mind.tasks.cancel("stoppable"));
+    expect(cancelled).toBe(true);
+    expect(await Effect.runPromise(handle.mind.tasks.cancel("stoppable"))).toBe(false);
+    expect(await Effect.runPromise(handle.mind.tasks.cancel("nope"))).toBe(false);
+    const task = await Effect.runPromise(handle.mind.tasks.get("stoppable")).then((t) => t ?? null);
+    expect(task?.status).toBe("cancelled");
+    expect(task?.error).toBe("cancelled by the user");
+    const transcript = await transcriptOf(handle, String(parent.id));
+    expect(transcript).toContain("[task stoppable cancelled]");
+    await handle.close();
+  });
 });

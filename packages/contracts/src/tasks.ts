@@ -5,6 +5,7 @@ export const TaskStatusSchema = Type.Union([
   Type.Literal("running"),
   Type.Literal("done"),
   Type.Literal("failed"),
+  Type.Literal("cancelled"),
 ]);
 
 export type TaskStatus = Static<typeof TaskStatusSchema>;

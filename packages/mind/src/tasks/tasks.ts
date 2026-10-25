@@ -26,6 +26,8 @@ export interface TasksService {
   }) => Effect.Effect<TaskInfo, External>;
   readonly get: (id: string) => Effect.Effect<TaskInfo | undefined, External>;
   readonly list: () => Effect.Effect<TaskList, External>;
+  /** Stop a running task: abort its conversation, mark cancelled, wake the parent. */
+  readonly cancel: (id: string) => Effect.Effect<boolean, External>;
   /** True when the conversation belongs to a background task: tasks cannot spawn sub-tasks. */
   readonly isTaskConversation: (conversationId: string) => Effect.Effect<boolean, External>;
 }
@@ -96,7 +98,9 @@ const wakeParent = async (
 
 /**
  * Settles a spawned (or resumed) task in the background: the registry doc
- * carries the outcome and the spawning conversation is woken with it.
+ * carries the outcome and the spawning conversation is woken with it. A
+ * cancellation wins over both outcomes: once the doc says "cancelled", the
+ * runner keeps its hands off.
  */
 const runTask = (converse: ConverseService, task: TaskInfo, prompt: string): void => {
   void (async () => {
@@ -104,12 +108,16 @@ const runTask = (converse: ConverseService, task: TaskInfo, prompt: string): voi
       const conversation = await Effect.runPromise(converse.ensure(taskConversationKey(task.id)));
       const result = await Effect.runPromise(converse.turn(conversation, prompt));
       await Effect.runPromise(
-        updateTask(converse, task.id, (current) => ({
-          ...current,
-          status: "done",
-          result: result.text,
-          finishedAt: Date.now(),
-        })),
+        updateTask(converse, task.id, (current) =>
+          current.status === "cancelled"
+            ? current
+            : {
+                ...current,
+                status: "done",
+                result: result.text,
+                finishedAt: Date.now(),
+              },
+        ),
       );
       const digest =
         result.text.length > WAKE_RESULT_CHARS
@@ -119,12 +127,16 @@ const runTask = (converse: ConverseService, task: TaskInfo, prompt: string): voi
     } catch (cause) {
       const error = String(cause).slice(0, 500);
       await Effect.runPromise(
-        updateTask(converse, task.id, (current) => ({
-          ...current,
-          status: "failed",
-          error,
-          finishedAt: Date.now(),
-        })),
+        updateTask(converse, task.id, (current) =>
+          current.status === "cancelled"
+            ? current
+            : {
+                ...current,
+                status: "failed",
+                error,
+                finishedAt: Date.now(),
+              },
+        ),
       ).catch(() => undefined);
       await wakeParent(converse, task, `[task ${task.id} failed] ${error}`);
     }
@@ -156,6 +168,32 @@ export const tasksService = (converse: ConverseService): TasksService => ({
     }),
   get: (id) => Effect.map(readTasks(converse), (tasks) => tasks.find((task) => task.id === id)),
   list: () => readTasks(converse),
+  cancel: (id) =>
+    Effect.gen(function* () {
+      const task = yield* Effect.map(readTasks(converse), (tasks) =>
+        tasks.find((candidate) => candidate.id === id),
+      );
+      if (task === undefined || task.status !== "running") return false;
+      // Stop the work first, then write the outcome: the runner honors the
+      // cancelled status and keeps its hands off when it settles.
+      const conversation = yield* converse.ensure(taskConversationKey(id));
+      yield* converse.interrupt(conversation);
+      yield* updateTask(converse, id, (current) =>
+        current.status === "running"
+          ? {
+              ...current,
+              status: "cancelled",
+              error: "cancelled by the user",
+              finishedAt: Date.now(),
+            }
+          : current,
+      );
+      yield* Effect.tryPromise({
+        try: () => wakeParent(converse, task, `[task ${id} cancelled] stopped before completion.`),
+        catch: (cause) => new External({ op: "task cancel wake", cause }),
+      }).pipe(Effect.ignore);
+      return true;
+    }),
   isTaskConversation: (conversationId) =>
     Effect.flatMap(readTasks(converse), (tasks) =>
       Effect.map(
