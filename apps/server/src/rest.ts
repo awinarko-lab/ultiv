@@ -148,7 +148,12 @@ async function taskRoutes(args: RouteArgs, segment: (after: string) => string): 
       mind.tasks.spawn({
         sessionId: body.sessionId ?? "",
         owner: args.owner,
-        conversationId: null,
+        conversationId:
+          body.sessionId !== undefined && body.sessionId !== ""
+            ? ((await Effect.runPromise(
+                mind.converse.conversationIdOf(sessionKey(args.owner, body.sessionId)),
+              )) ?? null)
+            : null,
         prompt: body.prompt,
       }),
     );

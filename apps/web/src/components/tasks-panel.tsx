@@ -12,26 +12,23 @@ const statusVariant = {
 } as const;
 
 /**
- * Background tasks for this session (plus the agent's own), polled — REST has
- * no push. Stop removes a running task (it is cancelled first and the agent
- * is told); Delete drops settled rows.
+ * Background tasks of THIS conversation, polled — REST has no push. The panel
+ * stays hidden until the session's conversation id is known, so nothing from
+ * other conversations leaks in. Stop removes a running task (it is cancelled
+ * first and the agent is told); Delete drops settled rows.
  */
-export function TasksPanel({ sessionId }: { sessionId: string }) {
+export function TasksPanel({ conversationId }: { conversationId: string | null }) {
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
 
   const refresh = useCallback(async () => {
+    if (conversationId === null) return;
     try {
       const all = await api.tasks();
-      setTasks(
-        all.filter(
-          (task) =>
-            task.sessionId === sessionId || (task.owner === "agent" && task.sessionId === ""),
-        ),
-      );
+      setTasks(all.filter((task) => task.conversationId === conversationId));
     } catch {
       // REST hiccup: keep the last known list.
     }
-  }, [sessionId]);
+  }, [conversationId]);
 
   useEffect(() => {
     void refresh();
@@ -52,7 +49,7 @@ export function TasksPanel({ sessionId }: { sessionId: string }) {
     [refresh],
   );
 
-  if (tasks.length === 0) return null;
+  if (conversationId === null || tasks.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-1.5">

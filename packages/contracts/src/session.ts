@@ -36,6 +36,8 @@ export const ModelIdSchema = Type.Union([Type.String(), Type.Null()]);
 
 export const EffortSchema = Type.Union([ThinkingLevelSchema, Type.Null()]);
 
+export const SessionConversationIdSchema = Type.Union([Type.String(), Type.Null()]);
+
 export const ToolStepSchema = Type.Object({
   callId: Type.String(),
   name: Type.String(),
@@ -104,7 +106,7 @@ export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 6,
+  version: 7,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {
@@ -117,6 +119,8 @@ export const Session = remote("ultiv.session", {
         usage: UsageSummarySchema,
         model: ModelIdSchema,
         effort: EffortSchema,
+        /** This session's durable conversation id; null until the harness maps it. */
+        conversationId: Type.Union([Type.String(), Type.Null()]),
       },
       methods: {
         input: method(

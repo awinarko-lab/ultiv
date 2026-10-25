@@ -7,6 +7,7 @@ export {
   UsageSummarySchema,
   PhaseSchema,
   PendingApprovalSchema,
+  SessionConversationIdSchema,
   SessionErrorSchema,
   ToolStepSchema,
   TranscriptEntrySchema,

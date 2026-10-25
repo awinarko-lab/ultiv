@@ -13,6 +13,7 @@ import {
   EffortSchema,
   ModelIdSchema,
   Session,
+  SessionConversationIdSchema,
   SessionErrorSchema,
   PendingApprovalSchema,
   PhaseSchema,
@@ -36,6 +37,7 @@ type SessionCells = {
   usage: Cell<UsageSummary>;
   model: Cell<string | null>;
   effort: Cell<ThinkingLevel | null>;
+  conversationId: Cell<string | null>;
 };
 
 /** The `pi.live` conversation doc from a structural view, typed. */
@@ -83,6 +85,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         }),
         model: self.state("model", ModelIdSchema, null),
         effort: self.state("effort", EffortSchema, null),
+        conversationId: self.state("conversationId", SessionConversationIdSchema, null),
       };
       // Live replay: every committed publication of the durable transcript re-projects the
       // cell, whoever wrote it (this object's turns, tasks, tools, future code).
@@ -107,6 +110,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         const selection = await Effect.runPromise(mind.converse.agentOf(chat));
         safeChange(cells.model, ctx, () => selection.model);
         safeChange(cells.effort, ctx, () => selection.effort as ThinkingLevel | null);
+        safeChange(cells.conversationId, ctx, () => String(chat.id));
         // Detach on abort, or the attached view outlives the object and hangs
         // graceful shutdown (node --watch restarts wait forever).
         ctx.signal.addEventListener("abort", () => unsubscribe(), { once: true });
@@ -135,6 +139,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         usage: cells.usage,
         model: cells.model,
         effort: cells.effort,
+        conversationId: cells.conversationId,
         configure: async ({ model, effort }, ctx) => {
           const chat = await conversation;
           await Effect.runPromise(mind.converse.configure(chat, { model, effort }));

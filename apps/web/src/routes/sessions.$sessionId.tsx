@@ -32,7 +32,7 @@ function SessionPage() {
           </Button>
         </div>
       </header>
-      <TasksPanel sessionId={sessionId} />
+      <TasksPanel conversationId={session.conversationId} />
       <SessionView
         link={session.link}
         transcript={session.transcript}

@@ -19,6 +19,7 @@ export function useSession(sessionId: string): {
   usage: UsageSummary | null;
   model: string | null;
   effort: ThinkingLevel | null;
+  conversationId: string | null;
   input: (text: string) => void;
   decide: (callId: string, approved: boolean) => void;
   configure: (model: string | null, effort: ThinkingLevel | null) => void;
@@ -32,6 +33,7 @@ export function useSession(sessionId: string): {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<ThinkingLevel | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [ref, setRef] = useState<SessionRef | undefined>(undefined);
 
   useEffect(() => {
@@ -54,6 +56,7 @@ export function useSession(sessionId: string): {
         unsubs.push(opened.usage.subscribe(setUsage));
         unsubs.push(opened.model.subscribe(setModel));
         unsubs.push(opened.effort.subscribe(setEffort));
+        unsubs.push(opened.conversationId.subscribe(setConversationId));
         unsubs.push(
           opened.onStatus((status) => {
             if (status === "gone") setLink("lost");
@@ -76,6 +79,7 @@ export function useSession(sessionId: string): {
       setUsage(null);
       setModel(null);
       setEffort(null);
+      setConversationId(null);
     };
   }, [sessionId]);
 
@@ -113,6 +117,7 @@ export function useSession(sessionId: string): {
     usage,
     model,
     effort,
+    conversationId,
     input,
     decide,
     configure,
