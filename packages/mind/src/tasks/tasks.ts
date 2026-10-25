@@ -28,6 +28,13 @@ export interface TasksService {
   readonly list: () => Effect.Effect<TaskList, External>;
   /** Stop a running task: abort its conversation, mark cancelled, wake the parent. */
   readonly cancel: (id: string) => Effect.Effect<boolean, External>;
+  /**
+   * Remove a task from the registry entirely; a still-running task is
+   * cancelled first (and its parent woken). The durable transcript stays.
+   */
+  readonly remove: (
+    id: string,
+  ) => Effect.Effect<{ readonly removed: boolean; readonly cancelled: boolean }, External>;
   /** True when the conversation belongs to a background task: tasks cannot spawn sub-tasks. */
   readonly isTaskConversation: (conversationId: string) => Effect.Effect<boolean, External>;
 }
@@ -143,6 +150,37 @@ const runTask = (converse: ConverseService, task: TaskInfo, prompt: string): voi
   })();
 };
 
+/**
+ * Stop a running task: abort its conversation, mark cancelled, wake the
+ * parent. Idempotent — only a running task is cancelled.
+ */
+const cancelTask = (converse: ConverseService, id: string): Effect.Effect<boolean, External> =>
+  Effect.gen(function* () {
+    const task = yield* Effect.map(readTasks(converse), (tasks) =>
+      tasks.find((candidate) => candidate.id === id),
+    );
+    if (task === undefined || task.status !== "running") return false;
+    // Stop the work first, then write the outcome: the runner honors the
+    // cancelled status and keeps its hands off when it settles.
+    const conversation = yield* converse.ensure(taskConversationKey(id));
+    yield* converse.interrupt(conversation);
+    yield* updateTask(converse, id, (current) =>
+      current.status === "running"
+        ? {
+            ...current,
+            status: "cancelled",
+            error: "cancelled by the user",
+            finishedAt: Date.now(),
+          }
+        : current,
+    );
+    yield* Effect.tryPromise({
+      try: () => wakeParent(converse, task, `[task ${id} cancelled] stopped before completion.`),
+      catch: (cause) => new External({ op: "task cancel wake", cause }),
+    }).pipe(Effect.ignore);
+    return true;
+  });
+
 export const tasksService = (converse: ConverseService): TasksService => ({
   spawn: (input) =>
     Effect.gen(function* () {
@@ -168,31 +206,21 @@ export const tasksService = (converse: ConverseService): TasksService => ({
     }),
   get: (id) => Effect.map(readTasks(converse), (tasks) => tasks.find((task) => task.id === id)),
   list: () => readTasks(converse),
-  cancel: (id) =>
+  cancel: (id) => cancelTask(converse, id),
+  remove: (id) =>
     Effect.gen(function* () {
       const task = yield* Effect.map(readTasks(converse), (tasks) =>
         tasks.find((candidate) => candidate.id === id),
       );
-      if (task === undefined || task.status !== "running") return false;
-      // Stop the work first, then write the outcome: the runner honors the
-      // cancelled status and keeps its hands off when it settles.
-      const conversation = yield* converse.ensure(taskConversationKey(id));
-      yield* converse.interrupt(conversation);
-      yield* updateTask(converse, id, (current) =>
-        current.status === "running"
-          ? {
-              ...current,
-              status: "cancelled",
-              error: "cancelled by the user",
-              finishedAt: Date.now(),
-            }
-          : current,
+      if (task === undefined) return { removed: false, cancelled: false };
+      const cancelled = task.status === "running" ? yield* cancelTask(converse, id) : false;
+      yield* Effect.flatMap(readTasks(converse), (tasks) =>
+        writeTasks(
+          converse,
+          tasks.filter((candidate) => candidate.id !== id),
+        ),
       );
-      yield* Effect.tryPromise({
-        try: () => wakeParent(converse, task, `[task ${id} cancelled] stopped before completion.`),
-        catch: (cause) => new External({ op: "task cancel wake", cause }),
-      }).pipe(Effect.ignore);
-      return true;
+      return { removed: true, cancelled };
     }),
   isTaskConversation: (conversationId) =>
     Effect.flatMap(readTasks(converse), (tasks) =>

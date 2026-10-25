@@ -127,6 +127,11 @@ describe("Tasks (offline, MemoryStorage)", () => {
     expect(task?.error).toBe("cancelled by the user");
     const transcript = await transcriptOf(handle, String(parent.id));
     expect(transcript).toContain("[task stoppable cancelled]");
+    // Removal drops the row entirely; a settled task removes without a wake.
+    const removal = await Effect.runPromise(handle.mind.tasks.remove("stoppable"));
+    expect(removal.removed).toBe(true);
+    expect(removal.cancelled).toBe(false);
+    expect(await Effect.runPromise(handle.mind.tasks.get("stoppable"))).toBeUndefined();
     await handle.close();
   });
 });

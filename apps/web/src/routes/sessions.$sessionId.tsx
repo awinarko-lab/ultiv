@@ -2,6 +2,7 @@ import { Link, useNavigate, createFileRoute } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SessionView } from "@/components/session-view";
+import { TasksPanel } from "@/components/tasks-panel";
 import { useSessions } from "@/lib/use-sessions";
 import { useSession } from "@/lib/use-session";
 
@@ -31,6 +32,7 @@ function SessionPage() {
           </Button>
         </div>
       </header>
+      <TasksPanel sessionId={sessionId} />
       <SessionView
         link={session.link}
         transcript={session.transcript}

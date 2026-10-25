@@ -1,4 +1,4 @@
-import type { ModelInfo, SessionInfo } from "@ultiv/contracts";
+import type { ModelInfo, SessionInfo, TaskInfo } from "@ultiv/contracts";
 
 /**
  * The session registry and model catalog are plain REST on the server's HTTP
@@ -35,6 +35,13 @@ export const api = {
   },
   remove: async (id: string): Promise<boolean> => {
     const response = await fetch(`${base()}/api/sessions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    return response.ok;
+  },
+  tasks: (): Promise<TaskInfo[]> => getJson<TaskInfo[]>("/api/tasks"),
+  removeTask: async (id: string): Promise<boolean> => {
+    const response = await fetch(`${base()}/api/tasks/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
     return response.ok;
