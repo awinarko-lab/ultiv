@@ -4,6 +4,8 @@
  * invisible here; a supervision "say" posts into a chosen bot's side.
  */
 import { MessagesSquareIcon, SendIcon } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useCallback, useEffect, useState } from "react";
 import type { ProfileInfo, RoomInfo } from "@ultiv/contracts";
 import { Badge } from "@/components/ui/badge";
@@ -24,16 +26,6 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
   const [say, setSay] = useState("");
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
-
-  const toggle = (index: number): void => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  };
 
   const load = useCallback(async () => {
     setDetail(await api.room(room.id));
@@ -73,9 +65,7 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
         ) : (
           detail.timeline.map((line, index) => {
             // biome-ignore lint/suspicious/noArrayIndexKey: append-only timeline
-            const long = line.text.length > 1_200;
-            const open = expanded.has(index);
-            const body = long && !open ? `${line.text.slice(0, 1_200)}…` : line.text;
+            const body = line.text;
             return (
               <div key={index} className="mb-2">
                 {line.system ? (
@@ -99,16 +89,9 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
                         minute: "2-digit",
                       })}
                     </span>
-                    <p className="whitespace-pre-wrap break-words">{body}</p>
-                    {long && (
-                      <button
-                        type="button"
-                        className="text-muted-foreground text-xs underline underline-offset-2"
-                        onClick={() => toggle(index)}
-                      >
-                        {open ? "show less" : "show more"}
-                      </button>
-                    )}
+                    <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
+                    </div>
                   </>
                 )}
               </div>

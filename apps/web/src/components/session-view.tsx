@@ -364,9 +364,11 @@ export function SessionView({
                       {noteHeader(group.entry.text)}{" "}
                       <span className="font-normal">{stampOf(group.entry.at)}</span>
                     </span>
-                    <p className="mt-1 whitespace-pre-wrap break-words">
-                      {noteBody(group.entry.text)}
-                    </p>
+                    <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {noteBody(group.entry.text)}
+                      </ReactMarkdown>
+                    </div>
                   </li>
                 ) : null,
               )}
