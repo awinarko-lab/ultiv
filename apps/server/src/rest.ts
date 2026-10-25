@@ -10,9 +10,11 @@ import { Effect } from "effect";
 import {
   artifactFile,
   artifactsDir,
-  listArtifacts,
+  clearArtifacts,
+  deleteArtifact,
   mimeOfName,
   readArtifact,
+  searchArtifacts,
   writeArtifact,
 } from "@ultiv/ext";
 import { KENARI_MODELS, type MindService } from "@ultiv/mind";
@@ -23,7 +25,7 @@ import {
   removeCronJob,
   type CronScheduler,
 } from "./cron.ts";
-import { ownerOf, principalFromRequest } from "./identity.ts";
+import { ownerOf, principalFromRequest, sessionKey } from "./identity.ts";
 import { createSession, listSessions, removeSession } from "./sessions.ts";
 import { callWebhook, createWebhook, listWebhooks, removeWebhook } from "./webhooks.ts";
 
@@ -166,18 +168,48 @@ async function artifactRoutes(
   args: RouteArgs,
   segment: (after: string) => string,
 ): Promise<boolean> {
-  const { req, path, json, res } = args;
+  const { req, mind, path, json, res } = args;
   const method = req.method ?? "GET";
   const dir = artifactsDir();
   if (path === "/api/artifacts" && method === "GET") {
-    json(200, listArtifacts(dir));
+    // Filters: ?conversationId= exact, ?q= name/content search, ?sessionId= resolved
+    // through the caller's owner scope.
+    const sessionId = queryOr(args, "sessionId");
+    const mapped =
+      sessionId !== undefined
+        ? await Effect.runPromise(mind.converse.conversationIdOf(sessionKey(args.owner, sessionId)))
+        : undefined;
+    const conversationId = queryOr(args, "conversationId") ?? mapped;
+    const filter: { conversationId?: string; query?: string } = {};
+    if (conversationId !== undefined && conversationId !== null) {
+      filter.conversationId = conversationId;
+    }
+    const q = queryOr(args, "q");
+    if (q !== undefined) filter.query = q;
+    json(200, searchArtifacts(dir, filter));
     return true;
   }
   if (path === "/api/artifacts" && method === "POST") {
     const name = queryOr(args, "name") ?? "upload.bin";
     const mime = queryOr(args, "mime") ?? mimeOfName(name);
+    const sessionId = queryOr(args, "sessionId");
+    const conversationId =
+      sessionId !== undefined
+        ? ((await Effect.runPromise(
+            mind.converse.conversationIdOf(sessionKey(args.owner, sessionId)),
+          )) ?? null)
+        : null;
     const body = await args.readBody(req);
-    json(200, writeArtifact(dir, { name, mime, content: body.toString("utf8") }));
+    json(200, writeArtifact(dir, { name, mime, content: body.toString("utf8"), conversationId }));
+    return true;
+  }
+  if (path === "/api/artifacts" && method === "DELETE") {
+    // Owner-level clear: an identified principal only; guests get nothing.
+    if (args.owner === "guest") {
+      json(403, { error: "clearing the workspace requires an identified user" });
+      return true;
+    }
+    json(200, { ok: true, cleared: clearArtifacts(dir) });
     return true;
   }
   if (path.startsWith("/api/artifacts/") && method === "GET") {
@@ -190,6 +222,12 @@ async function artifactRoutes(
     }
     res.writeHead(200, { "content-type": found.info.mime });
     res.end(readFileSync(file));
+    return true;
+  }
+  if (path.startsWith("/api/artifacts/") && method === "DELETE") {
+    const deleted = deleteArtifact(dir, segment("/api/artifacts/"));
+    if (deleted) json(200, { ok: true });
+    else json(404, { error: "unknown artifact" });
     return true;
   }
   return false;

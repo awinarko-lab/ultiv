@@ -11,6 +11,8 @@ export const ArtifactInfoSchema = Type.Object({
   mime: Type.String(),
   bytes: Type.Number(),
   createdAt: Type.Number(),
+  /** The durable conversation that wrote the artifact; null for REST uploads without a session. */
+  conversationId: Type.Union([Type.String(), Type.Null()]),
 });
 
 export type ArtifactInfo = Static<typeof ArtifactInfoSchema>;
