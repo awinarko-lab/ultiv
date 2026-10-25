@@ -3,7 +3,9 @@ import { MemoryStorage } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Effect } from "effect";
 import { openMind } from "../entity.ts";
-import { HOP_CAP, PAIR_RATE_PER_HOUR, mailboxService } from "./mailbox.ts";
+import { HOP_CAP, PAIR_RATE_PER_HOUR, mailboxService, shouldSignalReply } from "./mailbox.ts";
+import type { MailboxEntry } from "@ultiv/contracts";
+
 import { messageTools } from "./tools.ts";
 
 /** A mailbox with zero retry delay, for dead-letter tests. */
@@ -167,6 +169,48 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
     // …and deliberate (human/REST) sends are exempt.
     expect(await send("pricing", "human")).toBe("");
     await handle.close();
+  });
+
+  it("signals a finished request only when no reply came through the tunnel", () => {
+    const envelope = {
+      id: "req-1",
+      chain: ["a"],
+      from: "a",
+      to: "b",
+      kind: "request" as const,
+      replyTo: null,
+      body: "x",
+      artifacts: [],
+      at: 100,
+    };
+    const entry = (from: string, to: string, at: number): MailboxEntry =>
+      ({
+        envelope: {
+          id: `${from}-${to}-${at}`,
+          chain: [from],
+          from,
+          to,
+          kind: "notify",
+          replyTo: null,
+          body: "x",
+          artifacts: [],
+          at,
+        },
+        status: "replied",
+        retries: 0,
+        deliveredAt: at,
+        settledAt: at,
+        error: null,
+      }) as MailboxEntry;
+    // No reply at all → signal (the sender still needs to learn the turn ended).
+    expect(shouldSignalReply(envelope, [entry("a", "b", 90)])).toBe(true);
+    // A reply from the recipient after our send → the reply itself woke the
+    // sender; a signal would double every turn.
+    expect(shouldSignalReply(envelope, [entry("a", "b", 90), entry("b", "a", 140)])).toBe(false);
+    // An OLD reply predating our request is not an answer to it → signal.
+    expect(shouldSignalReply(envelope, [entry("b", "a", 40)])).toBe(true);
+    // Traffic to other peers is irrelevant → signal.
+    expect(shouldSignalReply(envelope, [entry("b", "c", 150)])).toBe(true);
   });
 
   it("tunnels: delivery lands on the counterpart's MAIN thread, the room tool reads the transcript, and sessions pin the near endpoint", async () => {

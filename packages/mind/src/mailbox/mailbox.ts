@@ -43,6 +43,23 @@ export const MAX_RETRIES = 3;
  */
 export const ROOM_EXCHANGE_CAP = 3;
 
+/**
+ * After a request's turn settles: the sender is woken with a finish signal
+ * ONLY if the recipient did not already reply through the tunnel — a real
+ * reply envelope delivers to the sender's endpoint on its own, and signalling
+ * as well would double-wake them (two turns, two answers, cascade to the cap).
+ */
+export const shouldSignalReply = (
+  envelope: MailboxEnvelope,
+  entriesAfter: readonly MailboxEntry[],
+): boolean =>
+  !entriesAfter.some(
+    (candidate) =>
+      candidate.envelope.from === envelope.to &&
+      candidate.envelope.to === envelope.from &&
+      candidate.envelope.at > envelope.at,
+  );
+
 const isExternal = (id: string): boolean => id.startsWith("external:");
 
 /** A counting lane: N holders at once, everyone else waits in FIFO order. */
@@ -317,14 +334,18 @@ export const mailboxService = (deps: {
         error: null,
       });
       if (envelope.kind === "request" && !isExternal(envelope.from)) {
-        // A finish SIGNAL, not a transcript copy: the sender's endpoint reads
-        // the whole tunnel with the `room` tool if it needs the content.
-        const name = toProfile?.name ?? envelope.to;
-        const wakeId = entry.originConversation ?? (await mainConversationId(owner, envelope.from));
-        await wakeConversation(
-          wakeId,
-          `[reply from ${name} • re: ${envelope.id}]\n\n${name} finished their reply — the exchange in your room${room.topic === "" ? "" : ` (“${room.topic}”)`} is done. Read the full transcript with the room tool (room id: ${room.id}) if you need it, then respond here; your owner reads this thread. Reply to ${name} only if something is genuinely missing.`,
-        );
+        // A finish SIGNAL, not a transcript copy — and ONLY when the recipient
+        // did not reply through the tunnel (their reply envelope already woke
+        // the sender; a second signal would double every turn).
+        if (shouldSignalReply(envelope, await readEntries(converse))) {
+          const name = toProfile?.name ?? envelope.to;
+          const wakeId =
+            entry.originConversation ?? (await mainConversationId(owner, envelope.from));
+          await wakeConversation(
+            wakeId,
+            `[reply from ${name} • re: ${envelope.id}]\n\n${name} finished their turn without sending a reply — if you need their answer, read the room with the room tool (room id: ${room.id}) and follow up with them. Otherwise conclude here for your owner.`,
+          );
+        }
       }
     } catch (cause) {
       const retries = entry.retries + 1;
