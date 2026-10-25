@@ -10,6 +10,8 @@ export * from "./config.ts";
 export * from "./converse/converse.ts";
 export * from "./converse/pi-registry.ts";
 export * from "./converse/steps.ts";
+export * from "./profiles/profiles.ts";
+export * from "./profiles/section.ts";
 export * from "./decide/decide.ts";
 export * from "./decide/gateway.ts";
 export * from "./entity.ts";

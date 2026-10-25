@@ -25,8 +25,7 @@ import {
   removeCronJob,
   type CronScheduler,
 } from "./cron.ts";
-import { ownerOf, principalFromRequest, sessionKey } from "./identity.ts";
-import { createSession, listSessions, removeSession } from "./sessions.ts";
+import { ownerOf, principalFromRequest } from "./identity.ts";
 import { callWebhook, createWebhook, listWebhooks, removeWebhook } from "./webhooks.ts";
 
 export interface RestDeps {
@@ -98,14 +97,24 @@ async function route(args: RouteArgs): Promise<void> {
   const segment = (after: string): string => decodeURIComponent(path.slice(after.length));
 
   if (path === "/api/sessions" && method === "GET") {
-    return json(200, await listSessions(args.mind, args.owner));
+    const profile = queryOr(args, "profile");
+    return json(200, await args.mind.profiles.listSessions(args.owner, profile));
   }
   if (path === "/api/sessions" && method === "POST") {
-    const body = await args.readJson<{ title?: string | null }>(req);
-    return json(200, await createSession(args.mind, args.owner, body.title ?? null));
+    const body = await args.readJson<{ title?: string | null; profileId?: string }>(req);
+    return json(
+      200,
+      await args.mind.profiles.createSession(
+        args.owner,
+        body.profileId ?? "default",
+        body.title ?? null,
+      ),
+    );
   }
   if (path.startsWith("/api/sessions/") && method === "DELETE") {
-    return json(200, { ok: await removeSession(args.mind, args.owner, segment("/api/sessions/")) });
+    return json(200, {
+      ok: await args.mind.profiles.removeSession(args.owner, segment("/api/sessions/")),
+    });
   }
   if (path === "/api/models") {
     return json(
@@ -151,7 +160,9 @@ async function taskRoutes(args: RouteArgs, segment: (after: string) => string): 
         conversationId:
           body.sessionId !== undefined && body.sessionId !== ""
             ? ((await Effect.runPromise(
-                mind.converse.conversationIdOf(sessionKey(args.owner, body.sessionId)),
+                mind.converse.conversationIdOf(
+                  await mind.profiles.keyForSession(args.owner, body.sessionId),
+                ),
               )) ?? null)
             : null,
         prompt: body.prompt,
@@ -200,7 +211,11 @@ async function artifactRoutes(
     const sessionId = queryOr(args, "sessionId");
     const mapped =
       sessionId !== undefined
-        ? await Effect.runPromise(mind.converse.conversationIdOf(sessionKey(args.owner, sessionId)))
+        ? await Effect.runPromise(
+            mind.converse.conversationIdOf(
+              await mind.profiles.keyForSession(args.owner, sessionId),
+            ),
+          )
         : undefined;
     const conversationId = queryOr(args, "conversationId") ?? mapped;
     const filter: { conversationId?: string; query?: string } = {};
@@ -219,7 +234,9 @@ async function artifactRoutes(
     const conversationId =
       sessionId !== undefined
         ? ((await Effect.runPromise(
-            mind.converse.conversationIdOf(sessionKey(args.owner, sessionId)),
+            mind.converse.conversationIdOf(
+              await mind.profiles.keyForSession(args.owner, sessionId),
+            ),
           )) ?? null)
         : null;
     const body = await args.readBody(req);

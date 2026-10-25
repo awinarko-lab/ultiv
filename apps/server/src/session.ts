@@ -26,8 +26,7 @@ import {
   type UsageSummary,
 } from "@ultiv/contracts";
 import { projectTranscript, usageOf, type MindService } from "@ultiv/mind";
-import { touchSession } from "./sessions.ts";
-import { ownerOf, sessionKey, type Principal } from "./identity.ts";
+import { ownerOf, type Principal } from "./identity.ts";
 
 type SessionCells = {
   transcript: Cell<TranscriptEntry[]>;
@@ -64,8 +63,12 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
     Session,
     (input, principal, self) => {
       const owner = ownerOf(principal);
-      const key = sessionKey(owner, input.id);
-      const conversation = Effect.runPromise(mind.converse.ensure(key));
+      // The registry row decides the scope (profile, DM pair); unknown ids
+      // land under the default profile — pre-profile ids keep their legacy
+      // mapping through keyForSession.
+      const conversation = mind.profiles
+        .keyForSession(owner, input.id)
+        .then((key) => Effect.runPromise(mind.converse.ensure(key)));
       // Sync empty starts: the transcript/usage hydration must NOT publish at
       // attach — a publication racing the client's subscribe handshake trips
       // chord's ack window over the wire and desyncs every object on the link
@@ -106,10 +109,16 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         };
         const unsubscribe = view.subscribe((value) => apply(value));
         if (view.value !== undefined) apply(view.value);
-        // Reflect the conversation's durable model/effort selection.
-        const selection = await Effect.runPromise(mind.converse.agentOf(chat));
-        safeChange(cells.model, ctx, () => selection.model);
-        safeChange(cells.effort, ctx, () => selection.effort as ThinkingLevel | null);
+        // Reflect the conversation's durable model/effort selection. Both
+        // reads may land after a shutdown closed the harness (this object's
+        // task outlives the last reference); a failed read is not an error.
+        const selection = await Effect.runPromise(mind.converse.agentOf(chat)).catch(
+          () => undefined,
+        );
+        if (selection !== undefined) {
+          safeChange(cells.model, ctx, () => selection.model);
+          safeChange(cells.effort, ctx, () => selection.effort as ThinkingLevel | null);
+        }
         safeChange(cells.conversationId, ctx, () => String(chat.id));
         // Detach on abort, or the attached view outlives the object and hangs
         // graceful shutdown (node --watch restarts wait forever).
@@ -161,6 +170,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
             at: Date.now(),
             kind: "approval",
             conversationId: id,
+            profile: mind.profiles.profileOf(id)?.id ?? null,
             callId,
             name: null,
             durationMs: null,
@@ -214,7 +224,7 @@ function settle(
     try {
       const result = await Effect.runPromise(mind.converse.settle(conversation, submission));
       if (result.text.trim() !== "") {
-        await touchSession(mind, owner, sessionId, { at: Date.now(), titleSeed: text });
+        await mind.profiles.touchSession(owner, sessionId, { at: Date.now(), titleSeed: text });
       }
       safeChange(cells.phase, ctx, () => "idle");
     } catch (error) {

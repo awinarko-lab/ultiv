@@ -14,20 +14,33 @@ import { deliverToSession } from "./deliver.ts";
 
 const WebhooksDoc = defineDoc<{ items: WebhookInfo[] }>({
   kind: "ultiv.webhooks",
-  version: 1,
+  version: 2,
   scope: "session",
   initial: () => ({ items: [] }),
+  // v1 rows predate profile scoping.
+  migrate: (value) => {
+    const stored = (value.items ?? []) as unknown as ReadonlyArray<Record<string, unknown>>;
+    const items = stored.map((row) => ({
+      ...row,
+      profile: typeof row.profile === "string" ? row.profile : "default",
+    }));
+    return { items } as unknown as { items: WebhookInfo[] };
+  },
   checkpointWhen: () => true,
 });
 
 export const listWebhooks = async (mind: MindService): Promise<WebhookList> =>
-  (await Effect.runPromise(mind.converse.docs.snapshot(WebhooksDoc)))?.items ?? [];
+  ((await Effect.runPromise(mind.converse.docs.snapshot(WebhooksDoc)))?.items ?? []).map(
+    (webhook) => ({ ...webhook, profile: webhook.profile ?? "default" }),
+  );
 
 export const createWebhook = async (mind: MindService, sessionId: string): Promise<WebhookInfo> => {
+  const row = await mind.profiles.rowOf(sessionId);
   const webhook: WebhookInfo = {
     id: randomUUID(),
     token: randomUUID(),
     sessionId,
+    profile: row?.profile ?? "default",
     createdAt: Date.now(),
     calls: 0,
   };

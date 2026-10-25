@@ -59,6 +59,10 @@ export interface ArtifactWrite {
   readonly content: string;
   /** The conversation writing the file; null for app uploads without a session. */
   readonly conversationId?: string | null;
+  /** The owner the artifact belongs to; null = unscoped (legacy behavior). */
+  readonly owner?: string | null;
+  /** The profile workspace the artifact belongs to; null = unscoped. */
+  readonly profile?: string | null;
 }
 
 /** Store one artifact (UTF-8 text); returns its metadata. */
@@ -73,16 +77,20 @@ export const writeArtifact = (dir: string, input: ArtifactWrite): ArtifactInfo =
     bytes,
     createdAt: Date.now(),
     conversationId: input.conversationId ?? null,
+    owner: input.owner ?? null,
+    profile: input.profile ?? null,
   };
   writeFileSync(blobOf(dir, id), input.content, "utf8");
   writeFileSync(sidecarOf(dir, id), JSON.stringify(info));
   return info;
 };
 
-/** Legacy sidecars predate `conversationId`; normalize on every read. */
+/** Legacy sidecars predate `conversationId` and profile scoping; normalize on every read. */
 const normalize = (raw: ArtifactInfo): ArtifactInfo => ({
   ...raw,
   conversationId: raw.conversationId ?? null,
+  owner: raw.owner ?? null,
+  profile: raw.profile ?? null,
 });
 
 /** Read one artifact's metadata and text (UTF-8, capped); undefined when absent. */

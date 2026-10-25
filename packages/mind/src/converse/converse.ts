@@ -51,7 +51,11 @@ export interface ConverseService {
   /** The reserved root conversation (probes, background jobs). */
   readonly root: () => Effect.Effect<Conversation, External>;
   /** Resolve the durable conversation behind an app key, creating and mapping it on first use. */
-  readonly ensure: (key: string) => Effect.Effect<Conversation, External>;
+  readonly ensure: (
+    key: string,
+    /** Agent override applied when the conversation is created (profiles: model + allowlist). */
+    agent?: AgentChange,
+  ) => Effect.Effect<Conversation, External>;
   /** Open an existing durable conversation by id; undefined when there is none. */
   readonly open: (id: string) => Effect.Effect<Conversation | undefined, External>;
   /** Admit an input into the durable transcript (visibility = durability). */
@@ -112,7 +116,12 @@ const asEffect = <A>(op: string, promise: Promise<A>): Effect.Effect<A, External
   Effect.tryPromise({ try: () => promise, catch: (cause) => new External({ op, cause }) });
 
 /** Resolve the durable conversation behind an app key, creating and mapping it on first use. */
-const ensureConversation = (harness: Harness, key: string, agent: AgentChange) =>
+const ensureConversation = (
+  harness: Harness,
+  key: string,
+  agent: AgentChange,
+  agentOverride?: AgentChange,
+) =>
   Effect.gen(function* () {
     const known = yield* asEffect(
       "session map read",
@@ -127,7 +136,10 @@ const ensureConversation = (harness: Harness, key: string, agent: AgentChange) =
     }
     const created = yield* asEffect(
       "conversation create",
-      harness.createConversation({ ownership: { kind: "ownerless" }, agent }, BACKGROUND_CONTEXT),
+      harness.createConversation(
+        { ownership: { kind: "ownerless" }, agent: agentOverride ?? agent },
+        BACKGROUND_CONTEXT,
+      ),
     );
     yield* asEffect(
       "session map write",
@@ -183,7 +195,7 @@ const modelIdOf = (agent: { readonly model?: unknown }): string | null => {
 
 const converseService = (harness: Harness, agent: AgentChange): ConverseService => ({
   root: () => asEffect("root conversation", harness.root(BACKGROUND_CONTEXT, { agent })),
-  ensure: (key) => ensureConversation(harness, key, agent),
+  ensure: (key, agentOverride) => ensureConversation(harness, key, agent, agentOverride),
   open: (id) => {
     // Conversation ids are numeric today; accept any string form losslessly.
     const numeric = Number(id);

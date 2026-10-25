@@ -14,14 +14,28 @@ import { deliverToSession } from "./deliver.ts";
 
 const CronDoc = defineDoc<{ items: CronJobInfo[] }>({
   kind: "ultiv.cronjobs",
-  version: 1,
+  version: 2,
   scope: "session",
   initial: () => ({ items: [] }),
+  // v1 rows predate profile scoping and the failure counter.
+  migrate: (value) => {
+    const stored = (value.items ?? []) as unknown as ReadonlyArray<Record<string, unknown>>;
+    const items = stored.map((row) => ({
+      ...row,
+      profile: typeof row.profile === "string" ? row.profile : "default",
+      failures: typeof row.failures === "number" ? row.failures : 0,
+    }));
+    return { items } as unknown as { items: CronJobInfo[] };
+  },
   checkpointWhen: () => true,
 });
 
 const readJobs = async (mind: MindService): Promise<CronJobList> =>
-  (await Effect.runPromise(mind.converse.docs.snapshot(CronDoc)))?.items ?? [];
+  ((await Effect.runPromise(mind.converse.docs.snapshot(CronDoc)))?.items ?? []).map((job) => ({
+    ...job,
+    profile: job.profile ?? "default",
+    failures: job.failures ?? 0,
+  }));
 
 const writeJobs = (mind: MindService, items: CronJobInfo[]) =>
   mind.converse.docs.commit(async (tx) => {
@@ -47,12 +61,15 @@ export const createCronJob = async (
   mind: MindService,
   input: { sessionId: string; schedule: string; prompt: string; enabled?: boolean },
 ): Promise<CronJobInfo> => {
+  const row = await mind.profiles.rowOf(input.sessionId);
   const job: CronJobInfo = {
     id: randomUUID(),
     sessionId: input.sessionId,
+    profile: row?.profile ?? "default",
     schedule: input.schedule,
     prompt: input.prompt,
     enabled: input.enabled ?? true,
+    failures: 0,
     createdAt: Date.now(),
     lastRunAt: null,
     lastError: null,

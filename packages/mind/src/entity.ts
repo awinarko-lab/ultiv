@@ -23,13 +23,15 @@ import { Approvals, approvalsLayer, type ApprovalsService } from "./approvals.ts
 import { actService } from "./act/act.ts";
 import { codemodeExtension } from "./act/codemode.ts";
 import { taskTools } from "./act/task-tools.ts";
-import { ENTITY_NAME, identityPlugin } from "./act/identity.ts";
+import { ENTITY_NAME } from "./act/identity.ts";
 import { decisionPlugin } from "./act/decision-tools.ts";
 import { temporalPlugin } from "./act/temporal.ts";
 import { Audit, auditLayer, type AuditService } from "./audit/audit.ts";
 import { Converse, converseLayer, type ConverseService } from "./converse/converse.ts";
 import { PiRegistry, piRegistryLayer } from "./converse/pi-registry.ts";
 import { Tasks, tasksLayer, type TasksService } from "./tasks/tasks.ts";
+import { profilesService, type ProfilesService } from "./profiles/profiles.ts";
+import { profilesExtension } from "./profiles/section.ts";
 import {
   Generate,
   generateLayer,
@@ -59,6 +61,8 @@ export interface MindService {
   readonly generate: GenerateService;
   /** Background sub-agent tasks in their own durable conversations. */
   readonly tasks: TasksService;
+  /** User-defined entities above sessions: registry, Bot Mode, DM threads. */
+  readonly profiles: ProfilesService;
   /** The append-only trail of the mind's acts. */
   readonly audit: AuditService;
   readonly describe: () => MindDescription;
@@ -93,11 +97,21 @@ const mindLayerRaw: Layer.Layer<
     const tasks = yield* Tasks;
     const audit = yield* Audit;
     const act = actService(registry, approvals, audit);
+    // One runtime, one entity per profile: the profiles service owns the
+    // session registry and the conversation→profile index; its identity
+    // section (persona + roster, or the substrate baseline) reaches every
+    // conversation through a late registry install.
+    const profiles = profilesService({
+      converse,
+      generate,
+      tools: () => act.extension().tools ?? [],
+    });
     // Everything rides one pi-durable registry; late installs are legal —
     // the harness reconsiders its tools as the registry changes.
     const piRegistry = yield* PiRegistry;
     piRegistry.install(act.extension());
     piRegistry.install(codemodeExtension());
+    piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
     piRegistry.install(defineExtension({ name: "ultius.mind.tasks", tools: taskTools(tasks) }));
     return {
       converse,
@@ -106,6 +120,7 @@ const mindLayerRaw: Layer.Layer<
       approvals,
       generate,
       tasks,
+      profiles,
       audit,
       describe: () => ({
         entity: ENTITY_NAME,
@@ -136,7 +151,6 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
       // First-party faculties ride always (identity, temporal, artifacts);
       // TinyFish live-web egress and Jev install only when keys are present.
       const base = [
-        identityPlugin(),
         temporalPlugin(),
         artifactsPlugin(),
         ...(tinyfishConfigured() ? [tinyfishPlugin] : []),

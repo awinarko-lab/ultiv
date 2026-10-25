@@ -9,6 +9,7 @@ const event = (at: number, name: string): AuditEvent => ({
   at,
   kind: "tool_call",
   conversationId: "c1",
+  profile: null,
   callId: `call-${at}`,
   name,
   durationMs: 5,

@@ -52,6 +52,8 @@ export const TasksDoc = defineDoc<{ tasks: TaskInfo[] }>({
 
 const taskConversationKey = (id: string): string => `task:${id}`;
 
+export { taskConversationKey };
+
 /** Legacy rows predate `conversationId`; normalize on every read. */
 const normalize = (task: TaskInfo): TaskInfo => ({
   ...task,

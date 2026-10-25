@@ -80,20 +80,24 @@ const callIdOf = (api: unknown): string | null => {
 
 /**
  * Wrap a tool so every execution lands in the audit trail: name, duration,
- * outcome, and (on failure) the error text. Approval denials are recorded by
- * the surface's decide call, not here — this sees only executed calls.
+ * outcome, profile scope, and (on failure) the error text. Approval denials
+ * are recorded by the surface's decide call, not here — this sees only
+ * executed calls. `profileOf` stamps the acting conversation's profile.
  */
 export const withAudit = <TParameters extends TSchema>(
   audit: AuditService,
   tool: ToolRegistration<TParameters>,
+  profileOf?: (conversationId: string) => string | null | undefined,
 ): ToolRegistration<TParameters> => ({
   ...tool,
   execute: async (args, api, context) => {
     const startedAt = Date.now();
+    const conversation = conversationOf(api);
     const event = (ok: boolean, error: string | null): AuditEvent => ({
       at: startedAt,
       kind: "tool_call",
-      conversationId: conversationOf(api),
+      conversationId: conversation,
+      profile: profileOf === undefined ? null : (profileOf(conversation) ?? null),
       callId: callIdOf(api),
       name: tool.name,
       durationMs: Date.now() - startedAt,
