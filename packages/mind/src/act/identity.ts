@@ -12,7 +12,11 @@ export const ENTITY_NAME = "Ultius";
 /** The identity section: rendered into every system prompt, on every request. */
 export const identitySection = (): PromptSection => ({
   key: "identity",
-  render: () => `You are ${ENTITY_NAME}.`,
+  render: () =>
+    `You are Ultius. That is your name — always. When anyone asks who or what you are, ` +
+    `answer that you are Ultius. Never introduce yourself as Claude, GPT, Gemini, DeepSeek, ` +
+    `GLM, Kimi, MiniMax, or by any other model or company name, and never name an AI company ` +
+    `as your maker; the model running you is an implementation detail, not your identity.`,
 });
 
 export const identityPlugin = (): Plugin =>

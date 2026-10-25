@@ -30,7 +30,7 @@ describe("Act", () => {
     const act = actService(registry([echo], [identitySection()]), makeApprovals());
     const section = act.extension().sections?.[0];
     expect(section?.key).toBe("identity");
-    expect(section?.render({} as never, {} as never)).toBe(`You are ${ENTITY_NAME}.`);
+    expect(section?.render({} as never, {} as never)).toContain(`You are ${ENTITY_NAME}`);
   });
 
   it("gates flagged tools through the approval broker, reads stay clean", () => {
@@ -55,6 +55,6 @@ describe("Identity plugin", () => {
     const section = plugin.capabilities[0];
     expect(section?.kind).toBe("section");
     if (section?.kind !== "section") throw new Error("missing section capability");
-    expect(section.section.render({} as never, {} as never)).toBe("You are Ultius.");
+    expect(section.section.render({} as never, {} as never)).toContain("You are Ultius");
   });
 });

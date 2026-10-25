@@ -33,6 +33,7 @@ import {
   kenariAgent,
   kenariCompaction,
   kenariWiring,
+  KENARI_MODELS,
   type KenariWiring,
 } from "../providers/kenari.ts";
 import { MindModels } from "../providers/models.ts";
@@ -187,13 +188,36 @@ const converseService = (harness: Harness, agent: AgentChange): ConverseService 
       settleOf(conversation, submission),
     ),
   agentOf: (conversation) =>
-    Effect.flatMap(asEffect("agent read", conversation.agent(BACKGROUND_CONTEXT)), (resolved) =>
-      Effect.succeed({
-        model: modelIdOf(resolved),
-        effort: (resolved.thinkingLevel ?? null) as ModelThinkingLevel | null,
-      }),
-    ),
+    Effect.flatMap(asEffect("agent read", conversation.agent(BACKGROUND_CONTEXT)), (resolved) => {
+      const model = modelIdOf(resolved);
+      const rawEffort = (resolved.thinkingLevel ?? null) as ModelThinkingLevel | null;
+      // A stored effort may predate the model it now runs on; surface the
+      // model's own default instead of an out-of-list value.
+      const spec = KENARI_MODELS.find((candidate) => candidate.id === model);
+      const effort =
+        rawEffort !== null &&
+        spec !== undefined &&
+        !(spec.efforts as readonly string[]).includes(rawEffort)
+          ? spec.defaultEffort
+          : rawEffort;
+      return Effect.succeed({ model, effort });
+    }),
   configure: (conversation, selection) => {
+    // Effort must be one the TARGET model supports: an effort carried over
+    // from another model (e.g. `off` on an always-reasoning model) degrades
+    // it. Snap out-of-list efforts to the model's own default.
+    const spec =
+      selection.model !== undefined
+        ? KENARI_MODELS.find((candidate) => candidate.id === selection.model)
+        : undefined;
+    const requested = selection.effort;
+    const effort =
+      requested !== undefined &&
+      requested !== null &&
+      spec !== undefined &&
+      !(spec.efforts as readonly string[]).includes(requested)
+        ? spec.defaultEffort
+        : requested;
     const change: AgentChange = {
       ...(selection.model !== undefined
         ? {
@@ -201,7 +225,7 @@ const converseService = (harness: Harness, agent: AgentChange): ConverseService 
               selection.model === null ? null : { provider: "kenari", modelId: selection.model },
           }
         : {}),
-      ...(selection.effort !== undefined ? { thinkingLevel: selection.effort } : {}),
+      ...(effort !== undefined ? { thinkingLevel: effort } : {}),
     };
     return Effect.asVoid(
       asEffect("agent configure", conversation.configure(change, BACKGROUND_CONTEXT)),
