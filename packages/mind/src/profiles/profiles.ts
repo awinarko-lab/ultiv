@@ -16,8 +16,6 @@ import type { ConverseService } from "../converse/converse.ts";
 import type { GenerateService } from "../generate/generate.ts";
 import {
   MAIN_PREFIX,
-  ProfilesDoc,
-  SessionsDoc,
   SettingsDoc,
   commitProfiles,
   commitSessions,

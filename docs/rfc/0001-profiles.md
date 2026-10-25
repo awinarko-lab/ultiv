@@ -305,3 +305,31 @@ safety rules are the product.
 - `packages/contracts` README/exports: `ProfileInfo`, `MailboxEnvelope`, `VaultItemInfo`,
   extended `SessionInfo`.
 - This RFC graduates to the design doc for v1 when implementation starts.
+
+## 16. Addendum (2026-10-26, post-implementation wave 2): rooms
+
+Live testing exposed a root flaw in per-pair DM threads: ONE shared conversation renders
+ONE identity section, so both bots in a pair wore the first participant's persona, and
+memory/tool scoping in the thread followed the same wrong profile. DM threads as sessions
+also polluted session lists with bot-to-bot traffic.
+
+**Rooms replace DM threads.** A room is a contextual conversation (a pair may hold many,
+keyed by topic; groups generalize). Every participant gets their OWN conversation
+(`{owner}:room:{roomId}:{profileId}`), indexed to their profile — identity, memory, tools
+and artifacts scope per-entity, always. Envelopes land in the recipient's seat; replies and
+NACKs wake the sender in THEIR seat (never the main chat); rooms are REST-only
+(`GET /api/rooms`, `GET /api/rooms/:id` with per-seat transcripts, `POST …/say` for
+supervision) and never appear in session lists. The `message` tool gained `topic`.
+Legacy `kind: "dm"` session rows are filtered from lists (removable by id).
+
+Also in this wave, from owner feedback:
+
+- **Terminology:** profiles are BOTS in every user-facing surface (wire/code keep the
+  `ProfileInfo` names).
+- **Lifecycle:** `POST /api/profiles/:id/main` sets the ONE main bot (`GET /api/main`);
+  the main bot and the last remaining bot cannot be removed (409).
+- **Onboarding:** creating a bot seeds its first main-chat turn from the provided
+  name/description/persona (`onboard: false` opts out); `ensureMain` is single-flight.
+- **UI:** bots panel (spawn with identity, edit identity, set-main, delete), rooms popup
+  with per-seat transcripts + supervision say, vault manager (shared by default, scoping
+  optional), "Bot" terminology throughout.

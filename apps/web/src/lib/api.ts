@@ -1,10 +1,17 @@
-import type { ModelInfo, ProfileInfo, SessionInfo, TaskInfo } from "@ultiv/contracts";
+import type {
+  ModelInfo,
+  ProfileInfo,
+  RoomInfo,
+  SessionInfo,
+  TaskInfo,
+  TranscriptEntry,
+  VaultItemInfo,
+} from "@ultiv/contracts";
 
 /**
- * The session registry and model catalog are plain REST on the server's HTTP
- * handler (CRUD over chord's replicated-object wire desyncs on attach). Same
- * base as the chord link: VITE_CHORD_URL in dev/prod override, relative in
- * same-origin builds.
+ * The registries are plain REST on the server's HTTP handler (CRUD over
+ * chord's replicated-object wire desyncs on attach). Same base as the chord
+ * link: VITE_CHORD_URL in dev/prod override, relative in same-origin builds.
  */
 function base(): string {
   const override = import.meta.env.VITE_CHORD_URL;
@@ -21,6 +28,32 @@ async function getJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function send<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${base()}${path}`, {
+    method,
+    ...(body !== undefined
+      ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
+      : {}),
+  });
+  if (!response.ok) throw new Error(`${method} ${path}: ${response.status}`);
+  return (await response.json()) as T;
+}
+
+async function drop(path: string): Promise<boolean> {
+  const response = await fetch(`${base()}${path}`, { method: "DELETE" });
+  return response.ok;
+}
+
+export interface RoomDetail {
+  room: RoomInfo;
+  seats: {
+    profileId: string;
+    conversationId: string | null;
+    name: string;
+    transcript: TranscriptEntry[];
+  }[];
+}
+
 export const api = {
   sessions: (profile?: string): Promise<SessionInfo[]> =>
     getJson<SessionInfo[]>(
@@ -29,41 +62,38 @@ export const api = {
         : "/api/sessions",
     ),
   profiles: (): Promise<ProfileInfo[]> => getJson<ProfileInfo[]>("/api/profiles"),
-  createProfile: async (input: { name: string; persona?: string }): Promise<ProfileInfo> => {
-    const response = await fetch(`${base()}/api/profiles`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    if (!response.ok) throw new Error(`POST /api/profiles: ${response.status}`);
-    return (await response.json()) as ProfileInfo;
-  },
-  mainChat: async (profileId: string): Promise<SessionInfo> => {
-    const response = await fetch(`${base()}/api/profiles/${encodeURIComponent(profileId)}/main`);
-    if (!response.ok) throw new Error(`GET main: ${response.status}`);
-    return (await response.json()) as SessionInfo;
-  },
+  createProfile: (input: {
+    name: string;
+    description?: string;
+    persona?: string;
+  }): Promise<ProfileInfo> => send<ProfileInfo>("/api/profiles", "POST", input),
+  updateProfile: (
+    id: string,
+    patch: { name?: string; description?: string; persona?: string },
+  ): Promise<ProfileInfo> =>
+    send<ProfileInfo>(`/api/profiles/${encodeURIComponent(id)}`, "PATCH", patch),
+  deleteProfile: (id: string): Promise<boolean> => drop(`/api/profiles/${encodeURIComponent(id)}`),
+  main: (): Promise<{ profileId: string }> => getJson<{ profileId: string }>("/api/main"),
+  setMain: (id: string): Promise<{ ok: boolean }> =>
+    send<{ ok: boolean }>(`/api/profiles/${encodeURIComponent(id)}/main`, "POST"),
+  mainChat: (profileId: string): Promise<SessionInfo> =>
+    getJson<SessionInfo>(`/api/profiles/${encodeURIComponent(profileId)}/main`),
+  rooms: (): Promise<RoomInfo[]> => getJson<RoomInfo[]>("/api/rooms"),
+  room: (id: string): Promise<RoomDetail> =>
+    getJson<RoomDetail>(`/api/rooms/${encodeURIComponent(id)}`),
+  roomSay: (id: string, to: string, text: string): Promise<{ ok: boolean }> =>
+    send<{ ok: boolean }>(`/api/rooms/${encodeURIComponent(id)}/say`, "POST", { to, text }),
+  vault: (): Promise<VaultItemInfo[]> => getJson<VaultItemInfo[]>("/api/vault"),
+  vaultCreate: (item: Record<string, unknown>): Promise<VaultItemInfo> =>
+    send<VaultItemInfo>("/api/vault", "POST", item),
+  vaultRemove: (id: string): Promise<boolean> => drop(`/api/vault/${encodeURIComponent(id)}`),
   models: (): Promise<ModelInfo[]> => getJson<ModelInfo[]>("/api/models"),
-  create: async (title: string | null, profileId?: string): Promise<{ id: string }> => {
-    const response = await fetch(`${base()}/api/sessions`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title, ...(profileId !== undefined ? { profileId } : {}) }),
-    });
-    if (!response.ok) throw new Error(`POST /api/sessions: ${response.status}`);
-    return (await response.json()) as { id: string };
-  },
-  remove: async (id: string): Promise<boolean> => {
-    const response = await fetch(`${base()}/api/sessions/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
-    return response.ok;
-  },
+  create: (title: string | null, profileId?: string): Promise<{ id: string }> =>
+    send<{ id: string }>("/api/sessions", "POST", {
+      title,
+      ...(profileId !== undefined ? { profileId } : {}),
+    }),
+  remove: (id: string): Promise<boolean> => drop(`/api/sessions/${encodeURIComponent(id)}`),
   tasks: (): Promise<TaskInfo[]> => getJson<TaskInfo[]>("/api/tasks"),
-  removeTask: async (id: string): Promise<boolean> => {
-    const response = await fetch(`${base()}/api/tasks/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
-    return response.ok;
-  },
+  removeTask: (id: string): Promise<boolean> => drop(`/api/tasks/${encodeURIComponent(id)}`),
 };

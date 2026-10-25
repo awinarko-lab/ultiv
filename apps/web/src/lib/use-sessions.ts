@@ -54,7 +54,7 @@ export function useSessions(): {
   );
 
   const createProfile = useCallback(
-    async (input: { name: string; persona?: string }) => {
+    async (input: { name: string; description?: string; persona?: string }) => {
       try {
         const created = await api.createProfile(input);
         await refresh(created.id);
