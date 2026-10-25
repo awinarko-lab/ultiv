@@ -5,9 +5,8 @@
  * keys.
  *
  * Catalog (owner selection, all through kenari for now), verified against
- * `GET /v1/models` (2026-10-25) and priced from models.dev's kenari entry;
- * kimi-k3-1-pro is absent from models.dev, so its USD cost is derived from
- * the gateway's own IDR pricing (micro_idr_per_1m_tokens / 16,500).
+ * `GET /v1/models` (2026-10-25) and priced from models.dev's kenari entry
+ * where present (minimax-m3-1-flash: gateway metadata + IDR→USD ÷ 16,500).
  */
 import { Effect } from "effect";
 import { ConfigError } from "effect/Config";
@@ -22,12 +21,13 @@ import type { AgentChange, CompactionSettings } from "@earendil-works/pi-durable
 import { kenariBaseUrl, kenariModel } from "../config.ts";
 
 /**
- * Efforts the platform offers, from the gateway's per-model
+ * Efforts the platform offers, from each gateway model's
  * `supported_reasoning_levels` (checked 2026-10-25): deepseek-v4-1-flash
- * none/low/high/max, glm-5-3-flash and kimi-k3-1-pro low/high/max (no off —
- * they always reason). `off` maps to the gateway's `none`.
+ * none/low/high/max (toggleable), glm-5-3-flash low/high/max,
+ * minimax-m3-1-flash low/medium/high/xhigh/max (all of glm/minimax always
+ * reason — no off outside deepseek). `off` maps to the gateway's `none`.
  */
-export type SessionEffort = "off" | "low" | "high" | "max";
+export type SessionEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
 /** One selectable model of the mind, with the efforts IT offers. */
 export interface KenariModelSpec {
@@ -42,6 +42,7 @@ export interface KenariModelSpec {
 
 const EFFORTS_TOGGLEABLE = ["off", "low", "high", "max"] as const;
 const EFFORTS_ALWAYS = ["low", "high", "max"] as const;
+const EFFORTS_WIDE = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export const KENARI_MODELS: readonly KenariModelSpec[] = [
   {
@@ -63,12 +64,12 @@ export const KENARI_MODELS: readonly KenariModelSpec[] = [
     defaultEffort: "low",
   },
   {
-    id: "kimi-k3-1-pro",
-    label: "Kimi K3.1 Pro",
-    contextWindow: 1_048_576,
-    maxTokens: 943_718,
+    id: "minimax-m3-1-flash",
+    label: "MiniMax M3.1 Flash",
+    contextWindow: 1_000_000,
+    maxTokens: 512_000,
     reasoning: true,
-    efforts: EFFORTS_ALWAYS,
+    efforts: EFFORTS_WIDE,
     defaultEffort: "low",
   },
 ];
@@ -89,7 +90,12 @@ const COST_RATES: Record<
     cacheWrite: 0,
   },
   "glm-5-3-flash": { input: 0.11428571, output: 0.34285714, cacheRead: 0.02285714, cacheWrite: 0 },
-  "kimi-k3-1-pro": { input: 0.66666667, output: 6.72727273, cacheRead: 0.06666667, cacheWrite: 0 },
+  "minimax-m3-1-flash": {
+    input: 0.01939394,
+    output: 0.07878788,
+    cacheRead: 0.00363636,
+    cacheWrite: 0,
+  },
 };
 const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 

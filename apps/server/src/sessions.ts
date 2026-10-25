@@ -20,6 +20,21 @@ function titleFor(seed: string): string {
   return text.length > 48 ? `${text.slice(0, 48)}…` : text;
 }
 
+/**
+ * Process-local mirror of the durable registry. Cells sync-init from it so a
+ * fresh object's snapshot already carries the whole list: a publication racing
+ * the client's subscribe handshake trips chord's ack window over the wire
+ * (`ack N outside 0..N`) and desyncs the link, so nothing may publish at
+ * attach. Mutations update the mirror first, then the live cell.
+ */
+let mirror: SessionInfo[] = [];
+
+/** Prime the mirror from the durable registry. Runs once at stack build. */
+export async function loadSessionCache(mind: MindService): Promise<void> {
+  const stored = await Effect.runPromise(mind.converse.docs.snapshot(SessionsDoc));
+  mirror = stored?.sessions ?? [];
+}
+
 /** Record last activity for a chat id, registering it on first contact (legacy ids included). */
 export async function touchSession(
   mind: MindService,
@@ -52,15 +67,18 @@ export async function touchSession(
       draft.sessions = sessions;
     }),
   );
+  mirror = await readMirror(mind);
 }
+
+const readMirror = async (mind: MindService): Promise<SessionInfo[]> => {
+  const stored = await Effect.runPromise(mind.converse.docs.snapshot(SessionsDoc));
+  return stored?.sessions ?? [];
+};
 
 /** Registers the durable registry of chat sessions (one per host). */
 export function serveSessions(host: Host<Principal>, mind: MindService): void {
   host.serve(Sessions, (_input, _principal, self) => {
-    const sessions = self.state("sessions", SessionListSchema, {
-      init: async () =>
-        (await Effect.runPromise(mind.converse.docs.snapshot(SessionsDoc)))?.sessions ?? [],
-    });
+    const sessions = self.state("sessions", SessionListSchema, mirror);
     const models = self.state(
       "models",
       ModelListSchema,
@@ -93,15 +111,8 @@ export function serveSessions(host: Host<Principal>, mind: MindService): void {
             ];
           }),
         );
-        sessions.change(ctx, (current) => [
-          ...current,
-          {
-            id,
-            title: title ?? "",
-            createdAt: at,
-            lastMessageAt: at,
-          },
-        ]);
+        mirror = await readMirror(mind);
+        sessions.change(ctx, () => mirror);
         return { id };
       },
       remove: async ({ id }, ctx) => {
@@ -113,7 +124,8 @@ export function serveSessions(host: Host<Principal>, mind: MindService): void {
             draft.sessions = draft.sessions.filter((session) => session.id !== id);
           }),
         );
-        sessions.change(ctx, (current) => current.filter((session) => session.id !== id));
+        mirror = await readMirror(mind);
+        sessions.change(ctx, () => mirror);
         return { ok: true };
       },
     };

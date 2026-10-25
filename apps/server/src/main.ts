@@ -7,8 +7,8 @@ import { WebSocketServer } from "ws";
 import { Ping } from "@ultiv/contracts";
 import { httpPlugin } from "@ultiv/ext";
 import { openMind } from "@ultiv/mind";
+import { loadSessionCache, serveSessions } from "./sessions.ts";
 import { serveSession } from "./session.ts";
-import { serveSessions } from "./sessions.ts";
 
 export type Principal = { kind: "guest" } | { kind: "server" };
 
@@ -35,6 +35,7 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
     };
   });
   serveSession(host, mind);
+  await loadSessionCache(mind);
   serveSessions(host, mind);
 
   const http = createServer((_req, res) => {

@@ -4,7 +4,9 @@ import { Type, type Static } from "typebox";
 export const ThinkingLevelSchema = Type.Union([
   Type.Literal("off"),
   Type.Literal("low"),
+  Type.Literal("medium"),
   Type.Literal("high"),
+  Type.Literal("xhigh"),
   Type.Literal("max"),
 ]);
 
