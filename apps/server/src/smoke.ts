@@ -168,12 +168,11 @@ expect("room created for the exchange", roomsList.status === 200 && roomsList.js
 const roomId = roomsList.json[0].id as string;
 const roomDetail = await call("GET", `/api/rooms/${roomId}`, undefined, headers);
 expect(
-  "room has per-bot seats",
+  "room detail is one merged chat with participant names",
   roomDetail.status === 200 &&
-    roomDetail.json.seats.length === 2 &&
-    roomDetail.json.seats.every((seat: { transcript: unknown[] }) =>
-      Array.isArray(seat.transcript),
-    ),
+    roomDetail.json.participants.length === 2 &&
+    Array.isArray(roomDetail.json.timeline) &&
+    roomDetail.json.participants.every((p: { name: string }) => typeof p.name === "string"),
 );
 const allSessions = await call("GET", "/api/sessions", undefined, headers);
 expect(
@@ -199,6 +198,11 @@ const mainAfter = await call("GET", "/api/main", undefined, headers);
 expect("main switched", mainAfter.json.profileId === rid);
 const deleteOld = await call("DELETE", "/api/profiles/default", undefined, headers);
 expect("non-main bot removable", deleteOld.status === 200 && deleteOld.json.ok === true);
+const afterDelete = await call("GET", "/api/profiles", undefined, headers);
+expect(
+  "deleted bot stays deleted (no resurrection)",
+  afterDelete.json.every((p: { id: string }) => p.id !== "default"),
+);
 
 // Vault: secrets seal; responses carry masks only.
 const login = await call(

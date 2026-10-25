@@ -194,7 +194,16 @@ export const profilesService = (deps: {
   };
 
   const ensureProfileRow = async (owner: string, profileId: string): Promise<ProfileInfo> => {
-    if (profileId === "default") return service.ensureDefault(owner);
+    if (profileId === "default") {
+      const existing = await service.get(owner, "default");
+      if (existing !== undefined) return existing;
+      // First touch by a brand-new owner materializes the substrate bot; an
+      // owner who deleted it gets NotFound, not a resurrection.
+      const owned = await run(readProfiles(converse)).then((rows) =>
+        rows.filter((p) => p.owner === owner),
+      );
+      if (owned.length === 0) return service.ensureDefault(owner);
+    }
     const profile = await service.get(owner, profileId);
     if (profile === undefined) throw new NotFound({ what: `profile ${profileId}` });
     return profile;
@@ -260,9 +269,13 @@ export const profilesService = (deps: {
 
   const service: ProfilesService = {
     list: async (owner) => {
-      // Listing is a touch: owners see their default profile materialized.
-      await service.ensureDefault(owner);
-      return run(readProfiles(converse)).then((rows) => rows.filter((p) => p.owner === owner));
+      // Materialize the default bot only for a brand-new owner; after a
+      // deliberate deletion it must NOT resurrect on every list.
+      const rows = await run(readProfiles(converse)).then((all) =>
+        all.filter((p) => p.owner === owner),
+      );
+      if (rows.length === 0) return [await service.ensureDefault(owner)];
+      return rows;
     },
     get: (owner, id) =>
       run(readProfiles(converse)).then((rows) =>

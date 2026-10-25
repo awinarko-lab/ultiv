@@ -114,8 +114,9 @@ export const roomsService = (deps: {
         lastMessageAt: Date.now(),
       };
       await writeRooms(converse, (items) => [...items, room]);
+      // External senders have no identity side — no seat for them.
       for (const profileId of room.participants) {
-        await ensureSeat(owner, room, profileId);
+        if (!profileId.startsWith("external:")) await ensureSeat(owner, room, profileId);
       }
       return room;
     },

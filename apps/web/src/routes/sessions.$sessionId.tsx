@@ -1,6 +1,7 @@
 import { Link, useNavigate, createFileRoute } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RoomsPanel } from "@/components/rooms-panel";
 import { SessionView } from "@/components/session-view";
 import { TasksPanel } from "@/components/tasks-panel";
 import { useSessions } from "@/lib/use-sessions";
@@ -16,6 +17,10 @@ function SessionPage() {
   const sessions = useSessions();
   const navigate = useNavigate();
 
+  const row = sessions.sessions.find((candidate) => candidate.id === sessionId);
+  const isMain = row?.kind === "main";
+  const botId = row?.profile;
+
   const remove = async () => {
     const ok = await sessions.remove(sessionId);
     if (ok) await navigate({ to: "/" });
@@ -24,12 +29,19 @@ function SessionPage() {
   return (
     <main className="mx-auto flex h-dvh w-full max-w-5xl flex-col gap-4 p-8">
       <header className="flex items-center justify-between">
-        <h1 className="font-heading text-xl font-semibold tracking-tight">Session</h1>
         <div className="flex items-center gap-2">
+          <h1 className="font-heading text-xl font-semibold tracking-tight">
+            {isMain ? "Main chat" : "Session"}
+          </h1>
           <Badge variant="outline">{sessionId}</Badge>
-          <Button variant="outline" size="sm" onClick={remove}>
-            Delete
-          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          {botId !== undefined && <RoomsPanel profiles={sessions.profiles} botId={botId} />}
+          {!isMain && (
+            <Button variant="outline" size="sm" onClick={remove}>
+              Delete
+            </Button>
+          )}
         </div>
       </header>
       <TasksPanel conversationId={session.conversationId} />

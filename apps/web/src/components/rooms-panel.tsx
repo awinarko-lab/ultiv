@@ -1,12 +1,11 @@
 /**
- * The rooms popup: bot-to-bot conversations live here — contextual threads,
- * each shown as per-bot seats so it is always clear who said what. Rooms are
- * never sessions; this dialog is their only surface, plus a supervision "say"
- * into a chosen bot's seat.
+ * The rooms popup: bot-to-bot conversations as ONE chat with participant
+ * names — the same shape as the owner's own threads. Per-seat internals are
+ * invisible here; a supervision "say" posts into a chosen bot's side.
  */
 import { MessagesSquareIcon, SendIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { ProfileInfo, RoomInfo, TranscriptEntry } from "@ultiv/contracts";
+import type { ProfileInfo, RoomInfo } from "@ultiv/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,23 +19,10 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { api, type RoomDetail } from "@/lib/api";
 
-interface Seat {
-  profileId: string;
-  conversationId: string | null;
-  name: string;
-  transcript: TranscriptEntry[];
-}
-
-const transcriptLine = (entry: TranscriptEntry): string => {
-  if (entry.kind === "input") return entry.text;
-  if (entry.kind === "output") return entry.text;
-  if (entry.kind === "thinking") return `(thinking) ${entry.text}`;
-  return `${entry.step.name} → ${entry.step.output ?? ""}`;
-};
-
-function RoomView({ room, profiles }: { room: RoomInfo; profiles: ProfileInfo[] }) {
+function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void> }) {
   const [detail, setDetail] = useState<RoomDetail | null>(null);
   const [say, setSay] = useState("");
+  const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -47,79 +33,114 @@ function RoomView({ room, profiles }: { room: RoomInfo; profiles: ProfileInfo[] 
     void load();
   }, [load]);
 
-  const nameOf = (profileId: string): string =>
-    profiles.find((profile) => profile.id === profileId)?.name ?? profileId.slice(0, 8);
+  useEffect(() => {
+    if (detail !== null && to === "" && detail.participants.length > 0) {
+      setTo(detail.participants[0]?.profileId ?? "");
+    }
+  }, [detail, to]);
 
-  const send = async (to: string): Promise<void> => {
-    if (say.trim() === "") return;
+  const send = async (): Promise<void> => {
+    if (say.trim() === "" || to === "") return;
     setBusy(true);
     try {
       await api.roomSay(room.id, to, say.trim());
       setSay("");
       await load();
+      await reload();
     } finally {
       setBusy(false);
     }
   };
 
   if (detail === null) return <p className="text-muted-foreground text-sm">Loading room…</p>;
-  const seats: Seat[] = detail.seats;
+  const title = detail.participants.map((participant) => participant.name).join(" ↔ ");
 
   return (
-    <div className="mt-3 flex flex-col gap-4">
-      {seats.map((seat, index) => (
-        <div key={seat.profileId} className="flex flex-col gap-1">
-          {index > 0 && <Separator />}
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">{seat.name}&rsquo;s thread</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy || say.trim() === ""}
-              onClick={() => void send(seat.profileId)}
-            >
-              <SendIcon /> say into this seat
-            </Button>
-          </div>
-          <div className="bg-background max-h-48 overflow-y-auto rounded-md border p-2 text-sm">
-            {seat.transcript.length === 0 ? (
-              <p className="text-muted-foreground text-xs">(empty)</p>
-            ) : (
-              seat.transcript
-                .filter((entry) => entry.kind !== "thinking")
-                .map((entry) => (
-                  <p key={entry.id} className="whitespace-pre-wrap break-words">
-                    {entry.kind === "input" ? "▸ " : "▪ "}
-                    {transcriptLine(entry)}
-                  </p>
-                ))
-            )}
-          </div>
-        </div>
-      ))}
-      <Input
-        placeholder="Supervise: type, then pick a seat to say it into…"
-        value={say}
-        onChange={(event) => setSay(event.target.value)}
-      />
+    <div className="mt-3 flex flex-col gap-3">
+      <div className="bg-background max-h-[45vh] overflow-y-auto rounded-md border p-3 text-sm">
+        {detail.timeline.length === 0 ? (
+          <p className="text-muted-foreground text-xs">(no messages yet)</p>
+        ) : (
+          detail.timeline.map((line, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: append-only timeline
+            <div key={index} className="mb-2">
+              {line.system ? (
+                <p className="text-muted-foreground text-xs italic">{line.text}</p>
+              ) : (
+                <>
+                  <span
+                    className={
+                      line.speaker === "owner"
+                        ? "text-accent-foreground font-semibold"
+                        : "font-semibold"
+                    }
+                  >
+                    {line.speaker}
+                  </span>
+                  <p className="whitespace-pre-wrap break-words">{line.text}</p>
+                </>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+      <div className="flex gap-2">
+        <select
+          className="bg-background rounded-md border px-2 py-1 text-sm"
+          value={to}
+          onChange={(event) => setTo(event.target.value)}
+        >
+          {detail.participants.map((participant) => (
+            <option key={participant.profileId} value={participant.profileId}>
+              to {participant.name}
+            </option>
+          ))}
+        </select>
+        <Input
+          className="flex-1"
+          placeholder="Say something into this bot's side…"
+          value={say}
+          onChange={(event) => setSay(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void send();
+          }}
+        />
+        <Button size="sm" disabled={busy || say.trim() === ""} onClick={() => void send()}>
+          <SendIcon />
+        </Button>
+      </div>
       <p className="text-muted-foreground text-xs">
-        {nameOf(room.participants[0] ?? "")} ↔ {nameOf(room.participants[1] ?? "")}
+        {title}
         {room.topic !== "" ? ` • ${room.topic}` : ""}
       </p>
     </div>
   );
 }
 
-export function RoomsPanel({ profiles }: { profiles: ProfileInfo[] }) {
+export function RoomsPanel({
+  profiles,
+  botId,
+  reload,
+}: {
+  profiles: ProfileInfo[];
+  /** Scope to one bot's rooms (used from inside a session thread). */
+  botId?: string;
+  reload?: () => Promise<void>;
+}) {
   const [rooms, setRooms] = useState<RoomInfo[]>([]);
   const [open, setOpen] = useState<RoomInfo | null>(null);
 
+  const load = useCallback(async () => {
+    try {
+      setRooms(await api.rooms(botId));
+    } catch {
+      setRooms([]);
+    }
+  }, [botId]);
+
   useEffect(() => {
-    void api
-      .rooms()
-      .then(setRooms)
-      .catch(() => setRooms([]));
-  }, []);
+    void load();
+  }, [load]);
 
   const nameOf = (profileId: string): string =>
     profiles.find((profile) => profile.id === profileId)?.name ?? profileId.slice(0, 8);
@@ -129,12 +150,14 @@ export function RoomsPanel({ profiles }: { profiles: ProfileInfo[] }) {
       <DialogTrigger
         render={
           <Button variant="outline" size="sm">
-            <MessagesSquareIcon /> Bot chats
+            <MessagesSquareIcon /> Bot chats{rooms.length > 0 ? ` (${rooms.length})` : ""}
           </Button>
         }
       />
       <DialogContent>
-        <DialogTitle>Bot-to-bot chats</DialogTitle>
+        <DialogTitle>
+          {botId === undefined ? "Bot-to-bot chats" : `Chats of ${nameOf(botId)}`}
+        </DialogTitle>
         {rooms.length === 0 ? (
           <p className="text-muted-foreground mt-2 text-sm">
             No rooms yet — bots open them by messaging each other (each topic is its own thread).
@@ -158,7 +181,8 @@ export function RoomsPanel({ profiles }: { profiles: ProfileInfo[] }) {
           </div>
         ) : (
           <>
-            <RoomView room={open} profiles={profiles} />
+            <RoomView room={open} reload={reload ?? load} />
+            <Separator />
             <DialogClose render={<Button variant="ghost" size="sm" />}>← all rooms</DialogClose>
           </>
         )}

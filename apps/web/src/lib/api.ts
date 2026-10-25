@@ -4,7 +4,6 @@ import type {
   RoomInfo,
   SessionInfo,
   TaskInfo,
-  TranscriptEntry,
   VaultItemInfo,
 } from "@ultiv/contracts";
 
@@ -46,12 +45,8 @@ async function drop(path: string): Promise<boolean> {
 
 export interface RoomDetail {
   room: RoomInfo;
-  seats: {
-    profileId: string;
-    conversationId: string | null;
-    name: string;
-    transcript: TranscriptEntry[];
-  }[];
+  participants: { profileId: string; name: string }[];
+  timeline: { at: number; speaker: string; text: string; system: boolean }[];
 }
 
 export const api = {
@@ -62,6 +57,10 @@ export const api = {
         : "/api/sessions",
     ),
   profiles: (): Promise<ProfileInfo[]> => getJson<ProfileInfo[]>("/api/profiles"),
+  rooms: (bot?: string): Promise<RoomInfo[]> =>
+    getJson<RoomInfo[]>(
+      bot !== undefined ? `/api/rooms?bot=${encodeURIComponent(bot)}` : "/api/rooms",
+    ),
   createProfile: (input: {
     name: string;
     description?: string;
@@ -78,7 +77,6 @@ export const api = {
     send<{ ok: boolean }>(`/api/profiles/${encodeURIComponent(id)}/main`, "POST"),
   mainChat: (profileId: string): Promise<SessionInfo> =>
     getJson<SessionInfo>(`/api/profiles/${encodeURIComponent(profileId)}/main`),
-  rooms: (): Promise<RoomInfo[]> => getJson<RoomInfo[]>("/api/rooms"),
   room: (id: string): Promise<RoomDetail> =>
     getJson<RoomDetail>(`/api/rooms/${encodeURIComponent(id)}`),
   roomSay: (id: string, to: string, text: string): Promise<{ ok: boolean }> =>

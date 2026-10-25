@@ -62,7 +62,11 @@ function committedSteps(entries: readonly EntryRecord[], results: Map<string, To
         const id = entry.id * 100 + blockIndex++;
         if (record.role === "user") {
           const text = String((block as { text?: unknown }).text ?? "").trim();
-          if (text !== "") out.push({ id, kind: "input", at, text });
+          // The onboarding seed is an identity instruction, not chat the user
+          // typed — the model still sees it (durable transcript); the UI doesn't.
+          if (text !== "" && !text.startsWith("[onboarding]")) {
+            out.push({ id, kind: "input", at, text });
+          }
           break;
         }
         const kind = (block as { type?: string }).type;
