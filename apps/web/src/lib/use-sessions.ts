@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ModelInfo, SessionInfo } from "@ultiv/contracts";
-import { openSessions, type SessionsRef } from "./chord.ts";
+import { api } from "./api";
 
 export function useSessions(): {
   phase: "connecting" | "live" | "lost";
@@ -12,53 +12,49 @@ export function useSessions(): {
   const [phase, setPhase] = useState<"connecting" | "live" | "lost">("connecting");
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [ref, setRef] = useState<SessionsRef | undefined>(undefined);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [list, modelList] = await Promise.all([api.sessions(), api.models()]);
+      setSessions(list);
+      setModels(modelList);
+      setPhase("live");
+    } catch {
+      setPhase("lost");
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    let current: SessionsRef | undefined;
-    let unsubscribe: (() => void) | undefined;
-    openSessions()
-      .then((opened) => {
-        if (!active) {
-          opened.release();
-          return;
-        }
-        current = opened;
-        setRef(opened);
-        setPhase("live");
-        unsubscribe = opened.sessions.subscribe(setSessions);
-        opened.models.subscribe(setModels);
-      })
-      .catch(() => {
-        if (active) setPhase("lost");
-      });
-    return () => {
-      active = false;
-      unsubscribe?.();
-      current?.release();
-      setRef(undefined);
-      setPhase("connecting");
-      setSessions([]);
-      setModels([]);
+    void refresh();
+    // REST has no push: refocus refetches, which keeps the list honest across
+    // tabs and after the tab slept.
+    const onFocus = (): void => {
+      void refresh();
     };
-  }, []);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh]);
 
   const create = useCallback(
     async (title: string | null) => {
-      if (ref === undefined) return undefined;
-      return ref.create({ title });
+      try {
+        const created = await api.create(title);
+        await refresh();
+        return created;
+      } catch {
+        return undefined;
+      }
     },
-    [ref],
+    [refresh],
   );
 
   const remove = useCallback(
     async (id: string) => {
-      if (ref === undefined) return false;
-      const result = await ref.remove({ id });
-      return result.ok;
+      const ok = await api.remove(id);
+      await refresh();
+      return ok;
     },
-    [ref],
+    [refresh],
   );
 
   return { phase, sessions, models, create, remove };

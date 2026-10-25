@@ -21,6 +21,6 @@ export type {
   ToolStep,
   TranscriptEntry,
 } from "./session.ts";
-export { Sessions, ModelListSchema, SessionListSchema, SessionInfoSchema } from "./sessions.ts";
-export type { Models, SessionInfo } from "./sessions.ts";
+export { ModelListSchema, SessionListSchema, SessionInfoSchema } from "./sessions.ts";
+export type { Models, SessionInfo, SessionList } from "./sessions.ts";
 export { Ping } from "./ping.ts";

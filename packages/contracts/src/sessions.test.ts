@@ -1,27 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Sessions } from "./sessions.ts";
+import { ModelListSchema, SessionListSchema, SessionInfoSchema } from "./sessions.ts";
 
-describe("Sessions contract", () => {
-  it("is a remote contract, version 2, hosted on the server", () => {
-    expect(Sessions.scope).toBe("remote");
-    expect(Sessions.def.version).toBe(2);
+describe("Sessions REST payload schemas", () => {
+  it("describe a flat session info record", () => {
+    expect(SessionInfoSchema).toMatchObject({
+      type: "object",
+      required: ["id", "title", "createdAt", "lastMessageAt"],
+    });
   });
 
-  it("takes no input (one registry per host)", () => {
-    expect(Sessions.def.input).toMatchObject({ type: "object" });
-    expect(Sessions.def.input.required ?? []).toEqual([]);
-  });
-
-  it("declares a sessions list, a model catalog, and create/remove methods", () => {
-    const variant = Sessions.def.variants.default;
-    expect(variant).toBeDefined();
-    expect(variant?.state).toMatchObject({
-      sessions: { type: "array" },
-      models: { type: "array" },
-    });
-    expect(variant?.methods).toMatchObject({
-      create: expect.anything(),
-      remove: expect.anything(),
-    });
+  it("describe the list and model catalog payloads", () => {
+    expect(SessionListSchema).toMatchObject({ type: "array" });
+    expect(ModelListSchema).toMatchObject({ type: "array" });
   });
 });

@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { Host } from "@earendil-works/chord";
 import { defineDoc } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
-import { Sessions, ModelListSchema, SessionListSchema, type SessionInfo } from "@ultiv/contracts";
-import { KENARI_MODELS, type MindService } from "@ultiv/mind";
-import type { Principal } from "./main.ts";
+import type { SessionInfo } from "@ultiv/contracts";
+import type { MindService } from "@ultiv/mind";
 
 /** Durable session registry (session doc singleton; SQLite-backed). */
 const SessionsDoc = defineDoc<{ sessions: SessionInfo[] }>({
@@ -20,20 +18,52 @@ function titleFor(seed: string): string {
   return text.length > 48 ? `${text.slice(0, 48)}…` : text;
 }
 
-/**
- * Process-local mirror of the durable registry. Cells sync-init from it so a
- * fresh object's snapshot already carries the whole list: a publication racing
- * the client's subscribe handshake trips chord's ack window over the wire
- * (`ack N outside 0..N`) and desyncs the link, so nothing may publish at
- * attach. Mutations update the mirror first, then the live cell.
- */
-let mirror: SessionInfo[] = [];
-
-/** Prime the mirror from the durable registry. Runs once at stack build. */
-export async function loadSessionCache(mind: MindService): Promise<void> {
+const readRegistry = async (mind: MindService): Promise<SessionInfo[]> => {
   const stored = await Effect.runPromise(mind.converse.docs.snapshot(SessionsDoc));
-  mirror = stored?.sessions ?? [];
-}
+  return stored?.sessions ?? [];
+};
+
+/** The full registry, for `GET /api/sessions`. */
+export const listSessions = (mind: MindService): Promise<SessionInfo[]> => readRegistry(mind);
+
+/** Create a session (durable conversation + registry entry); returns its info. */
+export const createSession = async (
+  mind: MindService,
+  title: string | null,
+): Promise<SessionInfo> => {
+  const id = randomUUID();
+  const at = Date.now();
+  await Effect.runPromise(mind.converse.ensure(id));
+  await Effect.runPromise(
+    mind.converse.docs.commit(async (tx) => {
+      const draft = await tx.doc(SessionsDoc);
+      draft.sessions = [
+        ...draft.sessions,
+        {
+          id,
+          title: title ?? "",
+          createdAt: at,
+          lastMessageAt: at,
+        },
+      ];
+    }),
+  );
+  return { id, title: title ?? "", createdAt: at, lastMessageAt: at };
+};
+
+/**
+ * Remove a session from the registry, for `DELETE /api/sessions/:id`.
+ * Registry-level: the durable conversation stays in storage (retention).
+ */
+export const removeSession = async (mind: MindService, id: string): Promise<boolean> => {
+  await Effect.runPromise(
+    mind.converse.docs.commit(async (tx) => {
+      const draft = await tx.doc(SessionsDoc);
+      draft.sessions = draft.sessions.filter((session) => session.id !== id);
+    }),
+  );
+  return true;
+};
 
 /** Record last activity for a chat id, registering it on first contact (legacy ids included). */
 export async function touchSession(
@@ -67,67 +97,4 @@ export async function touchSession(
       draft.sessions = sessions;
     }),
   );
-  mirror = await readMirror(mind);
-}
-
-const readMirror = async (mind: MindService): Promise<SessionInfo[]> => {
-  const stored = await Effect.runPromise(mind.converse.docs.snapshot(SessionsDoc));
-  return stored?.sessions ?? [];
-};
-
-/** Registers the durable registry of chat sessions (one per host). */
-export function serveSessions(host: Host<Principal>, mind: MindService): void {
-  host.serve(Sessions, (_input, _principal, self) => {
-    const sessions = self.state("sessions", SessionListSchema, mirror);
-    const models = self.state(
-      "models",
-      ModelListSchema,
-      KENARI_MODELS.map((spec) => ({
-        id: spec.id,
-        label: spec.label,
-        efforts: [...spec.efforts],
-        defaultEffort: spec.defaultEffort,
-      })),
-    );
-    return {
-      variant: "default",
-      sessions,
-      models,
-      create: async ({ title }, ctx) => {
-        const id = randomUUID();
-        const at = Date.now();
-        await Effect.runPromise(mind.converse.ensure(id));
-        await Effect.runPromise(
-          mind.converse.docs.commit(async (tx) => {
-            const draft = await tx.doc(SessionsDoc);
-            draft.sessions = [
-              ...draft.sessions,
-              {
-                id,
-                title: title ?? "",
-                createdAt: at,
-                lastMessageAt: at,
-              },
-            ];
-          }),
-        );
-        mirror = await readMirror(mind);
-        sessions.change(ctx, () => mirror);
-        return { id };
-      },
-      remove: async ({ id }, ctx) => {
-        // Removal is registry-level: the durable conversation stays in storage
-        // (retention), the session just disappears from the list.
-        await Effect.runPromise(
-          mind.converse.docs.commit(async (tx) => {
-            const draft = await tx.doc(SessionsDoc);
-            draft.sessions = draft.sessions.filter((session) => session.id !== id);
-          }),
-        );
-        mirror = await readMirror(mind);
-        sessions.change(ctx, () => mirror);
-        return { ok: true };
-      },
-    };
-  });
 }

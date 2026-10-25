@@ -6,8 +6,8 @@ import { Type } from "typebox";
 import { WebSocketServer } from "ws";
 import { Ping } from "@ultiv/contracts";
 import { httpPlugin } from "@ultiv/ext";
-import { openMind } from "@ultiv/mind";
-import { loadSessionCache, serveSessions } from "./sessions.ts";
+import { KENARI_MODELS, openMind } from "@ultiv/mind";
+import { createSession, listSessions, removeSession } from "./sessions.ts";
 import { serveSession } from "./session.ts";
 
 export type Principal = { kind: "guest" } | { kind: "server" };
@@ -35,12 +35,59 @@ export async function buildStack(options?: { readonly storage?: Storage }) {
     };
   });
   serveSession(host, mind);
-  await loadSessionCache(mind);
-  serveSessions(host, mind);
 
-  const http = createServer((_req, res) => {
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ app: "ultiv", ok: true }));
+  // Session registry + model catalog as plain REST: CRUD over chord's
+  // replicated-object wire desyncs on attach (chord 1.4.0 ack-window bug).
+  const http = createServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const headers = {
+      "content-type": "application/json",
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+      "access-control-allow-headers": "content-type",
+    };
+    const json = (status: number, body: unknown): void => {
+      res.writeHead(status, headers);
+      res.end(JSON.stringify(body));
+    };
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, headers);
+      res.end();
+      return;
+    }
+    const readBody = async (): Promise<{ title?: string | null }> => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk as Buffer);
+      const raw = Buffer.concat(chunks).toString("utf8");
+      return raw === "" ? {} : (JSON.parse(raw) as { title?: string | null });
+    };
+    void (async () => {
+      try {
+        if (url.pathname === "/api/sessions" && req.method === "GET") {
+          json(200, await listSessions(mind));
+        } else if (url.pathname === "/api/sessions" && req.method === "POST") {
+          const body = await readBody();
+          json(200, await createSession(mind, body.title ?? null));
+        } else if (url.pathname.startsWith("/api/sessions/") && req.method === "DELETE") {
+          const id = decodeURIComponent(url.pathname.slice("/api/sessions/".length));
+          json(200, { ok: await removeSession(mind, id) });
+        } else if (url.pathname === "/api/models") {
+          json(
+            200,
+            KENARI_MODELS.map((spec) => ({
+              id: spec.id,
+              label: spec.label,
+              efforts: [...spec.efforts],
+              defaultEffort: spec.defaultEffort,
+            })),
+          );
+        } else {
+          json(200, { app: "ultiv", ok: true });
+        }
+      } catch (error) {
+        json(500, { error: String(error).slice(0, 300) });
+      }
+    })();
   });
   const wss = new WebSocketServer({ server: http });
   const guest: Principal = { kind: "guest" };

@@ -37,18 +37,6 @@ type SessionCells = {
   effort: Cell<ThinkingLevel | null>;
 };
 
-/** First hydrated revision of a conversation's structural view. */
-async function viewSnapshot(conversation: Conversation): Promise<ConversationView> {
-  const view = await conversation.viewState(BACKGROUND_CONTEXT);
-  if (view.value !== undefined) return view.value;
-  return new Promise<ConversationView>((resolve) => {
-    const unsubscribe = view.subscribe((value) => {
-      unsubscribe();
-      resolve(value);
-    });
-  });
-}
-
 /** The `pi.live` conversation doc from a structural view, typed. */
 function liveOf(view: ConversationView): LiveState | undefined {
   return view.docs["pi.live"] as LiveState | undefined;
@@ -73,29 +61,22 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
     Session,
     (input, _principal, self) => {
       const conversation = Effect.runPromise(mind.converse.ensure(input.id));
+      // Sync empty starts: the transcript/usage hydration must NOT publish at
+      // attach — a publication racing the client's subscribe handshake trips
+      // chord's ack window over the wire and desyncs every object on the link
+      // (the sessions list included). The task applies hydration after the
+      // attach settles, then on every publication as before.
       const cells: SessionCells = {
-        transcript: self.state("transcript", TranscriptSchema, {
-          init: async () => {
-            const view = await viewSnapshot(await conversation);
-            return projectTranscript(view.entries, liveOf(view), false);
-          },
-        }),
+        transcript: self.state("transcript", TranscriptSchema, []),
         phase: self.state("phase", PhaseSchema, "idle"),
         lastError: self.state("lastError", SessionErrorSchema, null),
         pending: self.state("pending", PendingApprovalSchema, null),
         usage: self.state("usage", UsageSummarySchema, {
-          init: async () => {
-            const view = await viewSnapshot(await conversation);
-            return (
-              usageOf(view.entries) ?? {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                reasoning: null,
-                totalTokens: 0,
-              }
-            );
-          },
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          reasoning: null,
+          totalTokens: 0,
         }),
         model: self.state("model", ModelIdSchema, null),
         effort: self.state("effort", EffortSchema, null),
@@ -107,6 +88,8 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
       self.task(async (ctx) => {
         const chat = await conversation;
         const view = await chat.viewState(BACKGROUND_CONTEXT);
+        // Let the client's attach settle before the first hydration publish.
+        await new Promise<void>((resolve) => setTimeout(resolve, 1_500));
         const apply = (value: ConversationView) => {
           lastView = value;
           safeChange(cells.transcript, ctx, () =>

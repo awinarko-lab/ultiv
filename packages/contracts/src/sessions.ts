@@ -1,6 +1,5 @@
-import { hostNamed, method, remote } from "@earendil-works/chord";
 import { Type, type Static } from "typebox";
-import { ModelInfoSchema, ThinkingLevelSchema } from "./session.ts";
+import { ModelInfoSchema } from "./session.ts";
 
 export const SessionInfoSchema = Type.Object({
   id: Type.String(),
@@ -13,28 +12,15 @@ export type SessionInfo = Static<typeof SessionInfoSchema>;
 
 export const SessionListSchema = Type.Array(SessionInfoSchema);
 
+export type SessionList = Static<typeof SessionListSchema>;
+
 export const ModelListSchema = Type.Array(ModelInfoSchema);
 
-/** Durable registry of chat sessions; each id opens a `Session` object with replayable history. */
-export const Sessions = remote("ultiv.sessions", {
-  version: 2,
-  input: Type.Object({}),
-  host: hostNamed("server"),
-  variants: {
-    default: {
-      state: {
-        sessions: SessionListSchema,
-        models: ModelListSchema,
-      },
-      methods: {
-        create: method(
-          Type.Object({ title: Type.Union([Type.String(), Type.Null()]) }),
-          Type.Object({ id: Type.String() }),
-        ),
-        remove: method(Type.Object({ id: Type.String() }), Type.Object({ ok: Type.Boolean() })),
-      },
-    },
-  },
-});
-
 export type Models = Static<typeof ModelListSchema>;
+
+/**
+ * The session registry is served as plain REST (`/api/sessions`, `/api/models`
+ * on the server's HTTP handler), not as a chord object: it is CRUD, not
+ * replicated state, and chord 1.4.0's wire replication desyncs on attach.
+ * These schemas are the REST payload shapes.
+ */
