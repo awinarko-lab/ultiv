@@ -19,12 +19,15 @@ export const actService = (
   registry: RegistryService,
   approvals: ApprovalsService,
   audit: AuditService,
+  profileOf?: (conversationId: string) => string | null | undefined,
 ): ActService => {
   const gate = (tool: Tool): Tool => (tool.gated === true ? withApproval(approvals, tool) : tool);
   const tools: readonly Tool[] = registry
     .tools()
     .map(gate)
-    .map((tool) => withAudit(audit, tool));
+    .map((tool) =>
+      profileOf === undefined ? withAudit(audit, tool) : withAudit(audit, tool, profileOf),
+    );
   const extension = defineExtension({
     name: "ultius.act",
     tools,

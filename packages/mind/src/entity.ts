@@ -32,6 +32,10 @@ import { PiRegistry, piRegistryLayer } from "./converse/pi-registry.ts";
 import { Tasks, tasksLayer, type TasksService } from "./tasks/tasks.ts";
 import { profilesService, type ProfilesService } from "./profiles/profiles.ts";
 import { profilesExtension } from "./profiles/section.ts";
+import { mailboxService, type MailboxService } from "./mailbox/mailbox.ts";
+import { messageTools } from "./mailbox/tools.ts";
+import { memoryService, type MemoryService } from "./memory/memory.ts";
+import { memoryTools } from "./memory/tools.ts";
 import {
   Generate,
   generateLayer,
@@ -63,6 +67,10 @@ export interface MindService {
   readonly tasks: TasksService;
   /** User-defined entities above sessions: registry, Bot Mode, DM threads. */
   readonly profiles: ProfilesService;
+  /** Inter-entity messaging on per-pair DM threads. */
+  readonly mailbox: MailboxService;
+  /** The memory seam: profile and owner stores with write authority. */
+  readonly memory: MemoryService;
   /** The append-only trail of the mind's acts. */
   readonly audit: AuditService;
   readonly describe: () => MindDescription;
@@ -96,7 +104,9 @@ const mindLayerRaw: Layer.Layer<
     const generate = yield* Generate;
     const tasks = yield* Tasks;
     const audit = yield* Audit;
-    const act = actService(registry, approvals, audit);
+    const act = actService(registry, approvals, audit, (conversationId) =>
+      profilesRef?.profileOf(conversationId)?.id ?? null,
+    );
     // One runtime, one entity per profile: the profiles service owns the
     // session registry and the conversation→profile index; its identity
     // section (persona + roster, or the substrate baseline) reaches every
@@ -106,6 +116,27 @@ const mindLayerRaw: Layer.Layer<
       generate,
       tools: () => act.extension().tools ?? [],
     });
+    const profilesRef: ProfilesService = profiles;
+    const mailbox = mailboxService({ converse, profiles, audit });
+    const memory = memoryService({ converse, profiles });
+    // Per-profile approval policy (auto-approve lists, timeout escalation).
+    approvals.setHooks({
+      autoApprove: (conversationId, request) =>
+        profiles.profileOf(conversationId)?.policies.autoApprove.includes(request.name) === true,
+      onExpire: (conversationId, request) => {
+        audit.record({
+          at: Date.now(),
+          kind: "escalation",
+          conversationId,
+          profile: profiles.profileOf(conversationId)?.id ?? null,
+          callId: request.callId,
+          name: request.name,
+          durationMs: null,
+          ok: false,
+          error: "approval timed out",
+        });
+      },
+    });
     // Everything rides one pi-durable registry; late installs are legal —
     // the harness reconsiders its tools as the registry changes.
     const piRegistry = yield* PiRegistry;
@@ -113,6 +144,12 @@ const mindLayerRaw: Layer.Layer<
     piRegistry.install(codemodeExtension());
     piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
     piRegistry.install(defineExtension({ name: "ultius.mind.tasks", tools: taskTools(tasks) }));
+    piRegistry.install(
+      defineExtension({ name: "ultius.mind.mailbox", tools: messageTools(mailbox, profiles) }),
+    );
+    piRegistry.install(
+      defineExtension({ name: "ultius.mind.memory", tools: memoryTools(memory, profiles) }),
+    );
     return {
       converse,
       decide,
@@ -121,6 +158,8 @@ const mindLayerRaw: Layer.Layer<
       generate,
       tasks,
       profiles,
+      mailbox,
+      memory,
       audit,
       describe: () => ({
         entity: ENTITY_NAME,

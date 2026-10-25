@@ -18,6 +18,7 @@ import {
   type Conversation,
   type JsonObject,
   type ConversationId,
+  type SessionDocFamilyToken,
   type SessionDocToken,
   type Storage,
   type Submission,
@@ -92,6 +93,11 @@ export interface ConverseService {
   readonly docs: {
     readonly snapshot: <T extends JsonObject>(
       doc: SessionDocToken<T>,
+    ) => Effect.Effect<T | undefined, External>;
+    /** Family-doc snapshot by seed key (doc families). */
+    readonly snapshotKeyed: <T extends JsonObject>(
+      doc: SessionDocFamilyToken<T, T>,
+      key: string,
     ) => Effect.Effect<T | undefined, External>;
     readonly commit: <T>(change: (tx: Tx) => T | Promise<T>) => Effect.Effect<T, External>;
   };
@@ -270,6 +276,11 @@ const converseService = (harness: Harness, agent: AgentChange): ConverseService 
       asEffect(
         "doc read",
         harness.snapshot(doc as SessionDocToken<JsonObject>, BACKGROUND_CONTEXT),
+      ) as Effect.Effect<T | undefined, External>,
+    snapshotKeyed: <T extends JsonObject>(doc: SessionDocFamilyToken<T, T>, key: string) =>
+      asEffect(
+        "doc read",
+        harness.snapshot(doc as never, key, BACKGROUND_CONTEXT),
       ) as Effect.Effect<T | undefined, External>,
     commit: (change) => asEffect("doc commit", harness.commit(change, BACKGROUND_CONTEXT)),
   },

@@ -20,6 +20,19 @@ export interface ApprovalRequest {
   readonly input: unknown;
 }
 
+/** Late-wired policy hooks: per-profile auto-approve and timeout escalation. */
+export interface ApprovalsHooks {
+  /** Return true to approve without waiting (policies.autoApprove). */
+  readonly autoApprove?: (conversationId: string, request: ApprovalRequest) => boolean;
+  /** Called when the wait timed out (policies.approvalTimeout escalation). */
+  readonly onExpire?: (conversationId: string, request: ApprovalRequest) => void;
+}
+
+interface PendingEntry {
+  readonly conversationId: string;
+  readonly request: ApprovalRequest;
+}
+
 export interface ApprovalsService {
   /** Called by a gated tool: resolves once the user decides (or the timeout denies). */
   readonly request: (
@@ -31,6 +44,10 @@ export interface ApprovalsService {
   readonly decide: (conversationId: string, callId: string, approved: boolean) => void;
   /** Snapshot of what is waiting for this conversation (empty: nothing). */
   readonly pendingFor: (conversationId: string) => readonly ApprovalRequest[];
+  /** Every pending approval across conversations — the cross-profile inbox. */
+  readonly pendingAll: () => ReadonlyArray<PendingEntry>;
+  /** Wire the policy hooks (called once profiles exist). */
+  readonly setHooks: (hooks: ApprovalsHooks) => void;
 }
 
 export class Approvals extends Context.Service<Approvals, ApprovalsService>()(
@@ -40,8 +57,9 @@ export class Approvals extends Context.Service<Approvals, ApprovalsService>()(
 export const makeApprovals = (
   timeout: Duration.Duration = Duration.seconds(120),
 ): ApprovalsService => {
-  const pending = new Map<string, ApprovalRequest>();
+  const pending = new Map<string, PendingEntry>();
   const waiters = new Map<string, Deferred.Deferred<boolean>>();
+  let hooks: ApprovalsHooks = {};
   const key = (conversationId: string, callId: string): string => `${conversationId}:${callId}`;
   const settle = (k: string, approved: boolean): void => {
     const waiter = waiters.get(k);
@@ -51,21 +69,29 @@ export const makeApprovals = (
     Deferred.doneUnsafe(waiter, Effect.succeed(approved));
   };
   return {
+    setHooks: (next) => {
+      hooks = next;
+    },
     request: (conversationId, callId, request) =>
       Effect.gen(function* () {
+        if (hooks.autoApprove?.(conversationId, request) === true) return true;
         const k = key(conversationId, callId);
         const deferred = yield* Deferred.make<boolean>();
-        pending.set(k, request);
+        pending.set(k, { conversationId, request });
         waiters.set(k, deferred);
         const exit = yield* Effect.exit(Deferred.await(deferred).pipe(Effect.timeout(timeout)));
+        if (Exit.isFailure(exit)) hooks.onExpire?.(conversationId, request);
         settle(k, Exit.isSuccess(exit));
         return Exit.isSuccess(exit) ? exit.value : false;
       }),
     decide: (conversationId, callId, approved) => settle(key(conversationId, callId), approved),
     pendingFor: (conversationId) => {
       const prefix = `${conversationId}:`;
-      return [...pending].filter(([k]) => k.startsWith(prefix)).map(([, request]) => request);
+      return [...pending]
+        .filter(([k]) => k.startsWith(prefix))
+        .map(([, entry]) => entry.request);
     },
+    pendingAll: () => [...pending.values()],
   };
 };
 
