@@ -13,6 +13,10 @@ export const ArtifactInfoSchema = Type.Object({
   createdAt: Type.Number(),
   /** The durable conversation that wrote the artifact; null for REST uploads without a session. */
   conversationId: Type.Union([Type.String(), Type.Null()]),
+  /** The owner the artifact belongs to; null on legacy sidecars (uuid-capability access). */
+  owner: Type.Union([Type.String(), Type.Null()]),
+  /** The profile workspace the artifact lives in; null on legacy sidecars. */
+  profile: Type.Union([Type.String(), Type.Null()]),
 });
 
 export type ArtifactInfo = Static<typeof ArtifactInfoSchema>;

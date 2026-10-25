@@ -4,10 +4,14 @@ import { Type, type Static } from "typebox";
 export const CronJobInfoSchema = Type.Object({
   id: Type.String(),
   sessionId: Type.String(),
-  /** 5-field cron expression in the server's timezone. */
+  /** The profile whose timezone this schedule renders in. */
+  profile: Type.String(),
+  /** 5-field cron expression, interpreted in the profile's timezone. */
   schedule: Type.String(),
   prompt: Type.String(),
   enabled: Type.Boolean(),
+  /** Consecutive delivery failures; 3 auto-disables the job. */
+  failures: Type.Number(),
   createdAt: Type.Number(),
   lastRunAt: Type.Union([Type.Number(), Type.Null()]),
   lastError: Type.Union([Type.String(), Type.Null()]),

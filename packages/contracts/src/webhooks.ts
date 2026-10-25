@@ -6,6 +6,8 @@ export const WebhookInfoSchema = Type.Object({
   /** Bearer secret the caller must present; shown once at creation. */
   token: Type.String(),
   sessionId: Type.String(),
+  /** The profile the bound session lives under. */
+  profile: Type.String(),
   createdAt: Type.Number(),
   calls: Type.Number(),
 });

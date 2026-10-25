@@ -22,8 +22,45 @@ export type {
   ToolStep,
   TranscriptEntry,
 } from "./session.ts";
-export { ModelListSchema, SessionListSchema, SessionInfoSchema } from "./sessions.ts";
-export type { Models, SessionInfo, SessionList } from "./sessions.ts";
+export {
+  ModelListSchema,
+  SessionListSchema,
+  SessionInfoSchema,
+  SessionKindSchema,
+} from "./sessions.ts";
+export type { Models, SessionInfo, SessionList, SessionKind } from "./sessions.ts";
+export {
+  ProfileInfoSchema,
+  ProfileListSchema,
+  ProfileCreateSchema,
+  ProfileModelSchema,
+  ProfilePoliciesSchema,
+} from "./profiles.ts";
+export type {
+  ProfileInfo,
+  ProfileList,
+  ProfileCreate,
+  ProfileModel,
+  ProfilePolicies,
+} from "./profiles.ts";
+export { MailboxEnvelopeSchema, MailboxEntrySchema, MailboxListSchema } from "./mailbox.ts";
+export type { MailboxEnvelope, MailboxEntry, MailboxList } from "./mailbox.ts";
+export {
+  VaultItemInfoSchema,
+  VaultItemCreateSchema,
+  VaultListSchema,
+  VaultContactSchema,
+  VaultKindSchema,
+} from "./vault.ts";
+export type {
+  VaultItemInfo,
+  VaultItemCreate,
+  VaultList,
+  VaultContact,
+  VaultKind,
+} from "./vault.ts";
+export { MemoryRecordSchema, MemoryListSchema } from "./memory.ts";
+export type { MemoryRecord, MemoryList } from "./memory.ts";
 export { TaskInfoSchema, TaskListSchema, TaskStatusSchema } from "./tasks.ts";
 export type { TaskInfo, TaskList, TaskStatus } from "./tasks.ts";
 export { ArtifactInfoSchema, ArtifactListSchema } from "./artifacts.ts";

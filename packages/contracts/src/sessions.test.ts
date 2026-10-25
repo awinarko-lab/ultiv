@@ -2,10 +2,19 @@ import { describe, expect, it } from "vite-plus/test";
 import { ModelListSchema, SessionListSchema, SessionInfoSchema } from "./sessions.ts";
 
 describe("Sessions REST payload schemas", () => {
-  it("describe a flat, owner-scoped session info record", () => {
+  it("describe a flat, owner- and profile-scoped session info record", () => {
     expect(SessionInfoSchema).toMatchObject({
       type: "object",
-      required: ["id", "owner", "title", "createdAt", "lastMessageAt"],
+      required: [
+        "id",
+        "owner",
+        "profile",
+        "kind",
+        "participants",
+        "title",
+        "createdAt",
+        "lastMessageAt",
+      ],
     });
   });
 

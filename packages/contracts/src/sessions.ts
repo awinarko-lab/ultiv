@@ -1,10 +1,24 @@
 import { Type, type Static } from "typebox";
 import { ModelInfoSchema } from "./session.ts";
 
+export const SessionKindSchema = Type.Union([
+  Type.Literal("main"),
+  Type.Literal("session"),
+  Type.Literal("dm"),
+]);
+
+export type SessionKind = Static<typeof SessionKindSchema>;
+
 export const SessionInfoSchema = Type.Object({
   id: Type.String(),
   /** Registry owner the session belongs to (header-scoped; "guest" unauthenticated). */
   owner: Type.String(),
+  /** The profile (entity workspace) this session lives under. */
+  profile: Type.String(),
+  /** `main` = the profile's persistent chat; `dm` = one thread per entity pair. */
+  kind: SessionKindSchema,
+  /** For DM threads: the two participating profile ids; else null. */
+  participants: Type.Union([Type.Array(Type.String()), Type.Null()]),
   title: Type.String(),
   createdAt: Type.Number(),
   lastMessageAt: Type.Number(),

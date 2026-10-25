@@ -6,8 +6,15 @@ import { Type, type Static } from "typebox";
  */
 export const AuditEventSchema = Type.Object({
   at: Type.Number(),
-  kind: Type.Union([Type.Literal("tool_call"), Type.Literal("approval")]),
+  kind: Type.Union([
+    Type.Literal("tool_call"),
+    Type.Literal("approval"),
+    Type.Literal("mailbox"),
+    Type.Literal("escalation"),
+  ]),
   conversationId: Type.String(),
+  /** The profile the acting conversation belongs to; null when unmapped. */
+  profile: Type.Union([Type.String(), Type.Null()]),
   callId: Type.Union([Type.String(), Type.Null()]),
   name: Type.Union([Type.String(), Type.Null()]),
   durationMs: Type.Union([Type.Number(), Type.Null()]),
