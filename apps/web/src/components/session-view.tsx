@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { PendingApproval, Phase, ToolStep, TranscriptEntry } from "@ultiv/contracts";
+import type {
+  ModelInfo,
+  PendingApproval,
+  Phase,
+  ThinkingLevel,
+  ToolStep,
+  TranscriptEntry,
+  UsageSummary,
+} from "@ultiv/contracts";
 import {
   InputGroup,
   InputGroupAddon,
@@ -35,6 +43,76 @@ const roleStyles = {
   user: "self-end max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground",
   agent: "self-start max-w-full rounded-lg bg-muted px-3 py-2",
 } as const;
+
+function formatTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+/** Model and effort selection, plus this session's cumulative spend. */
+function SessionMeta({
+  usage,
+  model,
+  effort,
+  models,
+  onConfigure,
+}: {
+  usage: UsageSummary | null;
+  model: string | null;
+  effort: ThinkingLevel | null;
+  models: ModelInfo[];
+  onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
+}) {
+  const selected = models.find((candidate) => candidate.id === model);
+  const efforts = selected?.efforts ?? (["off", "low", "medium", "high"] as const);
+  const select =
+    "rounded-md border bg-transparent px-2 py-1 text-xs text-muted-foreground outline-none";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <select
+          aria-label="Model"
+          className={select}
+          value={model ?? ""}
+          onChange={(event) => {
+            const id = event.target.value === "" ? null : event.target.value;
+            onConfigure(id, null);
+          }}
+        >
+          <option value="">Default model</option>
+          {models.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.label}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Effort"
+          className={select}
+          value={effort ?? ""}
+          onChange={(event) =>
+            onConfigure(
+              model,
+              event.target.value === "" ? null : (event.target.value as ThinkingLevel),
+            )
+          }
+        >
+          <option value="">Default effort</option>
+          {efforts.map((level) => (
+            <option key={level} value={level}>
+              {level}
+            </option>
+          ))}
+        </select>
+      </div>
+      {usage !== null && (
+        <span className="text-xs text-muted-foreground">
+          {formatTokens(usage.input)} in · {formatTokens(usage.output)} out · $
+          {usage.costUsd.toFixed(4)}
+        </span>
+      )}
+    </div>
+  );
+}
 
 /** Agent output is markdown; the newest block streams with a caret while working. */
 function Output({ text, streaming }: { text: string; streaming: boolean }) {
@@ -131,16 +209,26 @@ export function SessionView({
   phase,
   lastError,
   pending,
+  usage,
+  model,
+  effort,
+  models,
   onInput,
   onDecide,
+  onConfigure,
 }: {
   link: "connecting" | "live" | "lost";
   transcript: TranscriptEntry[];
   phase: Phase;
   lastError: string | null;
   pending: PendingApproval;
+  usage: UsageSummary | null;
+  model: string | null;
+  effort: ThinkingLevel | null;
+  models: ModelInfo[];
   onInput: (text: string) => void;
   onDecide: (callId: string, approved: boolean) => void;
+  onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
 }) {
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -168,8 +256,17 @@ export function SessionView({
   return (
     <Card className="flex min-h-0 flex-1 flex-col">
       <CardHeader>
-        <CardTitle>Transcript</CardTitle>
-        <Badge variant={link === "live" ? "secondary" : "outline"}>{link}</Badge>
+        <div className="flex items-center justify-between">
+          <CardTitle>Transcript</CardTitle>
+          <Badge variant={link === "live" ? "secondary" : "outline"}>{link}</Badge>
+        </div>
+        <SessionMeta
+          usage={usage}
+          model={model}
+          effort={effort}
+          models={models}
+          onConfigure={onConfigure}
+        />
       </CardHeader>
       <CardContent className="min-h-0 flex-1">
         <div ref={transcriptRef} className="h-full min-h-0">

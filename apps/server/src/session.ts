@@ -9,16 +9,21 @@ import type {
 } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
 import {
+  EffortSchema,
+  ModelIdSchema,
   Session,
   SessionErrorSchema,
   PendingApprovalSchema,
   PhaseSchema,
   TranscriptSchema,
+  UsageSummarySchema,
   type PendingApproval,
   type Phase,
+  type ThinkingLevel,
   type TranscriptEntry,
+  type UsageSummary,
 } from "@ultiv/contracts";
-import { projectTranscript, type MindService } from "@ultiv/mind";
+import { projectTranscript, usageOf, type MindService } from "@ultiv/mind";
 import { touchSession } from "./sessions.ts";
 import type { Principal } from "./main.ts";
 
@@ -27,6 +32,9 @@ type SessionCells = {
   phase: Cell<Phase>;
   lastError: Cell<string | null>;
   pending: Cell<PendingApproval>;
+  usage: Cell<UsageSummary>;
+  model: Cell<string | null>;
+  effort: Cell<ThinkingLevel | null>;
 };
 
 /** First hydrated revision of a conversation's structural view. */
@@ -75,6 +83,23 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         phase: self.state("phase", PhaseSchema, "idle"),
         lastError: self.state("lastError", SessionErrorSchema, null),
         pending: self.state("pending", PendingApprovalSchema, null),
+        usage: self.state("usage", UsageSummarySchema, {
+          init: async () => {
+            const view = await viewSnapshot(await conversation);
+            return (
+              usageOf(view.entries) ?? {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                reasoning: null,
+                totalTokens: 0,
+                costUsd: 0,
+              }
+            );
+          },
+        }),
+        model: self.state("model", ModelIdSchema, null),
+        effort: self.state("effort", EffortSchema, null),
       };
       // Live replay: every committed publication of the durable transcript re-projects the
       // cell, whoever wrote it (this object's turns, tasks, tools, future code).
@@ -88,9 +113,15 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
           safeChange(cells.transcript, ctx, () =>
             projectTranscript(value.entries, liveOf(value), cells.phase.value === "working"),
           );
+          const usage = usageOf(value.entries);
+          if (usage !== undefined) safeChange(cells.usage, ctx, () => usage);
         };
         const unsubscribe = view.subscribe((value) => apply(value));
         if (view.value !== undefined) apply(view.value);
+        // Reflect the conversation's durable model/effort selection.
+        const selection = await Effect.runPromise(mind.converse.agentOf(chat));
+        safeChange(cells.model, ctx, () => selection.model);
+        safeChange(cells.effort, ctx, () => selection.effort as ThinkingLevel | null);
         // Detach on abort, or the attached view outlives the object and hangs
         // graceful shutdown (node --watch restarts wait forever).
         ctx.signal.addEventListener("abort", () => unsubscribe(), { once: true });
@@ -116,6 +147,16 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         phase: cells.phase,
         lastError: cells.lastError,
         pending: cells.pending,
+        usage: cells.usage,
+        model: cells.model,
+        effort: cells.effort,
+        configure: async ({ model, effort }, ctx) => {
+          const chat = await conversation;
+          await Effect.runPromise(mind.converse.configure(chat, { model, effort }));
+          safeChange(cells.model, ctx, () => model);
+          safeChange(cells.effort, ctx, () => effort);
+          return { ok: true };
+        },
         approve: async ({ callId, approved }, ctx) => {
           const id = await conversationId;
           mind.approvals.decide(id, callId, approved);

@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { Host } from "@earendil-works/chord";
 import { defineDoc } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
-import { Sessions, SessionListSchema, type SessionInfo } from "@ultiv/contracts";
-import type { MindService } from "@ultiv/mind";
+import { Sessions, ModelListSchema, SessionListSchema, type SessionInfo } from "@ultiv/contracts";
+import { KENARI_MODELS, type MindService } from "@ultiv/mind";
 import type { Principal } from "./main.ts";
 
 /** Durable session registry (session doc singleton; SQLite-backed). */
@@ -61,9 +61,20 @@ export function serveSessions(host: Host<Principal>, mind: MindService): void {
       init: async () =>
         (await Effect.runPromise(mind.converse.docs.snapshot(SessionsDoc)))?.sessions ?? [],
     });
+    const models = self.state(
+      "models",
+      ModelListSchema,
+      KENARI_MODELS.map((spec) => ({
+        id: spec.id,
+        label: spec.label,
+        efforts: [...spec.efforts],
+        defaultEffort: spec.defaultEffort,
+      })),
+    );
     return {
       variant: "default",
       sessions,
+      models,
       create: async ({ title }, ctx) => {
         const id = randomUUID();
         const at = Date.now();
@@ -92,6 +103,18 @@ export function serveSessions(host: Host<Principal>, mind: MindService): void {
           },
         ]);
         return { id };
+      },
+      remove: async ({ id }, ctx) => {
+        // Removal is registry-level: the durable conversation stays in storage
+        // (retention), the session just disappears from the list.
+        await Effect.runPromise(
+          mind.converse.docs.commit(async (tx) => {
+            const draft = await tx.doc(SessionsDoc);
+            draft.sessions = draft.sessions.filter((session) => session.id !== id);
+          }),
+        );
+        sessions.change(ctx, (current) => current.filter((session) => session.id !== id));
+        return { ok: true };
       },
     };
   });

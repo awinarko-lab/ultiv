@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import type { SessionInfo } from "@ultiv/contracts";
+import type { ModelInfo, SessionInfo } from "@ultiv/contracts";
 import { openSessions, type SessionsRef } from "./chord.ts";
 
 export function useSessions(): {
   phase: "connecting" | "live" | "lost";
   sessions: SessionInfo[];
+  models: ModelInfo[];
   create: (title: string | null) => Promise<{ id: string } | undefined>;
+  remove: (id: string) => Promise<boolean>;
 } {
   const [phase, setPhase] = useState<"connecting" | "live" | "lost">("connecting");
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [models, setModels] = useState<ModelInfo[]>([]);
   const [ref, setRef] = useState<SessionsRef | undefined>(undefined);
 
   useEffect(() => {
@@ -25,6 +28,7 @@ export function useSessions(): {
         setRef(opened);
         setPhase("live");
         unsubscribe = opened.sessions.subscribe(setSessions);
+        opened.models.subscribe(setModels);
       })
       .catch(() => {
         if (active) setPhase("lost");
@@ -36,6 +40,7 @@ export function useSessions(): {
       setRef(undefined);
       setPhase("connecting");
       setSessions([]);
+      setModels([]);
     };
   }, []);
 
@@ -47,5 +52,14 @@ export function useSessions(): {
     [ref],
   );
 
-  return { phase, sessions, create };
+  const remove = useCallback(
+    async (id: string) => {
+      if (ref === undefined) return false;
+      const result = await ref.remove({ id });
+      return result.ok;
+    },
+    [ref],
+  );
+
+  return { phase, sessions, models, create, remove };
 }
