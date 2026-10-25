@@ -66,6 +66,25 @@ export const removeWebhook = async (mind: MindService, id: string): Promise<bool
   return removed;
 };
 
+/** Remove every webhook bound to one of the given sessions (profile purge cascade). */
+export const removeWebhooksForSessions = async (
+  mind: MindService,
+  sessionIds: readonly string[],
+): Promise<number> => {
+  const bound = new Set(sessionIds);
+  const before = await listWebhooks(mind);
+  const remaining = before.filter((webhook) => !bound.has(webhook.sessionId));
+  if (remaining.length !== before.length) {
+    await Effect.runPromise(
+      mind.converse.docs.commit(async (tx) => {
+        const draft = await tx.doc(WebhooksDoc);
+        draft.items = remaining;
+      }),
+    );
+  }
+  return before.length - remaining.length;
+};
+
 /** Deliver one authenticated webhook call; true when the token matched. */
 export const callWebhook = async (
   mind: MindService,

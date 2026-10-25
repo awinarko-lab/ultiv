@@ -24,10 +24,14 @@ export type { Principal } from "./identity.ts";
  * listeners. `close()` stops the scheduler, drops links, then closes the
  * mind's scope (harness finalizers).
  */
-export async function buildStack(options?: { readonly storage?: Storage }) {
+export async function buildStack(options?: {
+  readonly storage?: Storage;
+  readonly vault?: { readonly dir?: string };
+}) {
   const handle = await openMind({
     plugins: [httpPlugin],
     ...(options?.storage !== undefined ? { storage: options.storage } : {}),
+    ...(options?.vault !== undefined ? { vault: options.vault } : {}),
   });
   const mind = handle.mind;
   const scheduler: CronScheduler = await startScheduler(mind);

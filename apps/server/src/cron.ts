@@ -90,15 +90,43 @@ export const removeCronJob = async (mind: MindService, id: string): Promise<bool
 const setJobOutcome = async (
   mind: MindService,
   id: string,
-  outcome: { lastRunAt: number; lastError: string | null },
+  outcome: {
+    lastRunAt: number;
+    lastError: string | null;
+    failuresReset?: boolean;
+    failures?: number;
+    disable?: boolean;
+  },
 ): Promise<void> => {
   const items = await readJobs(mind);
   await Effect.runPromise(
     writeJobs(
       mind,
-      items.map((job) => (job.id === id ? { ...job, ...outcome } : job)),
+      items.map((job) => {
+        if (job.id !== id) return job;
+        const failures = outcome.failuresReset ? 0 : (outcome.failures ?? job.failures);
+        return {
+          ...job,
+          lastRunAt: outcome.lastRunAt,
+          lastError: outcome.lastError,
+          failures,
+          enabled: outcome.disable === true ? false : job.enabled,
+        };
+      }),
     ),
   );
+};
+
+/** Remove every job bound to one of the given sessions (profile purge cascade). */
+export const removeCronJobsForSessions = async (
+  mind: MindService,
+  sessionIds: readonly string[],
+): Promise<number> => {
+  const items = await readJobs(mind);
+  const bound = new Set(sessionIds);
+  const remaining = items.filter((job) => !bound.has(job.sessionId));
+  if (remaining.length !== items.length) await Effect.runPromise(writeJobs(mind, remaining));
+  return items.length - remaining.length;
 };
 
 export interface CronScheduler {
@@ -107,21 +135,66 @@ export interface CronScheduler {
   readonly stop: () => void;
 }
 
+/** Consecutive failures before a job disables itself and pages the owner. */
+const MAX_CONSECUTIVE_FAILURES = 3;
+
 const armedJob = (mind: MindService, job: CronJobInfo, scheduler: CronScheduler): Cron => {
   const fire = async (): Promise<void> => {
     try {
       await deliverToSession(mind, job.sessionId, `[cron ${job.id}] ${job.prompt}`);
-      await setJobOutcome(mind, job.id, { lastRunAt: Date.now(), lastError: null });
-    } catch (cause) {
       await setJobOutcome(mind, job.id, {
         lastRunAt: Date.now(),
-        lastError: String(cause).slice(0, 300),
+        lastError: null,
+        failuresReset: true,
       });
+    } catch (cause) {
+      const failures = job.failures + 1;
+      const error = String(cause).slice(0, 300);
+      const disable = failures >= MAX_CONSECUTIVE_FAILURES;
+      await setJobOutcome(mind, job.id, {
+        lastRunAt: Date.now(),
+        lastError: error,
+        failures,
+        ...(disable ? { disable } : {}),
+      });
+      if (disable) {
+        // The attention path: silence must eventually page the owner.
+        mind.audit.record({
+          at: Date.now(),
+          kind: "escalation",
+          conversationId: "cron",
+          profile: job.profile,
+          callId: job.id,
+          name: "cron-disabled",
+          durationMs: null,
+          ok: false,
+          error: `${MAX_CONSECUTIVE_FAILURES} consecutive failures: ${error}`,
+        });
+        console.error(`cron ${job.id} disabled after ${failures} consecutive failures`);
+      }
     }
   };
-  return new Cron(job.schedule, { paused: !job.enabled }, () => {
-    void fire().finally(() => void scheduler.refresh());
-  });
+  // Schedules render in the profile's timezone ("morning" means the owner's morning).
+  const timezoneOf = async (): Promise<string | undefined> => {
+    const row = await mind.profiles.rowOf(job.sessionId);
+    const profile = row !== undefined ? await mind.profiles.get(row.owner, job.profile) : undefined;
+    return profile?.timezone;
+  };
+  let timer: Cron | undefined;
+  const arm = (): void => {
+    void timezoneOf().then((timezone) => {
+      timer = new Cron(
+        job.schedule,
+        { paused: !job.enabled, ...(timezone !== undefined ? { timezone } : {}) },
+        () => {
+          void fire().finally(() => void scheduler.refresh());
+        },
+      );
+    });
+  };
+  arm();
+  // A thin stop-capable stand-in: the scheduler only ever calls stop().
+  return { stop: () => timer?.stop() } as unknown as Cron;
 };
 
 /** Arm the scheduler over every registered job; refresh after registry changes. */

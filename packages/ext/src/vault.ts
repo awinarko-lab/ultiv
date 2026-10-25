@@ -29,7 +29,7 @@ export const vaultConfigured = (): boolean => {
 const kekOf = (): Buffer => scryptSync(process.env.VAULT_KEY ?? "", "ultiv-vault/v1", 32);
 
 /** Sealed secret payload: the value under a per-item DEK, the DEK under the KEK. */
-interface Sealed {
+export interface Sealed {
   /** The secret, encrypted with the DEK. */
   readonly dekIv: string;
   readonly dekTag: string;
@@ -203,6 +203,17 @@ export interface VaultStore {
   ) => { readonly owner: string; readonly secret: VaultSecret } | undefined;
   /** Remove every profile-scoped item of one profile (purge cascade). */
   readonly removeProfile: (owner: string, profileId: string) => number;
+  /** Export one item's sealed form (portability; opens only under the same VAULT_KEY). */
+  readonly exportItem: (
+    owner: string,
+    id: string,
+  ) => { readonly info: VaultItemInfo; readonly sealed: Sealed | null } | undefined;
+  /** Import a sealed item verbatim, remapping its profile scope. */
+  readonly importItem: (
+    owner: string,
+    item: { readonly info: VaultItemInfo; readonly sealed: Sealed | null },
+    profileId: string,
+  ) => VaultItemInfo;
 }
 
 export const makeVaultStore = (root: string = vaultDir()): VaultStore => {
@@ -331,6 +342,15 @@ export const makeVaultStore = (root: string = vaultDir()): VaultStore => {
         if (info.profile === profileId && store.remove(owner, info.id)) removed += 1;
       }
       return removed;
+    },
+    exportItem: (owner, id) => {
+      const item = readItem(owner, id);
+      return item === undefined ? undefined : { info: item.info, sealed: item.sealed };
+    },
+    importItem: (owner, item, profileId) => {
+      const info: VaultItemInfo = { ...item.info, owner, profile: profileId };
+      writeItem(owner, { info, sealed: item.sealed });
+      return info;
     },
   };
   return store;

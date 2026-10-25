@@ -5,7 +5,18 @@ import { MemoryStorage } from "@earendil-works/pi-durable";
 import { Session } from "@ultiv/contracts";
 import { buildStack } from "./main.ts";
 
-const stack = await buildStack({ storage: new MemoryStorage() });
+// The vault seals under this key for the smoke run only; the vault and the
+// artifact workspace point at throwaway dirs so the run is hermetic.
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+process.env.VAULT_KEY = "smoke-vault-key";
+const scratchVault = mkdtempSync(join(tmpdir(), "ultiv-smoke-vault-"));
+const scratchArtifacts = mkdtempSync(join(tmpdir(), "ultiv-smoke-artifacts-"));
+process.env.ARTIFACTS_DIR = scratchArtifacts;
+
+const stack = await buildStack({ storage: new MemoryStorage(), vault: { dir: scratchVault } });
 await new Promise<void>((resolve, reject) => {
   stack.http.once("listening", resolve);
   stack.http.once("error", reject);
@@ -83,6 +94,100 @@ expect("task spawn", task.status === 200 && task.json.status === "running");
 const audit = await call("GET", "/api/audit");
 expect("audit tail", audit.status === 200 && Array.isArray(audit.json));
 
+// Profiles: CRUD, Bot Mode, per-profile sessions and artifacts.
+const headers = { "x-ultiv-user": "smoker" };
+const profilesListed = await call("GET", "/api/profiles", undefined, headers);
+expect(
+  "profiles list materializes default",
+  profilesListed.status === 200 &&
+    profilesListed.json.some((p: { id: string }) => p.id === "default"),
+);
+const researcher = await call(
+  "POST",
+  "/api/profiles",
+  { name: "Researcher", persona: "Careful." },
+  headers,
+);
+expect("profile create", researcher.status === 200 && researcher.json.owner === "smoker");
+const rid = researcher.json.id as string;
+const patched = await call("PATCH", `/api/profiles/${rid}`, { description: "deep dives" }, headers);
+expect("profile patch", patched.status === 200 && patched.json.description === "deep dives");
+const main = await call("GET", `/api/profiles/${rid}/main`, undefined, headers);
+expect("bot mode ensure", main.status === 200 && main.json.kind === "main");
+const reset = await call("POST", `/api/profiles/${rid}/main/reset`, undefined, headers);
+expect("bot mode reset rotates", reset.status === 200 && reset.json.id !== main.json.id);
+
+const scoped = await call("POST", "/api/sessions", { title: "scoped", profileId: rid }, headers);
+expect("session under profile", scoped.status === 200 && scoped.json.profile === rid);
+const scopedList = await call("GET", "/api/sessions?profile=" + rid, undefined, headers);
+expect(
+  "sessions filter by profile",
+  scopedList.json.some((s: { id: string }) => s.id === scoped.json.id),
+);
+
+// Artifacts partition per profile: uploads through a session land in its scope.
+const scopedUpload = await fetch(`${base}/api/artifacts?name=note.md&sessionId=${scoped.json.id}`, {
+  method: "POST",
+  body: "# scoped",
+  headers,
+});
+const scopedArtifact = (await scopedUpload.json()) as { profile: string; owner: string };
+expect(
+  "artifact upload scoped",
+  scopedUpload.status === 200 &&
+    scopedArtifact.profile === rid &&
+    scopedArtifact.owner === "smoker",
+);
+const scopedArtifacts = await call("GET", `/api/artifacts?profile=${rid}`, undefined, headers);
+expect("artifact list by profile", scopedArtifacts.json.length === 1);
+
+// Mailbox: human-instructed send is admitted; unknown targets refuse.
+const cosProfile = await call("POST", "/api/profiles", { name: "CoS" }, headers);
+const message = await call(
+  "POST",
+  `/api/profiles/${cosProfile.json.id}/messages`,
+  { to: rid, kind: "request", body: "status?" },
+  headers,
+);
+expect("mailbox send admitted", message.status === 200 && message.json.status === "pending");
+const refused = await call(
+  "POST",
+  `/api/profiles/${cosProfile.json.id}/messages`,
+  { to: "nope", kind: "request", body: "x" },
+  headers,
+);
+expect("mailbox refuses unknown target", refused.status === 400);
+const mailboxList = await call("GET", "/api/mailbox", undefined, headers);
+expect("mailbox list", mailboxList.status === 200 && mailboxList.json.length >= 1);
+
+// Vault: secrets seal; responses carry masks only.
+const login = await call(
+  "POST",
+  "/api/vault",
+  {
+    kind: "login",
+    name: "Gmail",
+    login: { url: "https://mail.google.com", username: "smoker@gmail.com", password: "hunter2" },
+  },
+  headers,
+);
+expect(
+  "vault seals and masks",
+  login.status === 200 &&
+    login.json.masked.includes("smoker@gmail.com") &&
+    !JSON.stringify(login.json).includes("hunter2"),
+);
+const vaultList = await call("GET", "/api/vault", undefined, headers);
+expect("vault list metadata only", vaultList.status === 200 && vaultList.json.length === 1);
+
+// Approvals inbox + memory.
+const approvals = await call("GET", "/api/approvals", undefined, headers);
+expect("approval inbox empty", approvals.status === 200 && approvals.json.length === 0);
+const memoryWrite = await call("POST", "/api/memory", { text: "smoker prefers brevity" }, headers);
+expect("owner memory write", memoryWrite.status === 200);
+const memoryRead = await call("GET", "/api/memory", undefined, headers);
+expect("owner memory read", memoryRead.json.length === 1);
+
 if (failures.length > 0) {
   console.error(`smoke FAILED: ${failures.join(", ")}`);
   await stack.close();
@@ -90,4 +195,6 @@ if (failures.length > 0) {
 }
 console.log(`smoke ok: stack exercised REST on 127.0.0.1:${port}`);
 await stack.close();
+rmSync(scratchVault, { recursive: true, force: true });
+rmSync(scratchArtifacts, { recursive: true, force: true });
 console.log("smoke ok: closed cleanly");
