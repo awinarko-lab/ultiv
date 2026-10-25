@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Gate } from "./gate.ts";
+import type { Context, Model, Models } from "@earendil-works/pi-ai";
+import { Gate, gateModels } from "./gate.ts";
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("Gate (counting semaphore)", () => {
   it("lets one through at a time and queues the rest", async () => {
@@ -10,7 +13,7 @@ describe("Gate (counting semaphore)", () => {
       gate.hold(async () => {
         active += 1;
         peak = Math.max(peak, active);
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await sleep(10);
         active -= 1;
         return active;
       });
@@ -26,7 +29,7 @@ describe("Gate (counting semaphore)", () => {
       gate.hold(async () => {
         active += 1;
         peak = Math.max(peak, active);
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await sleep(10);
         active -= 1;
       });
     await Promise.all([work(), work(), work(), work()]);
@@ -41,5 +44,91 @@ describe("Gate (counting semaphore)", () => {
       }),
     ).rejects.toThrow("boom");
     expect(await gate.hold(async () => "ok")).toBe("ok");
+  });
+});
+
+/** A stand-in for pi-ai's event stream: async-iterable plus result(). */
+const fakeStream = (
+  events: readonly string[],
+  final: string,
+  meter: { active: number; peak: number },
+) => ({
+  async *[Symbol.asyncIterator]() {
+    for (const event of events) {
+      meter.active += 1;
+      meter.peak = Math.max(meter.peak, meter.active);
+      await sleep(5);
+      meter.active -= 1;
+      yield event;
+    }
+  },
+  async result() {
+    meter.active += 1;
+    meter.peak = Math.max(meter.peak, meter.active);
+    await sleep(5);
+    meter.active -= 1;
+    return final;
+  },
+  extra: () => "forwarded",
+});
+
+/** pi-ai-shaped Models: stream* on the prototype, complete* delegating via `this`. */
+const fakeModelsClass = (stream: () => ReturnType<typeof fakeStream>): Models => {
+  const proto = {
+    stream: () => stream(),
+    streamSimple: () => stream(),
+    completeSimple: async function (this: { streamSimple: () => ReturnType<typeof fakeStream> }) {
+      return this.streamSimple().result();
+    },
+    getModel: () => undefined,
+  };
+  return Object.create(proto) as Models;
+};
+
+const model = {} as Model<"openai-completions">;
+const context = { messages: [] } as Context;
+
+describe("gateModels (stream contract)", () => {
+  it("returns a synchronous async-iterable — NOT a promise (the live-fault regression)", async () => {
+    const models = gateModels(
+      fakeModelsClass(() => fakeStream(["a"], "final", { active: 0, peak: 0 })),
+      1,
+    );
+    const events = models.streamSimple(model, context);
+    // The harness does `for await (const event of events)` — a Promise here
+    // faults with "events is not async iterable".
+    const iterable = events as unknown as Record<symbol, unknown>;
+    expect(typeof iterable[Symbol.asyncIterator]).toBe("function");
+    const seen: unknown[] = [];
+    for await (const event of events) seen.push(event);
+    expect(seen).toEqual(["a"]);
+    expect(await events.result()).toBe("final");
+  });
+
+  it("serializes full consumptions to the limit", async () => {
+    const meter = { active: 0, peak: 0 };
+    const models = gateModels(
+      fakeModelsClass(() => fakeStream(["a", "b"], "final", meter)),
+      1,
+    );
+    const run = async (): Promise<void> => {
+      for await (const event of models.streamSimple(model, context)) void event;
+      await models.streamSimple(model, context).result();
+    };
+    await Promise.all([run(), run()]);
+    expect(meter.peak).toBe(1);
+  });
+
+  it("forwards methods to the original stream and gates completeSimple's internal stream", async () => {
+    const meter = { active: 0, peak: 0 };
+    const models = gateModels(
+      fakeModelsClass(() => fakeStream([], "compacted", meter)),
+      1,
+    );
+    expect(
+      (models.streamSimple(model, context) as unknown as { extra: () => string }).extra(),
+    ).toBe("forwarded");
+    await expect(models.completeSimple(model, context)).resolves.toBe("compacted");
+    expect(meter.peak).toBe(1);
   });
 });
