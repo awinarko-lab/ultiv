@@ -1,6 +1,12 @@
 # RFC 0001 — Profiles: user-defined entities, vault, and the inter-entity mailbox
 
-Status: draft (brainstorm of 2026-10-26, owner + agent). Nothing here is implemented yet.
+Status: **implemented** (2026-10-26, commits 69c512d..). v1–v3 shipped in full plus the v4 seams:
+the memory hierarchy with write authority, external-sender trust classes in the mailbox, and
+export/import bundles. Not yet built: the outbound federation HTTP shim (§10 transport — the
+envelope schema and trust rules are live via `deliverExternal`), the notification push channel
+(the approval inbox + dead-letter REST surfaces + audit escalations are the attention path), and
+profile management UI beyond the switcher/Bot Mode pin. Transcript export is not in the bundle
+(the harness has no conversation export API); sessions import as fresh chats.
 Scope: `@ultiv/mind`, `@ultiv/ext`, `packages/contracts`, `apps/server`, `apps/web`.
 
 ## 1. Summary
