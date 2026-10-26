@@ -44,6 +44,8 @@ import { mailboxService, type MailboxService } from "./mailbox/mailbox.ts";
 import { messageTools } from "./mailbox/tools.ts";
 import { memoryService, type MemoryService } from "./memory/memory.ts";
 import { memoryTools } from "./memory/tools.ts";
+import { historyService, type HistoryService } from "./history/history.ts";
+import { historyTools } from "./history/tools.ts";
 import { schedulesService, type SchedulesService } from "./schedules/schedules.ts";
 import { scheduleTools } from "./schedules/tools.ts";
 import {
@@ -83,6 +85,8 @@ export interface MindService {
   readonly mailbox: MailboxService;
   /** The memory seam: profile and owner stores with write authority. */
   readonly memory: MemoryService;
+  /** Rereading the entity's own past: search over durable transcripts. */
+  readonly history: HistoryService;
   /** Self-set schedules: cron and one-shot wake-ups the entity owns. */
   readonly schedules: SchedulesService;
   /** The credential vault, when VAULT_KEY is configured; else null. */
@@ -176,6 +180,7 @@ const mindLayerRaw = (
         ...(wiring.grantArtifacts !== undefined ? { grantArtifacts: wiring.grantArtifacts } : {}),
       });
       const memory = memoryService({ converse, profiles });
+      const history = historyService({ converse, profiles });
       const schedules = schedulesService({
         converse,
         profiles,
@@ -234,6 +239,12 @@ const mindLayerRaw = (
           tools: scheduleTools(schedules, profiles),
         }),
       );
+      piRegistry.install(
+        defineExtension({
+          name: "ultius.mind.history",
+          tools: historyTools(history, profiles),
+        }),
+      );
       return {
         converse,
         decide,
@@ -246,6 +257,7 @@ const mindLayerRaw = (
         mailbox,
         memory,
         schedules,
+        history,
         vault: wiring.vaultStore,
         audit,
         describe: () => ({

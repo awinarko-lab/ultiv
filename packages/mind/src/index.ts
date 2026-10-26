@@ -20,6 +20,8 @@ export * from "./memory/memory.ts";
 export * from "./memory/tools.ts";
 export * from "./schedules/schedules.ts";
 export * from "./schedules/tools.ts";
+export * from "./history/history.ts";
+export * from "./history/tools.ts";
 export * from "./decide/decide.ts";
 export * from "./decide/gateway.ts";
 export * from "./entity.ts";

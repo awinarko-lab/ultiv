@@ -16,6 +16,7 @@ import {
   Harness,
   type AgentChange,
   type Conversation,
+  type EntryRecord,
   type JsonObject,
   type ConversationId,
   type SessionDocFamilyToken,
@@ -89,6 +90,11 @@ export interface ConverseService {
     conversation: Conversation,
     selection: { readonly model?: string | null; readonly effort?: ModelThinkingLevel | null },
   ) => Effect.Effect<void, External>;
+  /** The raw transcript entries of one conversation, newest first (history search). */
+  readonly entriesOf: (
+    conversationId: string,
+    limit: number,
+  ) => Effect.Effect<readonly EntryRecord[], External>;
   /** App-level durable documents ride the same harness storage. */
   readonly docs: {
     readonly snapshot: <T extends JsonObject>(
@@ -219,6 +225,28 @@ const converseService = (harness: Harness, agent: AgentChange): ConverseService 
     Effect.map(
       asEffect("session map read", harness.snapshot(SessionMapDoc, key, BACKGROUND_CONTEXT)),
       (known) => known?.conversationId as unknown as string | undefined,
+    ),
+  entriesOf: (conversationId, limit) =>
+    Effect.flatMap(
+      asEffect(
+        "conversation open",
+        harness.conversation(
+          (Number.isSafeInteger(Number(conversationId)) && Number(conversationId) >= 0
+            ? Number(conversationId)
+            : conversationId) as unknown as ConversationId,
+          BACKGROUND_CONTEXT,
+        ),
+      ),
+      (conversation) =>
+        conversation === undefined
+          ? Effect.succeed([] as readonly EntryRecord[])
+          : Effect.map(
+              asEffect(
+                "entries scan",
+                conversation.entries({}, limit, undefined, BACKGROUND_CONTEXT),
+              ),
+              (page) => page.items,
+            ),
     ),
   submit: (conversation, content) => submitOf(conversation, content),
   settle: (conversation, submission) => settleOf(conversation, submission),
