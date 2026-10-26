@@ -7,7 +7,7 @@
  * moves the bot under "Hidden". Delete purges everything and asks for the name.
  */
 import { BotIcon, EyeIcon, EyeOffIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -161,6 +161,7 @@ function BotRow({
   bot,
   mainId,
   deletable,
+  needsYou,
   models,
   act,
   refresh,
@@ -169,6 +170,7 @@ function BotRow({
   bot: ProfileInfo;
   mainId: string | null;
   deletable: boolean;
+  needsYou: boolean;
   models: ModelInfo[];
   act: (run: () => Promise<unknown>) => Promise<void>;
   refresh: () => Promise<void>;
@@ -183,6 +185,7 @@ function BotRow({
         onClick={() => void onOpenMain(bot.id)}
       >
         <span className="truncate font-medium">{bot.name}</span>
+        {needsYou && <Badge variant="destructive">needs you</Badge>}
         {bot.id === mainId && <Badge variant="secondary">main</Badge>}
         {archived && <Badge variant="outline">hidden</Badge>}
         {bot.model !== null && <Badge variant="outline">{bot.model.id}</Badge>}
@@ -278,6 +281,26 @@ export function BotsPanel({
   onOpenMain: (profileId: string) => Promise<void>;
 }) {
   const [error, setError] = useState<string | null>(null);
+  // Which bots have a gate waiting on the owner (polled — REST has no push).
+  const [attention, setAttention] = useState<ReadonlySet<string>>(new Set());
+
+  useEffect(() => {
+    let alive = true;
+    const load = async (): Promise<void> => {
+      try {
+        const pending = await api.pendingApprovals();
+        if (alive) setAttention(new Set(pending.map((row) => row.profile)));
+      } catch {
+        // REST hiccup: keep the last known set.
+      }
+    };
+    void load();
+    const timer = setInterval(() => void load(), 5_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   const act = async (run: () => Promise<unknown>): Promise<void> => {
     try {
@@ -333,6 +356,7 @@ export function BotsPanel({
                 bot={bot}
                 mainId={mainId}
                 deletable={ordered.length > 1}
+                needsYou={attention.has(bot.id)}
                 models={models}
                 act={act}
                 refresh={refresh}

@@ -73,6 +73,17 @@ export interface RoomDetail {
   timeline: { at: number; speaker: string; text: string; system: boolean }[];
 }
 
+/** One row of GET /api/approvals — a gate waiting on the owner somewhere. */
+export interface PendingApprovalRow {
+  conversationId: string;
+  profile: string;
+  kind: string;
+  sessionId: string | null;
+  callId: string;
+  name: string;
+  input: unknown;
+}
+
 export const api = {
   sessions: (profile?: string): Promise<SessionInfo[]> =>
     getJson<SessionInfo[]>(
@@ -127,5 +138,7 @@ export const api = {
     }),
   remove: (id: string): Promise<boolean> => drop(`/api/sessions/${encodeURIComponent(id)}`),
   tasks: (): Promise<TaskInfo[]> => getJson<TaskInfo[]>("/api/tasks"),
+  pendingApprovals: (): Promise<PendingApprovalRow[]> =>
+    getJson<PendingApprovalRow[]>("/api/approvals"),
   removeTask: (id: string): Promise<boolean> => drop(`/api/tasks/${encodeURIComponent(id)}`),
 };
