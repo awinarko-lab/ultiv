@@ -7,3 +7,5 @@ export * from "./plugins/artifacts.ts";
 export * from "./plugins/http.ts";
 export * from "./plugins/tinyfish.ts";
 export * from "./plugins/vault.ts";
+export * from "./plugins/calendar.ts";
+export * from "./plugins/email.ts";
