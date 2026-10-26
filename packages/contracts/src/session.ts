@@ -112,7 +112,7 @@ export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 8,
+  version: 9,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {
@@ -144,6 +144,8 @@ export const Session = remote("ultiv.session", {
             approved: Type.Boolean(),
             /** Also save this tool on the profile's autoApprove list (with approved). */
             always: Type.Optional(Type.Boolean()),
+            /** With approved=false: the owner does this one themselves; the agent is told. */
+            takeover: Type.Optional(Type.Boolean()),
           }),
           Type.Object({ ok: Type.Boolean() }),
         ),

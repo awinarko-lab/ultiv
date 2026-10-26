@@ -34,7 +34,9 @@ export async function approvalRoutes(args: RouteArgs): Promise<boolean> {
       json(403, { error: "not your conversation" });
       return true;
     }
-    const body = await args.readJson<{ approved?: boolean; always?: boolean }>(req);
+    const body = await args.readJson<{ approved?: boolean; always?: boolean; takeover?: boolean }>(
+      req,
+    );
     const approved = body.approved === true;
     const waiting = mind.approvals
       .pendingFor(conversationId ?? "")
@@ -48,7 +50,15 @@ export async function approvalRoutes(args: RouteArgs): Promise<boolean> {
         console.warn("always-allow rule save failed:", cause);
       }
     }
-    mind.approvals.decide(conversationId ?? "", callId ?? "", approved);
+    mind.approvals.decide(
+      conversationId ?? "",
+      callId ?? "",
+      approved,
+      // "Take over" from the inbox: same note the chat card sends.
+      !approved && body.takeover === true
+        ? "the owner is handling this themselves - do not retry; carry on and let them tell you when it is done"
+        : undefined,
+    );
     mind.audit.record({
       at: Date.now(),
       kind: "approval",
@@ -58,7 +68,7 @@ export async function approvalRoutes(args: RouteArgs): Promise<boolean> {
       name: waiting?.name ?? null,
       durationMs: null,
       ok: approved,
-      error: null,
+      error: !approved && body.takeover === true ? "taken over by the owner" : null,
     });
     json(200, { ok: true });
     return true;

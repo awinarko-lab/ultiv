@@ -40,8 +40,19 @@ export interface ApprovalsService {
     callId: string,
     request: ApprovalRequest,
   ) => Effect.Effect<boolean>;
-  /** Called by the surface's `approve` method with the user's decision. */
-  readonly decide: (conversationId: string, callId: string, approved: boolean) => void;
+  /**
+   * Called by the surface's `approve` method with the user's decision. An
+   * optional `note` (a takeover, a reason) rides along and surfaces in the
+   * tool's denial message via `noteFor`.
+   */
+  readonly decide: (
+    conversationId: string,
+    callId: string,
+    approved: boolean,
+    note?: string,
+  ) => void;
+  /** The decision note for this call, if any — read-once (the tool consumes it). */
+  readonly noteFor: (conversationId: string, callId: string) => string | undefined;
   /** Snapshot of what is waiting for this conversation (empty: nothing). */
   readonly pendingFor: (conversationId: string) => readonly ApprovalRequest[];
   /** Every pending approval across conversations — the cross-profile inbox. */
@@ -59,6 +70,7 @@ export const makeApprovals = (
 ): ApprovalsService => {
   const pending = new Map<string, PendingEntry>();
   const waiters = new Map<string, Deferred.Deferred<boolean>>();
+  const notes = new Map<string, string>();
   let hooks: ApprovalsHooks = {};
   const key = (conversationId: string, callId: string): string => `${conversationId}:${callId}`;
   const settle = (k: string, approved: boolean): void => {
@@ -76,6 +88,7 @@ export const makeApprovals = (
       Effect.gen(function* () {
         if (hooks.autoApprove?.(conversationId, request) === true) return true;
         const k = key(conversationId, callId);
+        notes.delete(k); // a stale note must not leak into this call's denial
         const deferred = yield* Deferred.make<boolean>();
         pending.set(k, { conversationId, request });
         waiters.set(k, deferred);
@@ -84,7 +97,17 @@ export const makeApprovals = (
         settle(k, Exit.isSuccess(exit));
         return Exit.isSuccess(exit) ? exit.value : false;
       }),
-    decide: (conversationId, callId, approved) => settle(key(conversationId, callId), approved),
+    decide: (conversationId, callId, approved, note) => {
+      const k = key(conversationId, callId);
+      if (note !== undefined && !approved) notes.set(k, note);
+      settle(k, approved);
+    },
+    noteFor: (conversationId, callId) => {
+      const k = key(conversationId, callId);
+      const note = notes.get(k);
+      notes.delete(k);
+      return note;
+    },
     pendingFor: (conversationId) => {
       const prefix = `${conversationId}:`;
       return [...pending].filter(([k]) => k.startsWith(prefix)).map(([, entry]) => entry.request);
@@ -106,15 +129,20 @@ export const withApproval = <TParameters extends TSchema>(
 ): ToolRegistration<TParameters> => ({
   ...tool,
   execute: async (args, api, context) => {
+    const conversationId = String(api.conversationId);
     const approved = await Effect.runPromise(
-      approvals.request(String(api.conversationId), api.callId, {
+      approvals.request(conversationId, api.callId, {
         callId: api.callId,
         name: tool.name,
         input: args,
       }),
     );
     if (!approved) {
-      return { isError: true, output: [{ type: "text", text: "denied by the user" }] };
+      const note = approvals.noteFor(conversationId, api.callId);
+      return {
+        isError: true,
+        output: [{ type: "text", text: note ?? "denied by the user" }],
+      };
     }
     return tool.execute(args, api, context);
   },

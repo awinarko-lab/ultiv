@@ -174,11 +174,16 @@ export const api = {
     callId: string,
     approved: boolean,
     always?: boolean,
+    takeover?: boolean,
   ): Promise<boolean> =>
     send<boolean>(
       `/api/approvals/${encodeURIComponent(conversationId)}/${encodeURIComponent(callId)}`,
       "POST",
-      { approved, ...(always === true ? { always: true } : {}) },
+      {
+        approved,
+        ...(always === true ? { always: true } : {}),
+        ...(takeover === true ? { takeover: true } : {}),
+      },
     ),
   artifactsFor: (conversationId: string): Promise<ArtifactRow[]> =>
     getJson<ArtifactRow[]>(`/api/artifacts?conversationId=${encodeURIComponent(conversationId)}`),

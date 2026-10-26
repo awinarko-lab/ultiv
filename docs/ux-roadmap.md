@@ -48,8 +48,15 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
   `mind.profiles.allowTool(owner, profileId, tool)` (the chord session's
   always-allow now uses it too); the task activity dialog's waiting card has
   the full tri-state. Pattern 3 is now complete on every surface.
-- **4 — Three outcomes for actions** (M): proceed / approve / "you do it"
-  (Take over button).
+- **4 — Three outcomes for actions** (M): DONE (thin handback) — every
+  approval surface (chat card, task activity dialog, REST inbox) offers
+  **Take over** alongside Deny / Always allow / Approve. Take over denies the
+  call with a broker-carried note — "the owner is handling this themselves —
+  do not retry" — so the agent adapts instead of nagging (Session contract
+  v9 `takeover`; `mind.approvals.decide(note)` + `noteFor`, read-once; audit
+  records "taken over by the owner"). A full pause-and-handback protocol
+  (agent suspends the turn until the owner confirms) remains a possible
+  upgrade on the same seam.
 - **11 — First-run onboarding** (M): DONE — the empty workspace shows three
   template cards (Assistant / Researcher / Projects, each with a capability
   checklist) that spawn a bot with a full identity in one click; the home

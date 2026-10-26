@@ -171,7 +171,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
           safeChange(cells.lastError, ctx, () => null);
           return { ok: true };
         },
-        approve: async ({ callId, approved, always }, ctx) => {
+        approve: async ({ callId, approved, always, takeover }, ctx) => {
           const id = await conversationId;
           const waiting = mind.approvals.pendingFor(id).find((r) => r.callId === callId);
           // "Always allow" saves the tool on the profile's autoApprove list;
@@ -187,7 +187,16 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
               }
             }
           }
-          mind.approvals.decide(id, callId, approved);
+          mind.approvals.decide(
+            id,
+            callId,
+            approved,
+            // "Take over": the owner does this one themselves — the agent is
+            // told not to retry, so the turn carries on without nagging.
+            !approved && takeover === true
+              ? "the owner is handling this themselves - do not retry; carry on and let them tell you when it is done"
+              : undefined,
+          );
           mind.audit.record({
             at: Date.now(),
             kind: "approval",
@@ -197,7 +206,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
             name: waiting?.name ?? null,
             durationMs: null,
             ok: approved,
-            error: null,
+            error: !approved && takeover === true ? "taken over by the owner" : null,
           });
           safeChange(cells.pending, ctx, () => mind.approvals.pendingFor(id)[0] ?? null);
           return { ok: true };

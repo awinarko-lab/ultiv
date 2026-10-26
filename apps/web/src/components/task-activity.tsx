@@ -56,12 +56,12 @@ export function TaskActivityDialog({
     return () => clearInterval(timer);
   }, [open, load]);
 
-  const decide = async (approved: boolean, always?: boolean): Promise<void> => {
+  const decide = async (approved: boolean, always?: boolean, takeover?: boolean): Promise<void> => {
     const conversationId = activity?.conversationId;
     const callId = activity?.waiting?.callId;
     if (conversationId === null || conversationId === undefined || callId === undefined) return;
     try {
-      await api.approvalDecide(conversationId, callId, approved, always);
+      await api.approvalDecide(conversationId, callId, approved, always, takeover);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -86,7 +86,15 @@ export function TaskActivityDialog({
             <pre className="text-muted-foreground mt-1 max-h-24 overflow-y-auto text-xs whitespace-pre-wrap">
               {JSON.stringify(activity.waiting.input, null, 2)}
             </pre>
-            <div className="mt-2 flex justify-end gap-2">
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              <Button
+                size="xs"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => void decide(false, undefined, true)}
+              >
+                Take over
+              </Button>
               <Button size="xs" variant="outline" onClick={() => void decide(false)}>
                 Deny
               </Button>

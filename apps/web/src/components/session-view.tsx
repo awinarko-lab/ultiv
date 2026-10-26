@@ -276,7 +276,7 @@ export function SessionView({
   effort: ThinkingLevel | null;
   models: ModelInfo[];
   onInput: (text: string) => void;
-  onDecide: (callId: string, approved: boolean, always?: boolean) => void;
+  onDecide: (callId: string, approved: boolean, always?: boolean, takeover?: boolean) => void;
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
   onInterrupt: () => void;
 }) {
@@ -410,7 +410,8 @@ export function SessionView({
             )}
             <CardContent className="pt-2">
               <p className="text-muted-foreground text-xs">
-                “Always allow” saves {pending.name} to this bot’s auto-approve rules.
+                “Always allow” saves {pending.name} to this bot’s auto-approve rules. “Take over”
+                declines the call and tells the bot you are doing it yourself.
               </p>
               <CodeBlock size="sm">
                 <CodeBlockContent wrap className="max-h-48 overflow-y-auto">
@@ -418,7 +419,15 @@ export function SessionView({
                 </CodeBlockContent>
               </CodeBlock>
             </CardContent>
-            <CardFooter className="justify-end gap-2 pb-3">
+            <CardFooter className="flex-wrap justify-end gap-2 pb-3">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => onDecide(pending.callId, false, undefined, true)}
+              >
+                Take over
+              </Button>
               <Button size="sm" variant="outline" onClick={() => onDecide(pending.callId, false)}>
                 Deny
               </Button>
