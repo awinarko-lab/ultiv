@@ -10,9 +10,11 @@ dropped, a rotated key indistinguishable from a quiet day.
 
 | Thing                                      | Durable?                                  | Where                                 |
 | ------------------------------------------ | ----------------------------------------- | ------------------------------------- |
-| Cron registry (`ultiv.cronjobs`)           | yes                                       | mind doc, re-armed on boot            |
-| Webhook registry (`ultiv.webhooks`)        | yes                                       | mind doc, v3 (schemas + counters)     |
-| **Fire receipts** (`ultiv.routine-events`) | yes                                       | mind doc, newest first, capped at 400 |
+| Cron registry (`ultiv.cronjobs`) | yes | mind doc, re-armed on boot |
+| Webhook registry (`ultiv.webhooks`) | yes | mind doc, v3 (schemas + counters) |
+| Sensor registry + dedup rings (`ultiv.sensors`) | yes | mind doc |
+| **Profile KV state** (`ultiv.kv.<profile>`) | yes | mind doc family |
+| **Fire receipts** (`ultiv.routine-events`) | yes | mind doc, newest first, capped at 400 |
 | Mailbox envelopes, dead-letters            | yes                                       | mind docs                             |
 | Rate-limit token buckets                   | **no** (in-memory, restart resets)        | server process                        |
 | Debounce windows                           | **no** (payloads already receipted first) | server process                        |
@@ -74,8 +76,30 @@ against the schema without delivering — rejected probes are receipted.
 - One-shots (`once`, epoch ms) self-retire on success; on 3 consecutive
   failures they are **disabled in place** (visibly dead, not vanished) with
   an audit escalation.
-- Delivery rides the same admission path as typed input. There is currently
-  **no mid-turn steering**: a wake that lands while a turn is in flight is
-  admitted and processed after it, and bursts coalesce. That is a documented
-  constraint, not a bug — do not conclude a schedule is broken from it;
-  check the receipts.
+- Delivery rides the same admission path as typed input. **Routine wakes STEER a turn in flight** (`whenBusy: "steer"` — admitted at the next tool boundary), so the old "wakes never land mid-turn" constraint is gone. Sensors deliberately queue as follow-ups instead: a low-priority tick must not derail active work. Bursts still coalesce via the webhook debounce; that is a documented behavior, not a bug — check the receipts.
+
+## Sensors
+
+A sensor watches an external source and wakes the entity on events — today,
+**calendar** (the owner's ICS feed, `CALENDAR_ICS_URL`), polled by the
+server's sensor loop (`SENSOR_POLL_MS`, default 5 min). Tools:
+`sensor_set` / `sensor_list` / `sensor_remove` (set/remove gated).
+
+- **Dedup is the source's natural key** (the ICS UID), stored in a ring on
+  the sensor row — each real-world event wakes the entity exactly once,
+  across restarts. No UID in the feed falls back to `summary@start`.
+- Fires are write-ahead receipts (`source: "sensor"`), delivered as
+  **follow-ups** (never steering), `leadMinutes` before the event starts
+  with a 1h grace window for missed polls.
+- No feed configured or feed error lands on the sensor's `lastError` —
+  visible in `GET /api/sensors` and `sensor_list`.
+
+## Durable state (the KV plane)
+
+`state_get` / `state_set` / `state_delete` / `state_list` — a profile-scoped
+key-value store over a durable doc family (`ultiv.kv.<profile>`), live
+across sessions, wakes and restarts. This is where dedup ledgers, generation
+tokens and "already acted" markers belong. The semantic rule survives: unset
+is NOT proof of never-acted — write generation markers for anything whose
+absence must be distinguishable. Values cap at 8KB (store pointers, not
+payloads).

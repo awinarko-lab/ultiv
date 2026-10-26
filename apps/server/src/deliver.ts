@@ -1,19 +1,25 @@
 /**
  * Delivery: the one path outside input rides into a session — webhook calls,
- * cron fires, mailbox envelopes. It resolves the session's registry row (and
- * with it the owner and profile scope), admits the text into the session's
- * durable conversation, and settles it in the background exactly like a typed
- * input. Admission is the contract: once the submission is durable, the caller
- * succeeded — the TURN may still fail (no provider, bad tool), and that is the
- * session transcript's problem, not the sender's.
+ * cron fires, sensor ticks, mailbox envelopes. It resolves the session's
+ * registry row (and with it the owner and profile scope), admits the text
+ * into the session's durable conversation, and settles it in the background
+ * exactly like a typed input. Admission is the contract: once the submission
+ * is durable, the caller succeeded — the TURN may still fail (no provider,
+ * bad tool), and that is the session transcript's problem, not the sender's.
+ *
+ * `whenBusy` is the priority class: ROUTINE wakes steer a turn in flight at
+ * the next boundary; low-priority sources (sensors) queue as follow-ups.
  */
 import { Effect } from "effect";
 import type { MindService } from "@ultiv/mind";
+
+export type WhenBusy = "steer" | "followUp" | "reject";
 
 export const deliverToSession = async (
   mind: MindService,
   sessionId: string,
   text: string,
+  whenBusy: WhenBusy = "followUp",
 ): Promise<void> => {
   const row = await mind.profiles.rowOf(sessionId);
   const owner = row?.owner;
@@ -24,7 +30,7 @@ export const deliverToSession = async (
         ? await mind.profiles.keyForSession(owner, sessionId)
         : sessionId; // pre-registry ids: the raw key, exactly as before
   const conversation = await Effect.runPromise(mind.converse.ensure(key));
-  const submission = await Effect.runPromise(mind.converse.submit(conversation, text));
+  const submission = await Effect.runPromise(mind.converse.submit(conversation, text, whenBusy));
   await mind.profiles.touchSession(owner ?? "guest", sessionId, {
     at: Date.now(),
     titleSeed: text,

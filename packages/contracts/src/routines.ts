@@ -10,8 +10,13 @@ export const RoutineEventSchema = Type.Object({
   id: Type.String(),
   /** The cron job or webhook this receipt belongs to. */
   routineId: Type.String(),
-  /** Which trigger family fired: a schedule, an inbound webhook, or a test fire. */
-  source: Type.Union([Type.Literal("cron"), Type.Literal("webhook"), Type.Literal("test")]),
+  /** Which trigger family fired: a schedule, an inbound webhook, a sensor, or a test fire. */
+  source: Type.Union([
+    Type.Literal("cron"),
+    Type.Literal("webhook"),
+    Type.Literal("sensor"),
+    Type.Literal("test"),
+  ]),
   /** Wall-clock ms when the trigger fired. */
   at: Type.Number(),
   /** Correlation handle handed back to webhook senders in the ack body. */

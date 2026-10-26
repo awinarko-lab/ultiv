@@ -10,6 +10,7 @@ import { artifactsDir } from "@ultiv/ext";
 import type { ProfileCreate } from "@ultiv/contracts";
 import { removeCronJobsForSessions } from "../cron.ts";
 import { removeWebhooksForSessions } from "../webhooks.ts";
+import { removeSensorsForSessions } from "@ultiv/mind";
 import { errorOf, type RouteArgs } from "./types.ts";
 
 const ID = "[a-zA-Z0-9][a-zA-Z0-9._-]*";
@@ -225,12 +226,13 @@ async function purgeProfile(args: RouteArgs, id: string): Promise<unknown> {
   const { mind } = args;
   const sessions = await mind.profiles.remove(args.owner, id);
   const sessionIds = sessions.map((row) => row.id);
-  const [mailbox, memory, vault, cron, webhooks, rooms] = await Promise.all([
+  const [mailbox, memory, vault, cron, webhooks, sensors, rooms] = await Promise.all([
     mind.mailbox.purgeProfile(args.owner, id),
     mind.memory.removeProfile(args.owner, id),
     Promise.resolve(mind.vault?.removeProfile(args.owner, id) ?? 0),
     removeCronJobsForSessions(mind.converse, sessionIds),
     removeWebhooksForSessions(mind, sessionIds),
+    removeSensorsForSessions(mind.converse, sessionIds),
     mind.rooms.purgeProfile(args.owner, id),
   ]);
   let artifacts = 0;
@@ -249,6 +251,7 @@ async function purgeProfile(args: RouteArgs, id: string): Promise<unknown> {
     vault,
     cron,
     webhooks,
+    sensors,
     rooms,
     artifacts,
     note: "transcripts stay in harness storage (retention); registry rows and files are gone",

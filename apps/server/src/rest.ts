@@ -19,6 +19,7 @@ import { roomRoutes } from "./rest/rooms.ts";
 import { taskRoutes } from "./rest/tasks.ts";
 import { vaultRoutes } from "./rest/vault.ts";
 import { webhookRoutes } from "./rest/webhooks.ts";
+import { sensorRoutes } from "./rest/sensors.ts";
 
 export interface RestDeps {
   readonly mind: MindService;
@@ -130,7 +131,9 @@ async function route(args: RouteArgs): Promise<void> {
       200,
       await mind.receipts.list({
         ...(routine !== undefined ? { routineId: routine } : {}),
-        ...(source !== undefined ? { source: source as "cron" | "webhook" | "test" } : {}),
+        ...(source !== undefined
+          ? { source: source as "cron" | "webhook" | "sensor" | "test" }
+          : {}),
         limit: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 400) : 100,
       }),
     );
@@ -143,6 +146,7 @@ async function route(args: RouteArgs): Promise<void> {
   if (await artifactRoutes(args, segment)) return;
   if (await webhookRoutes(args, segment)) return;
   if (await cronRoutes(args, segment)) return;
+  if (await sensorRoutes(args, segment)) return;
   if (await vaultRoutes(args, segment)) return;
   if (await approvalRoutes(args)) return;
   if (path === "/" || path === "/api/health") return json(200, { app: "ultiv", ok: true });

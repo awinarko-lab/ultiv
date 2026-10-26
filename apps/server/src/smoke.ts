@@ -174,6 +174,9 @@ expect(
 
 const badCron = await call("POST", "/api/cron", { sessionId: "s", schedule: "nope", prompt: "x" });
 expect("cron rejects bad schedule", badCron.status === 400);
+// Sensors: the registry answers even with no calendar configured (offline).
+const sensorsList = await call("GET", "/api/sensors", undefined, { "x-ultiv-user": "smoker" });
+expect("sensor registry listed", sensorsList.status === 200 && Array.isArray(sensorsList.json));
 const cron = await call("POST", "/api/cron", {
   sessionId: created.json.id,
   schedule: "*/5 * * * *",

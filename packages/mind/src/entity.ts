@@ -56,6 +56,10 @@ import { scheduleTools } from "./schedules/tools.ts";
 import { receiptsService, type ReceiptsService } from "./routines/receipts.ts";
 import { webhooksService, type WebhooksService } from "./webhooks/webhooks.ts";
 import { webhookTools } from "./webhooks/tools.ts";
+import { kvService, type KvService } from "./state/kv.ts";
+import { stateTools } from "./state/tools.ts";
+import { sensorsService, type SensorsService } from "./sensors/sensors.ts";
+import { sensorTools } from "./sensors/tools.ts";
 import {
   Generate,
   generateLayer,
@@ -101,6 +105,10 @@ export interface MindService {
   readonly receipts: ReceiptsService;
   /** Self-set inbound webhooks with schema validation and reject accounting. */
   readonly webhooks: WebhooksService;
+  /** Durable profile-scoped key-value state — the entity's dedup ledgers live here. */
+  readonly state: KvService;
+  /** Watches on external sources (calendar) that wake the entity. */
+  readonly sensors: SensorsService;
   /** The credential vault, when VAULT_KEY is configured; else null. */
   readonly vault: VaultStore | null;
   /** The append-only trail of the mind's acts. */
@@ -202,6 +210,8 @@ const mindLayerRaw = (
       });
       const receipts = receiptsService({ converse });
       const webhooks = webhooksService({ converse, profiles });
+      const state = kvService({ converse });
+      const sensors = sensorsService({ converse, profiles });
       // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
       // through the holder the registry was built with — set now that the
       // conversation→profile index exists.
@@ -261,6 +271,18 @@ const mindLayerRaw = (
       );
       piRegistry.install(
         defineExtension({
+          name: "ultius.mind.state",
+          tools: stateTools(state, profiles),
+        }),
+      );
+      piRegistry.install(
+        defineExtension({
+          name: "ultius.mind.sensors",
+          tools: sensorTools(sensors, profiles),
+        }),
+      );
+      piRegistry.install(
+        defineExtension({
           name: "ultius.mind.history",
           tools: historyTools(history, profiles),
         }),
@@ -279,6 +301,8 @@ const mindLayerRaw = (
         schedules,
         receipts,
         webhooks,
+        state,
+        sensors,
         history,
         vault: wiring.vaultStore,
         audit,

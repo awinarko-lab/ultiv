@@ -14,6 +14,7 @@ import { artifactsDir, copyArtifact } from "@ultiv/ext";
 import { join } from "node:path";
 import { httpPlugin } from "@ultiv/ext";
 import { closeWebhookPump } from "./webhooks.ts";
+import { startSensorLoop, type SensorLoop } from "./sensors.ts";
 import { openMind } from "@ultiv/mind";
 import { startScheduler, type CronScheduler } from "./cron.ts";
 import { principalFromRequest, type Principal } from "./identity.ts";
@@ -53,6 +54,9 @@ export async function buildStack(options?: {
   let refreshSchedules: () => Promise<void> = async () => undefined;
   const scheduler: CronScheduler = await startScheduler(mind);
   refreshSchedules = () => scheduler.refresh();
+  // Calendar sensors: the poll loop is server-side (clock + network); the
+  // registry and the dedup rings are durable mind docs.
+  const sensorLoop: SensorLoop = await startSensorLoop(mind);
   const host = createHost<Principal>({ name: "server", self: { kind: "server" } });
   host.serve(Ping, (_input, _principal, self) => {
     const count = self.state("count", Type.Number(), 0);
@@ -74,6 +78,7 @@ export async function buildStack(options?: {
 
   const close = async () => {
     scheduler.stop();
+    sensorLoop.stop();
     // Pending webhook windows first: a flush racing the mind's teardown
     // would otherwise write into a closed session.
     closeWebhookPump();
@@ -86,7 +91,7 @@ export async function buildStack(options?: {
     ]);
     await handle.close();
   };
-  return { host, mind, http, scheduler, close };
+  return { host, mind, http, scheduler, sensorLoop, close };
 }
 
 const isMain =

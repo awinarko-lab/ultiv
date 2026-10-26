@@ -16,6 +16,8 @@ export const calendarFeedUrl = (): string | null => {
 export const calendarConfigured = (): boolean => calendarFeedUrl() !== null;
 
 export interface IcsEvent {
+  /** Stable event identity from the feed (UID) — the sensor dedup key. */
+  readonly uid: string | null;
   readonly summary: string;
   readonly start: number;
   readonly end: number | null;
@@ -67,6 +69,7 @@ export const parseIcs = (raw: string): readonly IcsEvent[] => {
         if (start !== null) {
           const end = current.dtend !== undefined ? parseIcsDate(current.dtend) : null;
           events.push({
+            uid: current.uid ?? null,
             summary: current.summary ?? "(untitled)",
             start: start.at,
             end: end?.at ?? null,
@@ -83,7 +86,7 @@ export const parseIcs = (raw: string): readonly IcsEvent[] => {
     if (colon < 0) continue;
     const name = line.slice(0, colon).split(";")[0]?.toUpperCase() ?? "";
     const value = line.slice(colon + 1);
-    if (["DTSTART", "DTEND", "SUMMARY", "LOCATION"].includes(name)) {
+    if (["DTSTART", "DTEND", "SUMMARY", "LOCATION", "UID"].includes(name)) {
       current[name.toLowerCase()] = value;
     }
   }

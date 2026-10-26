@@ -64,6 +64,8 @@ export interface ConverseService {
   readonly submit: (
     conversation: Conversation,
     content: string,
+    /** When a turn is in flight: steer it at the next boundary, queue as follow-up, or reject. */
+    whenBusy?: "steer" | "followUp" | "reject",
   ) => Effect.Effect<Submission, External>;
   /** Stop the conversation's current turn: withdraw queued inputs, abort, wait for idle. */
   readonly interrupt: (conversation: Conversation) => Effect.Effect<void, External>;
@@ -78,6 +80,8 @@ export interface ConverseService {
   readonly turn: (
     conversation: Conversation,
     content: string,
+    /** When a turn is in flight: steer it at the next boundary, queue as follow-up, or reject. */
+    whenBusy?: "steer" | "followUp" | "reject",
   ) => Effect.Effect<TurnResult, External>;
   /** The conversation's current model/effort selection. */
   readonly agentOf: (conversation: Conversation) => Effect.Effect<AgentSelection, External>;
@@ -167,8 +171,15 @@ const ensureConversation = (
 const submitOf = (
   conversation: Conversation,
   content: string,
+  whenBusy?: "steer" | "followUp" | "reject",
 ): Effect.Effect<Submission, External> =>
-  asEffect("submit", conversation.submit({ type: "input", content }, BACKGROUND_CONTEXT));
+  asEffect(
+    "submit",
+    conversation.submit(
+      { type: "input", content, ...(whenBusy !== undefined ? { whenBusy } : {}) },
+      BACKGROUND_CONTEXT,
+    ),
+  );
 
 const settleOf = (
   conversation: Conversation,
@@ -248,10 +259,10 @@ const converseService = (harness: Harness, agent: AgentChange): ConverseService 
               (page) => page.items,
             ),
     ),
-  submit: (conversation, content) => submitOf(conversation, content),
+  submit: (conversation, content, whenBusy) => submitOf(conversation, content, whenBusy),
   settle: (conversation, submission) => settleOf(conversation, submission),
-  turn: (conversation, content) =>
-    Effect.flatMap(submitOf(conversation, content), (submission) =>
+  turn: (conversation, content, whenBusy) =>
+    Effect.flatMap(submitOf(conversation, content, whenBusy), (submission) =>
       settleOf(conversation, submission),
     ),
   agentOf: (conversation) =>

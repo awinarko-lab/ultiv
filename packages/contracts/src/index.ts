@@ -73,6 +73,8 @@ export { CronJobInfoSchema, CronJobListSchema } from "./cron.ts";
 export type { CronJobInfo, CronJobList } from "./cron.ts";
 export { RoutineEventSchema, RoutineEventListSchema } from "./routines.ts";
 export type { RoutineEvent, RoutineEventList } from "./routines.ts";
+export { SensorInfoSchema, SensorListSchema } from "./sensors.ts";
+export type { SensorInfo, SensorList } from "./sensors.ts";
 export { AuditEventSchema, AuditListSchema } from "./audit.ts";
 export type { AuditEvent, AuditList } from "./audit.ts";
 export { Ping } from "./ping.ts";

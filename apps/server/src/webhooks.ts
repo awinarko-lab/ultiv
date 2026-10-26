@@ -83,7 +83,7 @@ const flush = async (
     const text = entries.map((entry) => entry.text).join("\n");
     for (let attempt = 1; attempt <= MAX_DELIVERY_ATTEMPTS; attempt += 1) {
       try {
-        await deliverToSession(mind, sessionId, text);
+        await deliverToSession(mind, sessionId, text, "steer");
         await Promise.all(
           entries.map((entry) => settleRoutineEvent(mind.converse, entry.eventId, "delivered")),
         );
