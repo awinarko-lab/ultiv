@@ -56,12 +56,12 @@ export function TaskActivityDialog({
     return () => clearInterval(timer);
   }, [open, load]);
 
-  const decide = async (approved: boolean): Promise<void> => {
+  const decide = async (approved: boolean, always?: boolean): Promise<void> => {
     const conversationId = activity?.conversationId;
     const callId = activity?.waiting?.callId;
     if (conversationId === null || conversationId === undefined || callId === undefined) return;
     try {
-      await api.approvalDecide(conversationId, callId, approved);
+      await api.approvalDecide(conversationId, callId, approved, always);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -89,6 +89,9 @@ export function TaskActivityDialog({
             <div className="mt-2 flex justify-end gap-2">
               <Button size="xs" variant="outline" onClick={() => void decide(false)}>
                 Deny
+              </Button>
+              <Button size="xs" variant="secondary" onClick={() => void decide(true, true)}>
+                Always allow
               </Button>
               <Button size="xs" onClick={() => void decide(true)}>
                 Approve

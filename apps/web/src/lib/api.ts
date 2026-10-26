@@ -169,11 +169,16 @@ export const api = {
   tasks: (): Promise<TaskInfo[]> => getJson<TaskInfo[]>("/api/tasks"),
   taskActivity: (id: string): Promise<TaskActivity> =>
     getJson<TaskActivity>(`/api/tasks/${encodeURIComponent(id)}/activity`),
-  approvalDecide: (conversationId: string, callId: string, approved: boolean): Promise<boolean> =>
+  approvalDecide: (
+    conversationId: string,
+    callId: string,
+    approved: boolean,
+    always?: boolean,
+  ): Promise<boolean> =>
     send<boolean>(
       `/api/approvals/${encodeURIComponent(conversationId)}/${encodeURIComponent(callId)}`,
       "POST",
-      { approved },
+      { approved, ...(always === true ? { always: true } : {}) },
     ),
   artifactsFor: (conversationId: string): Promise<ArtifactRow[]> =>
     getJson<ArtifactRow[]>(`/api/artifacts?conversationId=${encodeURIComponent(conversationId)}`),

@@ -43,6 +43,11 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
   `GET /api/tasks/:id/activity`), the result/error when settled, files made
   (artifacts by conversation), and any approval waiting on the task with
   Approve/Deny inline. Polls at 2.5 s while open.
+- **Pattern 3 leftover — inbox `always`**: DONE — `POST /api/approvals/:conv/:call`
+  takes `always` and saves the same rule via the new shared
+  `mind.profiles.allowTool(owner, profileId, tool)` (the chord session's
+  always-allow now uses it too); the task activity dialog's waiting card has
+  the full tri-state. Pattern 3 is now complete on every surface.
 - **4 — Three outcomes for actions** (M): proceed / approve / "you do it"
   (Take over button).
 - **11 — First-run onboarding** (M): DONE — the empty workspace shows three

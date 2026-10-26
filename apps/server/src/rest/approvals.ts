@@ -34,8 +34,20 @@ export async function approvalRoutes(args: RouteArgs): Promise<boolean> {
       json(403, { error: "not your conversation" });
       return true;
     }
-    const body = await args.readJson<{ approved?: boolean }>(req);
+    const body = await args.readJson<{ approved?: boolean; always?: boolean }>(req);
     const approved = body.approved === true;
+    const waiting = mind.approvals
+      .pendingFor(conversationId ?? "")
+      .find((request) => request.callId === callId);
+    // "Always allow" from the inbox saves the same per-profile rule the chat
+    // card does; a failed save must not swallow the decision.
+    if (approved && body.always === true && waiting !== undefined && scope.profileId !== null) {
+      try {
+        await mind.profiles.allowTool(args.owner, scope.profileId, waiting.name);
+      } catch (cause) {
+        console.warn("always-allow rule save failed:", cause);
+      }
+    }
     mind.approvals.decide(conversationId ?? "", callId ?? "", approved);
     mind.audit.record({
       at: Date.now(),
@@ -43,7 +55,7 @@ export async function approvalRoutes(args: RouteArgs): Promise<boolean> {
       conversationId: conversationId ?? "",
       profile: scope.profileId,
       callId: callId ?? "",
-      name: null,
+      name: waiting?.name ?? null,
       durationMs: null,
       ok: approved,
       error: null,

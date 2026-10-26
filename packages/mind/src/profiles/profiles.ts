@@ -55,6 +55,8 @@ export interface ProfilesService {
     patch: Partial<ProfileCreate>,
   ) => Promise<ProfileInfo>;
   readonly setArchived: (owner: string, id: string, archived: boolean) => Promise<ProfileInfo>;
+  /** Save a tool on the profile's autoApprove list — the "always allow" rule. */
+  readonly allowTool: (owner: string, profileId: string, tool: string) => Promise<void>;
   /** Remove the profile row and its session rows; returns them for the cascade. */
   readonly remove: (owner: string, id: string) => Promise<SessionInfo[]>;
   readonly ensureDefault: (owner: string) => Promise<ProfileInfo>;
@@ -365,6 +367,26 @@ export const profilesService = (deps: {
           if (profile === undefined) throw new NotFound({ what: `profile ${id}` });
           return profile;
         }),
+    allowTool: async (owner, profileId, tool) => {
+      const rows = await run(readProfiles(converse));
+      const current = rows.find((p) => p.owner === owner && p.id === profileId);
+      if (current === undefined) throw new NotFound({ what: `profile ${profileId}` });
+      await run(
+        commitProfiles(converse, (all) =>
+          all.map((row) =>
+            row.id === profileId && row.owner === owner
+              ? {
+                  ...row,
+                  policies: {
+                    ...row.policies,
+                    autoApprove: [...new Set([...row.policies.autoApprove, tool])],
+                  },
+                }
+              : row,
+          ),
+        ),
+      );
+    },
     remove: async (owner, id) => {
       const rows = await run(readSessions(converse));
       const mine = rows.filter((row) => row.owner === owner && row.profile === id);

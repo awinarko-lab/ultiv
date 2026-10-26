@@ -181,12 +181,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
             const profile = mind.profiles.profileOf(id);
             if (profile !== undefined) {
               try {
-                await mind.profiles.update(owner, profile.id, {
-                  policies: {
-                    ...profile.policies,
-                    autoApprove: [...new Set([...profile.policies.autoApprove, waiting.name])],
-                  },
-                });
+                await mind.profiles.allowTool(owner, profile.id, waiting.name);
               } catch (error) {
                 console.warn("always-allow rule save failed:", error);
               }
