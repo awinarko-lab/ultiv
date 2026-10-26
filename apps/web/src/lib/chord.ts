@@ -15,9 +15,11 @@ let hostPromise: Promise<Host<GuestPrincipal>> | undefined;
 function wsUrl(): string {
   const override = import.meta.env.VITE_CHORD_URL;
   if (override !== undefined && override !== "") return override;
-  if (import.meta.env.DEV) return "ws://127.0.0.1:8787";
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${location.host}`;
+  // Dev rides the vite proxy at /chord (the server accepts upgrades on any
+  // path); prod connects same-origin at the root.
+  const path = import.meta.env.DEV ? "/chord" : "/";
+  return `${protocol}//${location.host}${path}`;
 }
 
 /** The browser's chord host: a client peer linked upstream to the server. One per page. */

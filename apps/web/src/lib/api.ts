@@ -18,7 +18,8 @@ function base(): string {
   if (override !== undefined && override !== "") {
     return override.replace(/^ws(s?):/, "http$1:").replace(/\/$/, "");
   }
-  if (import.meta.env.DEV) return "http://127.0.0.1:8787";
+  // Same-origin everywhere: the dev server proxies /api to the chord server
+  // (see vite.config.ts); prod builds are served beside it or set the override.
   return "";
 }
 

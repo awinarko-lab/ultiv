@@ -84,9 +84,11 @@ const isMain =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const port = Number(process.env.PORT ?? 8787);
+  // Default 0.0.0.0 so the tailnet can reach the server; HOST narrows it.
+  const host = process.env.HOST ?? "0.0.0.0";
   const stack = await buildStack();
-  stack.http.listen(port, "127.0.0.1", () => {
-    console.log(`ultiv server listening on http://127.0.0.1:${port}`);
+  stack.http.listen(port, host, () => {
+    console.log(`ultiv server listening on http://${host}:${port}`);
   });
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.once(signal, () => {
