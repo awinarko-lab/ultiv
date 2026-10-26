@@ -108,11 +108,16 @@ A sensor watches an external source and wakes the entity on events. Tools:
 - **rss** — the sensor's OWN feed URL (http/https, validated at creation);
   wakes on every unseen item whose title matches, capped at 5 per poll.
   Parser: `parseFeed` in `@ultiv/ext` (RSS 2.0 + Atom, minimal).
+- **watch** — any URL, EDGE-TRIGGERED: the first poll records a baseline
+  fingerprint (sha256 of the body, never fires); each later poll fires once
+  iff the fingerprint changed. `match` filters on raw body text (no match
+  text present = unchanged). This is the threshold/state-crossing shape.
 
 - **Dedup is the source's natural key** (ICS UID, RSS guid / Atom id),
   stored in a ring on the sensor row — each real-world event wakes the
   entity exactly once, across restarts. Missing uid falls back to
-  `summary@start` / `title@pubAt`.
+  `summary@start` / `title@pubAt`. Watch sensors dedup by transition instead
+  (`lastState` fingerprint), which is the point of the kind.
 - Fires are write-ahead receipts (`source: "sensor"`), delivered as
   **follow-ups** (never steering).
 - Feed errors land on the sensor's `lastError` — visible in

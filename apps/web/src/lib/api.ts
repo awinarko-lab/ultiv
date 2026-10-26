@@ -1,4 +1,5 @@
 import type {
+  AuditEvent,
   CronJobInfo,
   MemoryRecord,
   ModelInfo,
@@ -215,6 +216,8 @@ export const api = {
     send<{ ok: boolean }>(`/api/sensors/${encodeURIComponent(id)}`, "DELETE"),
   routineEvents: (limit?: number): Promise<RoutineEvent[]> =>
     getJson<RoutineEvent[]>(`/api/routines/events?limit=${limit ?? 30}`),
+  audit: (limit?: number): Promise<AuditEvent[]> =>
+    getJson<AuditEvent[]>(`/api/audit?limit=${limit ?? 200}`),
   stateOf: (profile: string): Promise<{ key: string; value: string; updatedAt: number }[]> =>
     getJson(`/api/state?profile=${encodeURIComponent(profile)}`),
   removeState: (profile: string, key: string): Promise<{ ok: boolean }> =>

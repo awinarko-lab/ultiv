@@ -29,18 +29,22 @@ const setTool = (sensors: SensorsService, profiles: ProfilesService): Tool =>
     description:
       "Watch a source and get woken on events. kind 'calendar' watches the owner's ICS feed " +
       "(woken `leadMinutes` before matching events); kind 'rss' watches `url` and wakes on " +
-      "every new item whose title contains `match`. Each event/item wakes you exactly once, " +
-      "even across restarts.",
+      "every new item whose title contains `match`; kind 'watch' polls `url` and wakes once " +
+      "each time its content CHANGES (edge-triggered — first poll is the baseline). Each " +
+      "event/change wakes you exactly once, even across restarts.",
     parameters: Type.Object({
       kind: Type.Optional(
-        Type.Union([Type.Literal("calendar"), Type.Literal("rss")], {
+        Type.Union([Type.Literal("calendar"), Type.Literal("rss"), Type.Literal("watch")], {
           description: "Source family (default calendar).",
         }),
       ),
-      url: Type.Optional(Type.String({ description: "rss only: the feed URL (http/https)." })),
+      url: Type.Optional(
+        Type.String({ description: "rss/watch only: the URL to poll (http/https)." }),
+      ),
       match: Type.Optional(
         Type.String({
-          description: 'Case-insensitive substring, e.g. "standup". Empty = every event/item.',
+          description:
+            "Case-insensitive substring filter: item title (calendar/rss) or page text (watch). Empty = everything.",
         }),
       ),
       leadMinutes: Type.Optional(
@@ -62,9 +66,12 @@ const setTool = (sensors: SensorsService, profiles: ProfilesService): Tool =>
       }
       const main = await profiles.ensureMain(scope.owner, scope.profileId);
       const kind = args.kind ?? "calendar";
-      if (kind === "rss" && (args.url === undefined || args.url.trim() === "")) {
+      if (
+        (kind === "rss" || kind === "watch") &&
+        (args.url === undefined || args.url.trim() === "")
+      ) {
         return {
-          output: [{ type: "text" as const, text: "refused: rss sensors need a feed url." }],
+          output: [{ type: "text" as const, text: `refused: ${kind} sensors need a url.` }],
           isError: true as const,
         };
       }
@@ -72,7 +79,7 @@ const setTool = (sensors: SensorsService, profiles: ProfilesService): Tool =>
         const sensor = await sensors.create({
           sessionId: main.id,
           kind,
-          ...(kind === "rss" ? { url: args.url ?? "" } : {}),
+          ...(kind === "rss" || kind === "watch" ? { url: args.url ?? "" } : {}),
           match: args.match ?? "",
           ...(args.leadMinutes !== undefined ? { leadMinutes: args.leadMinutes } : {}),
         });
@@ -80,7 +87,7 @@ const setTool = (sensors: SensorsService, profiles: ProfilesService): Tool =>
           output: [
             {
               type: "text" as const,
-              text: `sensor ${sensor.id} watching ${sensor.kind}${sensor.kind === "rss" ? ` ${sensor.url ?? ""}` : ""}${sensor.match === "" ? " (everything)" : ` for "${sensor.match}"`} — fires into ${main.id}`,
+              text: `sensor ${sensor.id} watching ${sensor.kind}${sensor.url !== null && sensor.url !== "" ? ` ${sensor.url}` : ""}${sensor.match === "" ? " (everything)" : ` for "${sensor.match}"`} — fires into ${main.id}`,
             },
           ],
           structuredOutput: { id: sensor.id },

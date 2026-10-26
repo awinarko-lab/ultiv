@@ -1,18 +1,20 @@
 import { Type, type Static } from "typebox";
 
 /**
- * One sensor: a watch on an external source (calendar feeds and RSS/Atom
- * feeds today) that wakes the entity on events. Dedup rides the SOURCE's
- * natural key (ICS UID, RSS guid / Atom id), so the harness dedups at the
- * semantic layer — the entity sees each real-world event once.
+ * One sensor: a watch on an external source (calendar feeds, RSS/Atom
+ * feeds, and raw-URL state watches today) that wakes the entity on events.
+ * Event sensors (calendar, rss) dedup by the SOURCE's natural key (ICS UID,
+ * guid / Atom id). State sensors (watch) are EDGE-TRIGGERED instead: they
+ * store the last known fingerprint and fire on its transition — the
+ * threshold shape, where "new id" doesn't exist.
  */
 export const SensorInfoSchema = Type.Object({
   id: Type.String(),
   sessionId: Type.String(),
   profile: Type.String(),
-  /** "calendar" renders in the owner's ICS feed; "rss" watches its own `url`. */
-  kind: Type.Union([Type.Literal("calendar"), Type.Literal("rss")]),
-  /** For rss sensors: the feed URL (http/https). Null for calendar. */
+  /** "calendar" owner ICS · "rss" own feed · "watch" url fingerprint transitions. */
+  kind: Type.Union([Type.Literal("calendar"), Type.Literal("rss"), Type.Literal("watch")]),
+  /** For rss/watch sensors: the polled URL (http/https). Null for calendar. */
   url: Type.Union([Type.String(), Type.Null()]),
   /** Case-insensitive substring the item title must contain; empty matches everything. */
   match: Type.String(),
@@ -24,8 +26,10 @@ export const SensorInfoSchema = Type.Object({
   lastError: Type.Union([Type.String(), Type.Null()]),
   fireCount: Type.Number(),
   lastFiredAt: Type.Union([Type.Number(), Type.Null()]),
-  /** Dedup ring: recent source event uids already woken on (harness-level semantic dedup). */
+  /** Dedup ring: recent source event uids already woken on (event sensors). */
   seen: Type.Optional(Type.Array(Type.String())),
+  /** State sensors: fingerprint of the last seen body — fire on its transition. */
+  lastState: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
 export type SensorInfo = Static<typeof SensorInfoSchema>;

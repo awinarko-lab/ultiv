@@ -8,6 +8,7 @@
  * across restarts. Sensors are low-priority wakes: they queue as follow-ups,
  * never steering a turn in flight.
  */
+import { createHash } from "node:crypto";
 import type { MindService } from "@ultiv/mind";
 import {
   recordRoutineFire,
@@ -156,6 +157,53 @@ const sensorPass = async (mind: MindService): Promise<void> => {
     mind,
     enabled.filter((sensor) => sensor.kind === "rss"),
   );
+  await pollWatch(
+    mind,
+    enabled.filter((sensor) => sensor.kind === "watch"),
+  );
+};
+
+/**
+ * State sensors: EDGE-TRIGGERED. First poll records the baseline fingerprint
+ * (never fires); each later poll fires once iff the fingerprint changed.
+ * `match` filters on the raw body text — a sensor whose match text is absent
+ * counts as unchanged regardless of fingerprint.
+ */
+const pollWatch = async (mind: MindService, sensors: readonly SensorRow[]): Promise<void> => {
+  for (const sensor of sensors) {
+    if (sensor.url === null || sensor.url === "") {
+      await markPolled(mind, sensor, "watch sensor has no url");
+      continue;
+    }
+    let body: string;
+    try {
+      const response = await fetch(sensor.url, { signal: AbortSignal.timeout(15_000) });
+      if (!response.ok) throw new Error(`returned ${response.status}`);
+      body = await response.text();
+    } catch (cause) {
+      await markPolled(mind, sensor, String(cause).slice(0, 200));
+      continue;
+    }
+    if (sensor.match !== "" && !body.toLowerCase().includes(sensor.match.toLowerCase())) {
+      await markPolled(mind, sensor, null);
+      continue;
+    }
+    const fingerprint = createHash("sha256").update(body).digest("hex").slice(0, 16);
+    const previous = sensor.lastState ?? null;
+    await updateSensor(mind.converse, sensor.id, (row) => ({
+      ...row,
+      lastPollAt: Date.now(),
+      lastError: null,
+      lastState: fingerprint,
+    }));
+    if (previous === null || previous === fingerprint) continue; // baseline or unchanged
+    await fire(
+      mind,
+      sensor,
+      `state:${fingerprint}`,
+      `[sensor ${sensor.id}] watch: ${sensor.url} changed (was ${previous.slice(0, 8)}, now ${fingerprint.slice(0, 8)})`,
+    );
+  }
 };
 
 /** Arm the poll loop; refresh is unnecessary — sensors are read fresh each tick. */

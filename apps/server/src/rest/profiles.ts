@@ -408,8 +408,8 @@ async function importBundle(args: RouteArgs): Promise<unknown> {
     if ((row.kind ?? "calendar") === "rss" && typeof row.url !== "string") continue;
     await sensors.create({
       sessionId: main.id,
-      kind: row.kind === "rss" ? "rss" : "calendar",
-      ...(row.kind === "rss" ? { url: row.url ?? "" } : {}),
+      kind: row.kind === "rss" ? "rss" : row.kind === "watch" ? "watch" : "calendar",
+      ...(row.kind === "rss" || row.kind === "watch" ? { url: row.url ?? "" } : {}),
       match: row.match ?? "",
       ...(row.leadMinutes !== undefined ? { leadMinutes: row.leadMinutes } : {}),
     });

@@ -8,6 +8,7 @@
 import { BellIcon, CopyIcon, PlugIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
+  AuditEvent,
   CronJobInfo,
   ProfileInfo,
   RoutineEvent,
@@ -30,19 +31,27 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
   const [webhooks, setWebhooks] = useState<WebhookInfo[]>([]);
   const [sensors, setSensors] = useState<SensorInfo[]>([]);
   const [events, setEvents] = useState<RoutineEvent[]>([]);
+  const [escalations, setEscalations] = useState<AuditEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [cronList, hookList, sensorList, eventList] = await Promise.all([
+    const [cronList, hookList, sensorList, eventList, auditTail] = await Promise.all([
       api.cron(),
       api.webhooks(),
       api.sensors(),
       api.routineEvents(30),
+      api.audit(200),
     ]);
     setCron(cronList);
     setWebhooks(hookList);
     setSensors(sensorList);
     setEvents(eventList);
+    setEscalations(
+      auditTail
+        .filter((event) => event.kind === "escalation")
+        .slice(-8)
+        .reverse(),
+    );
   }, []);
 
   useEffect(() => {
@@ -71,6 +80,9 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
                     : job.schedule}
                 </code>
                 {!job.enabled && <Badge variant="secondary">disabled</Badge>}
+                {job.whenBusy !== undefined && job.whenBusy !== "steer" && (
+                  <Badge variant="outline">{job.whenBusy}</Badge>
+                )}
                 {job.failures > 0 && <Badge variant="destructive">{job.failures} failures</Badge>}
                 <span className="text-muted-foreground text-xs">{profileName(job.profile)}</span>
               </div>
@@ -103,17 +115,16 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
         ))}
       </Section>
 
-      <Section title="Calendar sensors">
-        {sensors.length === 0 && (
-          <Empty text="No sensors — bots watch the calendar with sensor_set." />
-        )}
+      <Section title="Sensors">
+        {sensors.length === 0 && <Empty text="No sensors — bots watch sources with sensor_set." />}
         {sensors.map((sensor) => (
           <div key={sensor.id} className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-xs">
-                  {sensor.match === "" ? "every event" : `“${sensor.match}”`} · {sensor.leadMinutes}
-                  min before
+                  {sensor.kind === "calendar" ? "calendar" : `${sensor.kind}: ${sensor.url ?? ""}`}{" "}
+                  · {sensor.kind === "watch" ? "on change" : `${sensor.leadMinutes}min before`}
+                  {sensor.match !== "" && ` · “${sensor.match}”`}
                 </span>
                 {sensor.lastError !== null && sensor.lastError !== "" && (
                   <Badge variant="destructive">error</Badge>
@@ -139,6 +150,21 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
                 <Trash2Icon />
               </Button>
             </ConfirmDialog>
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Escalations">
+        {escalations.length === 0 && (
+          <Empty text="None — dead-letters and disabled jobs appear here (and page you by email if the pager is configured)." />
+        )}
+        {escalations.map((event, index) => (
+          <div key={`${event.at}-${index}`} className="flex flex-wrap items-center gap-1.5 text-xs">
+            <time className="text-muted-foreground">{new Date(event.at).toLocaleString()}</time>
+            <Badge variant="destructive">{event.name}</Badge>
+            <span className="text-muted-foreground">
+              {event.profile ?? "—"} · {event.error ?? ""}
+            </span>
           </div>
         ))}
       </Section>
@@ -210,6 +236,9 @@ function WebhookRow({
           <code className="text-xs">POST /hooks/{hook.id.slice(0, 8)}…</code>
           {hook.name !== null && <Badge variant="secondary">{hook.name}</Badge>}
           {hook.schema !== null && <Badge variant="outline">schema</Badge>}
+          {hook.whenBusy !== undefined && hook.whenBusy !== "steer" && (
+            <Badge variant="outline">{hook.whenBusy}</Badge>
+          )}
           <span className="text-muted-foreground text-xs">{profileName}</span>
         </div>
         <p className="text-muted-foreground text-xs">

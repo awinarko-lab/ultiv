@@ -77,8 +77,8 @@ export const recordSensorFire = async (
 
 export interface SensorCreate {
   readonly sessionId: string;
-  readonly kind?: "calendar" | "rss";
-  /** rss sensors: the feed URL (http/https required). */
+  readonly kind?: "calendar" | "rss" | "watch";
+  /** rss/watch sensors: the polled URL (http/https required). */
   readonly url?: string;
   readonly match: string;
   readonly leadMinutes?: number;
@@ -91,13 +91,13 @@ export const createSensor = async (
 ): Promise<SensorInfo> => {
   const kind = input.kind ?? "calendar";
   let url: string | null = null;
-  if (kind === "rss") {
+  if (kind === "rss" || kind === "watch") {
     url = input.url ?? "";
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("scheme");
     } catch {
-      throw new Error("rss sensors need a valid http(s) feed url");
+      throw new Error(`${kind} sensors need a valid http(s) url`);
     }
   }
   const row = await profiles.rowOf(input.sessionId);
@@ -116,6 +116,7 @@ export const createSensor = async (
     fireCount: 0,
     lastFiredAt: null,
     seen: [],
+    lastState: null,
   };
   await Effect.runPromise(
     converse.docs.commit(async (tx) => {
