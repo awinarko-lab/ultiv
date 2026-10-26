@@ -44,6 +44,8 @@ import { mailboxService, type MailboxService } from "./mailbox/mailbox.ts";
 import { messageTools } from "./mailbox/tools.ts";
 import { memoryService, type MemoryService } from "./memory/memory.ts";
 import { memoryTools } from "./memory/tools.ts";
+import { schedulesService, type SchedulesService } from "./schedules/schedules.ts";
+import { scheduleTools } from "./schedules/tools.ts";
 import {
   Generate,
   generateLayer,
@@ -81,6 +83,8 @@ export interface MindService {
   readonly mailbox: MailboxService;
   /** The memory seam: profile and owner stores with write authority. */
   readonly memory: MemoryService;
+  /** Self-set schedules: cron and one-shot wake-ups the entity owns. */
+  readonly schedules: SchedulesService;
   /** The credential vault, when VAULT_KEY is configured; else null. */
   readonly vault: VaultStore | null;
   /** The append-only trail of the mind's acts. */
@@ -108,6 +112,8 @@ export interface MindOptions {
       ids: readonly string[],
     ) => Promise<void>;
   };
+  /** Schedule-registry wiring: `onChanged` re-arms the server's cron scheduler. */
+  readonly schedules?: { readonly onChanged?: () => Promise<void> };
 }
 
 /** Everything that can fail while booting the mind. */
@@ -124,6 +130,8 @@ interface MindWiring {
     to: string,
     ids: readonly string[],
   ) => Promise<void>;
+  /** Re-arms the server's cron scheduler after a schedule-registry change. */
+  readonly onSchedulesChanged?: () => Promise<void>;
 }
 
 const mindLayerRaw = (
@@ -168,6 +176,13 @@ const mindLayerRaw = (
         ...(wiring.grantArtifacts !== undefined ? { grantArtifacts: wiring.grantArtifacts } : {}),
       });
       const memory = memoryService({ converse, profiles });
+      const schedules = schedulesService({
+        converse,
+        profiles,
+        ...(wiring.onSchedulesChanged !== undefined
+          ? { onChanged: wiring.onSchedulesChanged }
+          : {}),
+      });
       // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
       // through the holder the registry was built with — set now that the
       // conversation→profile index exists.
@@ -213,6 +228,12 @@ const mindLayerRaw = (
       piRegistry.install(
         defineExtension({ name: "ultius.mind.memory", tools: memoryTools(memory, profiles) }),
       );
+      piRegistry.install(
+        defineExtension({
+          name: "ultius.mind.schedules",
+          tools: scheduleTools(schedules, profiles),
+        }),
+      );
       return {
         converse,
         decide,
@@ -224,6 +245,7 @@ const mindLayerRaw = (
         rooms,
         mailbox,
         memory,
+        schedules,
         vault: wiring.vaultStore,
         audit,
         describe: () => ({
@@ -258,6 +280,9 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
     vaultStore,
     ...(options.mailbox?.grantArtifacts !== undefined
       ? { grantArtifacts: options.mailbox.grantArtifacts }
+      : {}),
+    ...(options.schedules?.onChanged !== undefined
+      ? { onSchedulesChanged: options.schedules.onChanged }
       : {}),
   };
   const registry = Layer.effect(

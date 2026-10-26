@@ -32,6 +32,9 @@ export async function buildStack(options?: {
 }) {
   const handle = await openMind({
     plugins: [httpPlugin],
+    // Schedules created by tools re-arm the in-process scheduler; the closure
+    // is late-bound — `startScheduler` runs right after the mind opens.
+    schedules: { onChanged: () => refreshSchedules() },
     ...(options?.storage !== undefined ? { storage: options.storage } : {}),
     ...(options?.vault !== undefined ? { vault: options.vault } : {}),
     // Envelope artifact grants materialize as file copies between the bots'
@@ -46,7 +49,9 @@ export async function buildStack(options?: {
     },
   });
   const mind = handle.mind;
+  let refreshSchedules: () => Promise<void> = async () => undefined;
   const scheduler: CronScheduler = await startScheduler(mind);
+  refreshSchedules = () => scheduler.refresh();
   const host = createHost<Principal>({ name: "server", self: { kind: "server" } });
   host.serve(Ping, (_input, _principal, self) => {
     const count = self.state("count", Type.Number(), 0);

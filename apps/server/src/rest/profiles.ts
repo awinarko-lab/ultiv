@@ -229,7 +229,7 @@ async function purgeProfile(args: RouteArgs, id: string): Promise<unknown> {
     mind.mailbox.purgeProfile(args.owner, id),
     mind.memory.removeProfile(args.owner, id),
     Promise.resolve(mind.vault?.removeProfile(args.owner, id) ?? 0),
-    removeCronJobsForSessions(mind, sessionIds),
+    removeCronJobsForSessions(mind.converse, sessionIds),
     removeWebhooksForSessions(mind, sessionIds),
     mind.rooms.purgeProfile(args.owner, id),
   ]);

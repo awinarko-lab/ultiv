@@ -1,5 +1,6 @@
 /** Cron routes: the registry, profile-stamped and rendered in the profile's timezone. */
-import { createCronJob, isValidSchedule, listCronJobs, removeCronJob } from "../cron.ts";
+import { isValidJobStart } from "@ultiv/mind";
+import { createCronJob, listCronJobs, removeCronJob } from "../cron.ts";
 import { queryOr, type RouteArgs } from "./types.ts";
 
 export async function cronRoutes(
@@ -10,26 +11,29 @@ export async function cronRoutes(
   const method = req.method ?? "GET";
   if (path === "/api/cron" && method === "GET") {
     const profile = queryOr(args, "profile");
-    const jobs = await listCronJobs(mind);
+    const jobs = await listCronJobs(mind.converse);
     json(200, profile !== undefined ? jobs.filter((job) => job.profile === profile) : jobs);
     return true;
   }
   if (path === "/api/cron" && method === "POST") {
-    const body = await args.readJson<{ sessionId?: string; schedule?: string; prompt?: string }>(
-      req,
-    );
+    const body = await args.readJson<{
+      sessionId?: string;
+      schedule?: string;
+      once?: number | null;
+      prompt?: string;
+    }>(req);
     if (
       body.sessionId === undefined ||
-      body.schedule === undefined ||
       body.prompt === undefined ||
-      !isValidSchedule(body.schedule)
+      !isValidJobStart(body.schedule ?? "", body.once)
     ) {
-      json(400, { error: "sessionId, schedule (valid cron) and prompt are required" });
+      json(400, { error: "sessionId, prompt and a valid schedule (cron or future `once`) are required" });
       return true;
     }
-    const job = await createCronJob(mind, {
+    const job = await createCronJob(mind.converse, mind.profiles, {
       sessionId: body.sessionId,
-      schedule: body.schedule,
+      schedule: body.schedule ?? "",
+      ...(body.once !== undefined && body.once !== null ? { once: body.once } : {}),
       prompt: body.prompt,
     });
     await scheduler.refresh();
@@ -37,7 +41,7 @@ export async function cronRoutes(
     return true;
   }
   if (path.startsWith("/api/cron/") && method === "DELETE") {
-    const removed = await removeCronJob(mind, segment("/api/cron/"));
+    const removed = await removeCronJob(mind.converse, segment("/api/cron/"));
     await scheduler.refresh();
     json(200, { ok: removed });
     return true;

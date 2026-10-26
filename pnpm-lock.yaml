@@ -379,6 +379,9 @@ importers:
       '@ultiv/ext':
         specifier: workspace:*
         version: link:../ext
+      croner:
+        specifier: ^10.0.1
+        version: 10.0.1
       effect:
         specifier: ^4.0.6
         version: 4.0.6
