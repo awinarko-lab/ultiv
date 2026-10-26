@@ -13,6 +13,7 @@ import { defineExtension, type Storage } from "@earendil-works/pi-durable";
 import { openRuntime, Duplicate, External, Unavailable, type Runtime } from "@ultiv/core";
 import {
   artifactsPlugin,
+  bashPlugin,
   calendarConfigured,
   calendarPlugin,
   createScopeHolder,
@@ -310,6 +311,7 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
       const base = [
         temporalPlugin(),
         artifactsPlugin({ holder }),
+        bashPlugin({ holder }),
         ...(calendarConfigured() ? [calendarPlugin()] : []),
         ...(emailConfigured() ? [emailPlugin()] : []),
         ...(vaultStore !== null ? [vaultPlugin(vaultStore, holder)] : []),

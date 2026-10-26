@@ -27,6 +27,9 @@ import { defineTool, type Tool } from "../tool.ts";
 import type { ScopeHolder } from "./vault.ts";
 import { scopeDir } from "./vault.ts";
 
+/** The workspace filesystem's index lives in a reserved artifact pair. */
+export const VFS_INDEX_ID = "vfs-index";
+
 export interface ArtifactsOptions {
   /** Workspace root; default ARTIFACTS_DIR. */
   readonly root?: string;
@@ -166,11 +169,11 @@ export const clearArtifacts = (dir: string): number => {
   return sidecars.length;
 };
 
-/** All artifacts, newest first. */
+/** All artifacts, newest first. The reserved workspace index never appears. */
 export const listArtifacts = (dir: string): readonly ArtifactInfo[] => {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((file) => file.endsWith(".json"))
+    .filter((file) => file.endsWith(".json") && file !== `${VFS_INDEX_ID}.json`)
     .flatMap((file) => {
       try {
         return [normalize(JSON.parse(readFileSync(join(dir, file), "utf8")) as ArtifactInfo)];
