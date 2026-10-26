@@ -11,11 +11,12 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { Chat } from "@/components/chat";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BotsPanel } from "@/components/bots-panel";
+import { OnboardingHome } from "@/components/onboarding";
 import { RoomsPanel } from "@/components/rooms-panel";
 import { VaultPanel } from "@/components/vault-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
@@ -133,15 +134,9 @@ function HomePage() {
       </header>
 
       {sessions.profiles.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>No bots yet</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <p className="text-muted-foreground text-sm">
-              Spawn your first bot — it introduces itself in its own chat and you take it from
-              there.
-            </p>
+        <OnboardingHome
+          models={sessions.models}
+          custom={
             <BotsPanel
               profiles={sessions.profiles}
               models={sessions.models}
@@ -149,8 +144,12 @@ function HomePage() {
               refresh={refreshAll}
               onOpenMain={(id) => setActiveId(id)}
             />
-          </CardContent>
-        </Card>
+          }
+          onCreated={async (id) => {
+            await refreshAll();
+            setActiveId(id);
+          }}
+        />
       ) : chatId !== null ? (
         <Chat sessionId={chatId} models={sessions.models} />
       ) : (

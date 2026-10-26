@@ -45,8 +45,12 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
   Approve/Deny inline. Polls at 2.5 s while open.
 - **4 — Three outcomes for actions** (M): proceed / approve / "you do it"
   (Take over button).
-- **11 — First-run onboarding** (M): template bots, "what can this bot do"
-  checklist, suggestion chips under an empty chat.
+- **11 — First-run onboarding** (M): DONE — the empty workspace shows three
+  template cards (Assistant / Researcher / Projects, each with a capability
+  checklist) that spawn a bot with a full identity in one click; the home
+  then opens straight into its seeded intro chat. Custom identity stays
+  below the templates. Suggestion chips under an empty chat: deferred — the
+  server seeds an intro turn, so chats are rarely empty.
 - **10 — Memory view per profile** (M): DONE as a per-bot panel — "What X
   remembers" on every bot row: list / add / per-item forget (new
   `mind.memory.remove` + `DELETE /api/profiles/:id/memory/:recordId`) and an
