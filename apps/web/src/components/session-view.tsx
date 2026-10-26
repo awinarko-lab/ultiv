@@ -276,7 +276,7 @@ export function SessionView({
   effort: ThinkingLevel | null;
   models: ModelInfo[];
   onInput: (text: string) => void;
-  onDecide: (callId: string, approved: boolean) => void;
+  onDecide: (callId: string, approved: boolean, always?: boolean) => void;
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
   onInterrupt: () => void;
 }) {
@@ -409,6 +409,9 @@ export function SessionView({
               </CardContent>
             )}
             <CardContent className="pt-2">
+              <p className="text-muted-foreground text-xs">
+                “Always allow” saves {pending.name} to this bot’s auto-approve rules.
+              </p>
               <CodeBlock size="sm">
                 <CodeBlockContent wrap className="max-h-48 overflow-y-auto">
                   {JSON.stringify(pending.input, null, 2)}
@@ -418,6 +421,13 @@ export function SessionView({
             <CardFooter className="justify-end gap-2 pb-3">
               <Button size="sm" variant="outline" onClick={() => onDecide(pending.callId, false)}>
                 Deny
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onDecide(pending.callId, true, true)}
+              >
+                Always allow
               </Button>
               <Button size="sm" onClick={() => onDecide(pending.callId, true)}>
                 Approve

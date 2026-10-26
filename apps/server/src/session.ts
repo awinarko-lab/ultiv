@@ -159,12 +159,39 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         interrupt: async (_input, ctx) => {
           const chat = await conversation;
           await Effect.runPromise(mind.converse.interrupt(chat));
+          // Release whatever still waits on the aborted turn — a stopped turn
+          // must not leave approval cards hanging (each waiter is denied, the
+          // gated tool unwinds with "denied by the user").
+          const id = await conversationId;
+          for (const request of mind.approvals.pendingFor(id)) {
+            mind.approvals.decide(id, request.callId, false);
+          }
+          safeChange(cells.pending, ctx, () => null);
           safeChange(cells.phase, ctx, () => "idle");
           safeChange(cells.lastError, ctx, () => null);
           return { ok: true };
         },
-        approve: async ({ callId, approved }, ctx) => {
+        approve: async ({ callId, approved, always }, ctx) => {
           const id = await conversationId;
+          const waiting = mind.approvals.pendingFor(id).find((r) => r.callId === callId);
+          // "Always allow" saves the tool on the profile's autoApprove list;
+          // the broker's hook reads policies live, so the next call skips the
+          // gate. A failed rule save must not swallow the decision itself.
+          if (approved && always === true && waiting !== undefined) {
+            const profile = mind.profiles.profileOf(id);
+            if (profile !== undefined) {
+              try {
+                await mind.profiles.update(owner, profile.id, {
+                  policies: {
+                    ...profile.policies,
+                    autoApprove: [...new Set([...profile.policies.autoApprove, waiting.name])],
+                  },
+                });
+              } catch (error) {
+                console.warn("always-allow rule save failed:", error);
+              }
+            }
+          }
           mind.approvals.decide(id, callId, approved);
           mind.audit.record({
             at: Date.now(),
@@ -172,7 +199,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
             conversationId: id,
             profile: mind.profiles.profileOf(id)?.id ?? null,
             callId,
-            name: null,
+            name: waiting?.name ?? null,
             durationMs: null,
             ok: approved,
             error: null,

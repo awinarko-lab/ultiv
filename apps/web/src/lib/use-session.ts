@@ -21,7 +21,7 @@ export function useSession(sessionId: string): {
   effort: ThinkingLevel | null;
   conversationId: string | null;
   input: (text: string) => void;
-  decide: (callId: string, approved: boolean) => void;
+  decide: (callId: string, approved: boolean, always?: boolean) => void;
   configure: (model: string | null, effort: ThinkingLevel | null) => void;
   interrupt: () => void;
 } {
@@ -91,8 +91,14 @@ export function useSession(sessionId: string): {
   );
 
   const decide = useCallback(
-    (callId: string, approved: boolean) => {
-      ref?.approve({ callId, approved }).catch((error) => console.warn("approve failed:", error));
+    (callId: string, approved: boolean, always?: boolean) => {
+      ref
+        ?.approve({
+          callId,
+          approved,
+          ...(always === true ? { always: true } : {}),
+        })
+        .catch((error) => console.warn("approve failed:", error));
     },
     [ref],
   );

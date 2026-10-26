@@ -14,11 +14,17 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
 
 ## Wave 2 — next (M)
 
-- **3 — Approval cards on the server** (M): persist approvals so they survive a
-  reload; Allow once / Always allow (saves a rule) / Deny; expiry for
-  background asks. Today a stopped turn leaves the card active.
-- **2 — Live task updates** (M): replace the 3 s tasks poll with push; add an
-  explicit Stop affordance in the composer (interrupt exists, visibility doesn't).
+- **3 — Approval cards on the server** (M): DONE for the chat surface —
+  Allow once / Always allow / Deny; "Always allow" appends the tool to the
+  bot's `policies.autoApprove` (contract v8, `approve {always}`); pending
+  cards already survive reload (server-mirrored `pendingFor` cell); Stop now
+  releases pending cards (each waiter denied) instead of leaving them active.
+  Remaining: expiry tuning for background asks, and `always` support in the
+  REST approval inbox.
+- **2 — Live task updates** (M): still polling (3 s tasks, 250 ms approvals in
+  the session projection). Needs a push path (REST has none — chord
+  replicated-object attach desyncs, so SSE/long-poll on REST is the option).
+  The Stop affordance exists in the composer and tasks panel.
 
 ## Wave 3 — then (M/L)
 

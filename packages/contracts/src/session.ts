@@ -112,7 +112,7 @@ export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 7,
+  version: 8,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {
@@ -139,7 +139,12 @@ export const Session = remote("ultiv.session", {
         /** Stop the running turn: withdraw queued inputs, abort, go idle. */
         interrupt: method(Type.Object({}), Type.Object({ ok: Type.Boolean() })),
         approve: method(
-          Type.Object({ callId: Type.String(), approved: Type.Boolean() }),
+          Type.Object({
+            callId: Type.String(),
+            approved: Type.Boolean(),
+            /** Also save this tool on the profile's autoApprove list (with approved). */
+            always: Type.Optional(Type.Boolean()),
+          }),
           Type.Object({ ok: Type.Boolean() }),
         ),
         configure: method(
