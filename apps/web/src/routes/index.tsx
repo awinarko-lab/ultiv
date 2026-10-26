@@ -7,13 +7,21 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { Ping } from "@ultiv/contracts";
-import { BotIcon, HistoryIcon, KeyRoundIcon, MessagesSquareIcon, Trash2Icon } from "lucide-react";
+import {
+  BotIcon,
+  HistoryIcon,
+  KeyRoundIcon,
+  MessagesSquareIcon,
+  BellIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { Chat } from "@/components/chat";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BotsPanel } from "@/components/bots-panel";
 import { OnboardingHome } from "@/components/onboarding";
 import { VaultContent, VaultPanel } from "@/components/vault-panel";
+import { RoutinesContent, RoutinesPanel } from "@/components/routines-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,7 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { useSessions } from "@/lib/use-sessions";
 
-type MobileTab = "chat" | "bots" | "vault" | "history";
+type MobileTab = "chat" | "bots" | "vault" | "history" | "routines";
 
 export const Route = createFileRoute("/")({
   component: HomePage,
@@ -169,6 +177,7 @@ function HomePage() {
                 </Dialog>
               )}
               <VaultPanel profiles={sessions.profiles} />
+              {sessions.profiles.length > 0 && <RoutinesPanel profiles={sessions.profiles} />}
               <HistoryDialog
                 sessions={sessions}
                 triggerClassName="xl:hidden"
@@ -224,6 +233,11 @@ function HomePage() {
             <VaultContent profiles={sessions.profiles} />
           </div>
         )}
+        {tab === "routines" && (
+          <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
+            <RoutinesContent profiles={sessions.profiles} />
+          </div>
+        )}
         {tab === "history" && (
           <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
             <HistoryList sessions={sessions} onSelect={pinSession} />
@@ -251,6 +265,12 @@ function HomePage() {
             label="Vault"
             active={tab === "vault"}
             onClick={() => setTab("vault")}
+          />
+          <TabButton
+            icon={BellIcon}
+            label="Routines"
+            active={tab === "routines"}
+            onClick={() => setTab("routines")}
           />
           <TabButton
             icon={HistoryIcon}

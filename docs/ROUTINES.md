@@ -8,16 +8,16 @@ dropped, a rotated key indistinguishable from a quiet day.
 
 ## What is durable
 
-| Thing                                      | Durable?                                  | Where                                 |
-| ------------------------------------------ | ----------------------------------------- | ------------------------------------- |
-| Cron registry (`ultiv.cronjobs`) | yes | mind doc, re-armed on boot |
-| Webhook registry (`ultiv.webhooks`) | yes | mind doc, v3 (schemas + counters) |
-| Sensor registry + dedup rings (`ultiv.sensors`) | yes | mind doc |
-| **Profile KV state** (`ultiv.kv.<profile>`) | yes | mind doc family |
-| **Fire receipts** (`ultiv.routine-events`) | yes | mind doc, newest first, capped at 400 |
-| Mailbox envelopes, dead-letters            | yes                                       | mind docs                             |
-| Rate-limit token buckets                   | **no** (in-memory, restart resets)        | server process                        |
-| Debounce windows                           | **no** (payloads already receipted first) | server process                        |
+| Thing                                           | Durable?                                  | Where                                 |
+| ----------------------------------------------- | ----------------------------------------- | ------------------------------------- |
+| Cron registry (`ultiv.cronjobs`)                | yes                                       | mind doc, re-armed on boot            |
+| Webhook registry (`ultiv.webhooks`)             | yes                                       | mind doc, v3 (schemas + counters)     |
+| Sensor registry + dedup rings (`ultiv.sensors`) | yes                                       | mind doc                              |
+| **Profile KV state** (`ultiv.kv.<profile>`)     | yes                                       | mind doc family                       |
+| **Fire receipts** (`ultiv.routine-events`)      | yes                                       | mind doc, newest first, capped at 400 |
+| Mailbox envelopes, dead-letters                 | yes                                       | mind docs                             |
+| Rate-limit token buckets                        | **no** (in-memory, restart resets)        | server process                        |
+| Debounce windows                                | **no** (payloads already receipted first) | server process                        |
 
 Agents may rely on the registry and the receipt log. They may NOT treat
 "no state" as "never acted" — a wiped store and a first run are

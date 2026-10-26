@@ -1,11 +1,15 @@
 import type {
+  CronJobInfo,
   MemoryRecord,
   ModelInfo,
   ProfileInfo,
   RoomInfo,
+  RoutineEvent,
+  SensorInfo,
   SessionInfo,
   TaskInfo,
   VaultItemInfo,
+  WebhookInfo,
 } from "@ultiv/contracts";
 
 /**
@@ -192,4 +196,23 @@ export const api = {
   pendingApprovals: (): Promise<PendingApprovalRow[]> =>
     getJson<PendingApprovalRow[]>("/api/approvals"),
   removeTask: (id: string): Promise<boolean> => drop(`/api/tasks/${encodeURIComponent(id)}`),
+  // Routines: schedules, webhooks, sensors and their shared receipt log.
+  cron: (): Promise<CronJobInfo[]> => getJson<CronJobInfo[]>("/api/cron"),
+  removeCron: (id: string): Promise<{ ok: boolean }> =>
+    send<{ ok: boolean }>(`/api/cron/${encodeURIComponent(id)}`, "DELETE"),
+  webhooks: (): Promise<WebhookInfo[]> => getJson<WebhookInfo[]>("/api/webhooks"),
+  createWebhook: (input: {
+    sessionId: string;
+    name?: string;
+    schema?: Record<string, unknown> | null;
+  }): Promise<WebhookInfo> => send<WebhookInfo>("/api/webhooks", "POST", input),
+  removeWebhook: (id: string): Promise<{ ok: boolean }> =>
+    send<{ ok: boolean }>(`/api/webhooks/${encodeURIComponent(id)}`, "DELETE"),
+  testWebhook: (id: string, payload: unknown): Promise<{ accepted: boolean; detail?: string }> =>
+    send(`/api/webhooks/${encodeURIComponent(id)}/test`, "POST", { payload }),
+  sensors: (): Promise<SensorInfo[]> => getJson<SensorInfo[]>("/api/sensors"),
+  removeSensor: (id: string): Promise<{ ok: boolean }> =>
+    send<{ ok: boolean }>(`/api/sensors/${encodeURIComponent(id)}`, "DELETE"),
+  routineEvents: (limit?: number): Promise<RoutineEvent[]> =>
+    getJson<RoutineEvent[]>(`/api/routines/events?limit=${limit ?? 30}`),
 };
