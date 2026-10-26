@@ -27,7 +27,9 @@ export async function cronRoutes(
       body.prompt === undefined ||
       !isValidJobStart(body.schedule ?? "", body.once)
     ) {
-      json(400, { error: "sessionId, prompt and a valid schedule (cron or future `once`) are required" });
+      json(400, {
+        error: "sessionId, prompt and a valid schedule (cron or future `once`) are required",
+      });
       return true;
     }
     const job = await createCronJob(mind.converse, mind.profiles, {

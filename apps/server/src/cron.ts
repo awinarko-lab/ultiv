@@ -10,159 +10,159 @@ import { Cron } from "croner";
 import type { CronJobInfo } from "@ultiv/contracts";
 import type { MindService } from "@ultiv/mind";
 import {
-	createCronJob,
-	isValidSchedule,
-	listCronJobs,
-	readCronJobs,
-	removeCronJob,
-	removeCronJobsForSessions,
-	writeCronJobs,
+  createCronJob,
+  isValidSchedule,
+  listCronJobs,
+  readCronJobs,
+  removeCronJob,
+  removeCronJobsForSessions,
+  writeCronJobs,
 } from "@ultiv/mind";
 import { Effect } from "effect";
 import { deliverToSession } from "./deliver.ts";
 
 export {
-	createCronJob,
-	isValidSchedule,
-	listCronJobs,
-	removeCronJob,
-	removeCronJobsForSessions,
+  createCronJob,
+  isValidSchedule,
+  listCronJobs,
+  removeCronJob,
+  removeCronJobsForSessions,
 } from "@ultiv/mind";
 
 const setJobOutcome = async (
-	mind: MindService,
-	id: string,
-	outcome: {
-		lastRunAt: number;
-		lastError: string | null;
-		failuresReset?: boolean;
-		failures?: number;
-		disable?: boolean;
-	},
+  mind: MindService,
+  id: string,
+  outcome: {
+    lastRunAt: number;
+    lastError: string | null;
+    failuresReset?: boolean;
+    failures?: number;
+    disable?: boolean;
+  },
 ): Promise<void> => {
-	const items = await readCronJobs(mind.converse);
-	await Effect.runPromise(
-		writeCronJobs(
-			mind.converse,
-			items.map((job) => {
-				if (job.id !== id) return job;
-				const failures = outcome.failuresReset ? 0 : (outcome.failures ?? job.failures);
-				return {
-					...job,
-					lastRunAt: outcome.lastRunAt,
-					lastError: outcome.lastError,
-					failures,
-					enabled: outcome.disable === true ? false : job.enabled,
-				};
-			}),
-		),
-	);
+  const items = await readCronJobs(mind.converse);
+  await Effect.runPromise(
+    writeCronJobs(
+      mind.converse,
+      items.map((job) => {
+        if (job.id !== id) return job;
+        const failures = outcome.failuresReset ? 0 : (outcome.failures ?? job.failures);
+        return {
+          ...job,
+          lastRunAt: outcome.lastRunAt,
+          lastError: outcome.lastError,
+          failures,
+          enabled: outcome.disable === true ? false : job.enabled,
+        };
+      }),
+    ),
+  );
 };
 
 export interface CronScheduler {
-	/** Re-arm every enabled job (after create/remove/toggle). */
-	readonly refresh: () => Promise<void>;
-	readonly stop: () => void;
+  /** Re-arm every enabled job (after create/remove/toggle). */
+  readonly refresh: () => Promise<void>;
+  readonly stop: () => void;
 }
 
 /** Consecutive failures before a job disables itself and pages the owner. */
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 const armedJob = (mind: MindService, job: CronJobInfo, scheduler: CronScheduler): Cron => {
-	const fire = async (): Promise<void> => {
-		try {
-			await deliverToSession(mind, job.sessionId, `[cron ${job.id}] ${job.prompt}`);
-			// A one-shot's whole purpose is that single delivery — retire it.
-			if (job.once !== undefined && job.once !== null) {
-				await removeCronJob(mind.converse, job.id);
-			} else {
-				await setJobOutcome(mind, job.id, {
-					lastRunAt: Date.now(),
-					lastError: null,
-					failuresReset: true,
-				});
-			}
-		} catch (cause) {
-			const failures = job.failures + 1;
-			const error = String(cause).slice(0, 300);
-			const disable = failures >= MAX_CONSECUTIVE_FAILURES;
-			await setJobOutcome(mind, job.id, {
-				lastRunAt: Date.now(),
-				lastError: error,
-				failures,
-				...(disable ? { disable } : {}),
-			});
-			if (disable) {
-				// The attention path: silence must eventually page the owner.
-				mind.audit.record({
-					at: Date.now(),
-					kind: "escalation",
-					conversationId: "cron",
-					profile: job.profile,
-					callId: job.id,
-					name: "cron-disabled",
-					durationMs: null,
-					ok: false,
-					error: `${MAX_CONSECUTIVE_FAILURES} consecutive failures: ${error}`,
-				});
-				console.error(`cron ${job.id} disabled after ${failures} consecutive failures`);
-			}
-		}
-	};
-	// Schedules render in the profile's timezone ("morning" means the owner's morning).
-	const timezoneOf = async (): Promise<string | undefined> => {
-		const row = await mind.profiles.rowOf(job.sessionId);
-		const profile = row !== undefined ? await mind.profiles.get(row.owner, job.profile) : undefined;
-		return profile?.timezone;
-	};
-	const isOnce = job.once !== undefined && job.once !== null;
-	let timer: Cron | undefined;
-	const arm = (): void => {
-		if (isOnce) {
-			// A past `once` fires immediately (croner semantics) — a restart
-			// retries a delivery that never succeeded.
-			timer = new Cron(new Date(job.once as number), () => {
-				void fire().finally(() => void scheduler.refresh());
-			});
-			return;
-		}
-		void timezoneOf().then((timezone) => {
-			timer = new Cron(
-				job.schedule,
-				{ paused: !job.enabled, ...(timezone !== undefined ? { timezone } : {}) },
-				() => {
-					void fire().finally(() => void scheduler.refresh());
-				},
-			);
-		});
-	};
-	arm();
-	// A thin stop-capable stand-in: the scheduler only ever calls stop().
-	return { stop: () => timer?.stop() } as unknown as Cron;
+  const fire = async (): Promise<void> => {
+    try {
+      await deliverToSession(mind, job.sessionId, `[cron ${job.id}] ${job.prompt}`);
+      // A one-shot's whole purpose is that single delivery — retire it.
+      if (job.once !== undefined && job.once !== null) {
+        await removeCronJob(mind.converse, job.id);
+      } else {
+        await setJobOutcome(mind, job.id, {
+          lastRunAt: Date.now(),
+          lastError: null,
+          failuresReset: true,
+        });
+      }
+    } catch (cause) {
+      const failures = job.failures + 1;
+      const error = String(cause).slice(0, 300);
+      const disable = failures >= MAX_CONSECUTIVE_FAILURES;
+      await setJobOutcome(mind, job.id, {
+        lastRunAt: Date.now(),
+        lastError: error,
+        failures,
+        ...(disable ? { disable } : {}),
+      });
+      if (disable) {
+        // The attention path: silence must eventually page the owner.
+        mind.audit.record({
+          at: Date.now(),
+          kind: "escalation",
+          conversationId: "cron",
+          profile: job.profile,
+          callId: job.id,
+          name: "cron-disabled",
+          durationMs: null,
+          ok: false,
+          error: `${MAX_CONSECUTIVE_FAILURES} consecutive failures: ${error}`,
+        });
+        console.error(`cron ${job.id} disabled after ${failures} consecutive failures`);
+      }
+    }
+  };
+  // Schedules render in the profile's timezone ("morning" means the owner's morning).
+  const timezoneOf = async (): Promise<string | undefined> => {
+    const row = await mind.profiles.rowOf(job.sessionId);
+    const profile = row !== undefined ? await mind.profiles.get(row.owner, job.profile) : undefined;
+    return profile?.timezone;
+  };
+  const isOnce = job.once !== undefined && job.once !== null;
+  let timer: Cron | undefined;
+  const arm = (): void => {
+    if (isOnce) {
+      // A past `once` fires immediately (croner semantics) — a restart
+      // retries a delivery that never succeeded.
+      timer = new Cron(new Date(job.once as number), () => {
+        void fire().finally(() => void scheduler.refresh());
+      });
+      return;
+    }
+    void timezoneOf().then((timezone) => {
+      timer = new Cron(
+        job.schedule,
+        { paused: !job.enabled, ...(timezone !== undefined ? { timezone } : {}) },
+        () => {
+          void fire().finally(() => void scheduler.refresh());
+        },
+      );
+    });
+  };
+  arm();
+  // A thin stop-capable stand-in: the scheduler only ever calls stop().
+  return { stop: () => timer?.stop() } as unknown as Cron;
 };
 
 /** Arm the scheduler over every registered job; refresh after registry changes. */
 export const startScheduler = async (mind: MindService): Promise<CronScheduler> => {
-	const timers = new Map<string, Cron>();
-	const armable = (job: CronJobInfo): boolean => {
-		if (!job.enabled) return false;
-		return job.once !== undefined && job.once !== null ? true : isValidSchedule(job.schedule);
-	};
-	const refresh = async (): Promise<void> => {
-		for (const timer of timers.values()) timer.stop();
-		timers.clear();
-		for (const job of await listCronJobs(mind.converse)) {
-			if (!armable(job)) continue;
-			timers.set(job.id, armedJob(mind, job, scheduler));
-		}
-	};
-	const scheduler: CronScheduler = {
-		refresh: () => refresh(),
-		stop: () => {
-			for (const timer of timers.values()) timer.stop();
-			timers.clear();
-		},
-	};
-	await refresh();
-	return scheduler;
+  const timers = new Map<string, Cron>();
+  const armable = (job: CronJobInfo): boolean => {
+    if (!job.enabled) return false;
+    return job.once !== undefined && job.once !== null ? true : isValidSchedule(job.schedule);
+  };
+  const refresh = async (): Promise<void> => {
+    for (const timer of timers.values()) timer.stop();
+    timers.clear();
+    for (const job of await listCronJobs(mind.converse)) {
+      if (!armable(job)) continue;
+      timers.set(job.id, armedJob(mind, job, scheduler));
+    }
+  };
+  const scheduler: CronScheduler = {
+    refresh: () => refresh(),
+    stop: () => {
+      for (const timer of timers.values()) timer.stop();
+      timers.clear();
+    },
+  };
+  await refresh();
+  return scheduler;
 };

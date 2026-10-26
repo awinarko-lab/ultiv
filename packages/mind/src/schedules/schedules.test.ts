@@ -39,11 +39,7 @@ describe("Schedules faculty (offline, MemoryStorage)", () => {
     expect(once.isError).toBeUndefined();
     const onceId = (once.structuredOutput as { id: string }).id;
 
-    const cron = await set.execute(
-      { prompt: "standup", schedule: "30 9 * * 1" },
-      api,
-      {} as never,
-    );
+    const cron = await set.execute({ prompt: "standup", schedule: "30 9 * * 1" }, api, {} as never);
     expect(cron.isError).toBeUndefined();
 
     const listed = await list.execute({}, api, {} as never);
@@ -85,7 +81,14 @@ describe("Schedules faculty (offline, MemoryStorage)", () => {
     const { converse, profiles } = handle.mind;
     const bot = await profiles.create("harry", { name: "Edison" });
     let changes = 0;
-    const schedules = schedulesService({ converse, profiles, onChanged: () => { changes += 1; return Promise.resolve(); } });
+    const schedules = schedulesService({
+      converse,
+      profiles,
+      onChanged: () => {
+        changes += 1;
+        return Promise.resolve();
+      },
+    });
     const main = await profiles.ensureMain("harry", bot.id);
     await schedules.create({
       sessionId: main.id,
