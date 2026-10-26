@@ -4,16 +4,20 @@ import { Effect } from "effect";
 import { openMind } from "../entity.ts";
 
 describe("Profiles (offline, MemoryStorage)", () => {
-  it("materializes a default profile per owner and scopes sessions to profiles", async () => {
+  it("a fresh workspace starts empty and scopes sessions to profiles", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const { profiles } = handle.mind;
-    const mine = await profiles.list("harry");
-    expect(mine.length).toBe(1);
-    expect(mine[0]?.id).toBe("default");
+    // Fresh install: no default bot materializes and there is no main.
+    expect(await profiles.list("harry")).toEqual([]);
+    expect(await profiles.mainOf("harry")).toBeNull();
 
-    const created = await profiles.createSession("harry", "default", "work");
+    const created = await profiles.create("harry", { name: "Scout", onboard: false });
+    // The first bot claims main automatically.
+    expect(await profiles.mainOf("harry")).toBe(created.id);
+
+    const session = await profiles.createSession("harry", created.id, "work");
     const listed = await profiles.listSessions("harry");
-    expect(listed.filter((row) => row.id === created.id).length).toBe(1);
+    expect(listed.filter((row) => row.id === session.id).length).toBe(1);
     expect((await profiles.listSessions("someone-else")).length).toBe(0);
     await handle.close();
   });
@@ -45,8 +49,9 @@ describe("Profiles (offline, MemoryStorage)", () => {
   it("reset rotates the main chat and keeps the old transcript listed", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const { profiles } = handle.mind;
-    const first = await profiles.ensureMain("harry", "default");
-    const second = await profiles.resetMain("harry", "default");
+    const bot = await profiles.create("harry", { name: "Rotator", onboard: false });
+    const first = await profiles.ensureMain("harry", bot.id);
+    const second = await profiles.resetMain("harry", bot.id);
     expect(second.id).not.toBe(first.id);
     expect(second.kind).toBe("main");
     const rows = await profiles.listSessions("harry");
@@ -105,8 +110,12 @@ describe("Profiles (offline, MemoryStorage)", () => {
     const names = (agent.tools as readonly { name: string }[]).map((tool) => tool.name);
     expect(names).toEqual(["now", "web_search"]);
     // No allowlist: all tools stay available.
-    const open = profiles.agentFor(await profiles.ensureDefault("harry"));
+    const open = profiles.agentFor(
+      await profiles.create("harry", { name: "Open", onboard: false }),
+    );
     expect(open.tools).toBeUndefined();
+    // A fresh workspace starts EMPTY — no default bot materializes.
+    expect(await profiles.list("someone-else")).toEqual([]);
     await handle.close();
   });
 });

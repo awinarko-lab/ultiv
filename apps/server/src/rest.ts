@@ -9,7 +9,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { KENARI_MODELS, type MindService } from "@ultiv/mind";
 import type { CronScheduler } from "./cron.ts";
 import { ownerOf, principalFromRequest } from "./identity.ts";
-import { queryOr, type RouteArgs } from "./rest/types.ts";
+import { errorOf, queryOr, type RouteArgs } from "./rest/types.ts";
 import { approvalRoutes } from "./rest/approvals.ts";
 import { artifactRoutes } from "./rest/artifacts.ts";
 import { cronRoutes } from "./rest/cron.ts";
@@ -82,16 +82,18 @@ async function route(args: RouteArgs): Promise<void> {
   if (path === "/api/sessions" && method === "POST") {
     const body = await args.readJson<{ title?: string | null; profileId?: string }>(req);
     try {
+      // No profile given: fall back to the owner's main bot. A fresh
+      // workspace has neither — refuse with the remedy, not a mystery.
+      const profileId = body.profileId ?? (await mind.profiles.mainOf(args.owner));
+      if (profileId === null) {
+        return json(400, { error: "spawn a bot first — sessions attach to a bot" });
+      }
       return json(
         200,
-        await mind.profiles.createSession(
-          args.owner,
-          body.profileId ?? "default",
-          body.title ?? null,
-        ),
+        await mind.profiles.createSession(args.owner, profileId, body.title ?? null),
       );
     } catch (cause) {
-      return json(400, { error: String((cause as { reason?: string }).reason ?? cause) });
+      return json(400, { error: errorOf(cause) });
     }
   }
   if (path.startsWith("/api/sessions/") && method === "DELETE") {

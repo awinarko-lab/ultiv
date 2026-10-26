@@ -61,7 +61,44 @@ const expect = (name: string, ok: boolean): void => {
   if (!ok) failures.push(name);
 };
 
-const created = await call("POST", "/api/sessions", { title: "s" }, { "x-ultiv-user": "smoker" });
+// Fresh install: the workspace starts EMPTY — no default Ultius bot exists,
+// and there is no main bot until the first one is spawned.
+const freshProfiles = await call("GET", "/api/profiles", undefined, { "x-ultiv-user": "smoker" });
+expect(
+  "fresh install has no default bot",
+  freshProfiles.status === 200 && freshProfiles.json.length === 0,
+);
+const freshMain = await call("GET", "/api/main", undefined, { "x-ultiv-user": "smoker" });
+expect("fresh install has no main bot", freshMain.json.profileId === null);
+
+// A bare session needs a bot to attach to: refused with the remedy.
+const bareSession = await call(
+  "POST",
+  "/api/sessions",
+  { title: "s" },
+  {
+    "x-ultiv-user": "smoker",
+  },
+);
+expect(
+  "bare session refused on empty workspace",
+  bareSession.status === 400 && bareSession.json.error.includes("spawn a bot first"),
+);
+const bootBot = await call(
+  "POST",
+  "/api/profiles",
+  // onboard: false — no seeded main chat, so owner-scoping counts stay exact.
+  { name: "Boot", onboard: false },
+  { "x-ultiv-user": "smoker" },
+);
+expect("profile create", bootBot.status === 200);
+
+const created = await call(
+  "POST",
+  "/api/sessions",
+  { title: "s", profileId: bootBot.json.id },
+  { "x-ultiv-user": "smoker" },
+);
 expect("session create", created.status === 200 && created.json.owner === "smoker");
 const mine = await call("GET", "/api/sessions", undefined, { "x-ultiv-user": "smoker" });
 const others = await call("GET", "/api/sessions", undefined, { "x-ultiv-user": "someone-else" });
@@ -96,13 +133,13 @@ expect("task spawn", task.status === 200 && task.json.status === "running");
 const audit = await call("GET", "/api/audit");
 expect("audit tail", audit.status === 200 && Array.isArray(audit.json));
 
-// Profiles: CRUD, Bot Mode, per-profile sessions and artifacts.
+// Profiles: the workspace now contains exactly the bots that were spawned.
 const headers = { "x-ultiv-user": "smoker" };
 const profilesListed = await call("GET", "/api/profiles", undefined, headers);
 expect(
-  "profiles list materializes default",
+  "profile list shows only spawned bots",
   profilesListed.status === 200 &&
-    profilesListed.json.some((p: { id: string }) => p.id === "default"),
+    profilesListed.json.some((p: { id: string }) => p.id === bootBot.json.id),
 );
 const researcher = await call(
   "POST",
@@ -209,21 +246,22 @@ const said = await call(
 );
 expect("room say", said.status === 200 && said.json.ok === true);
 
-// Main bot: switchable, one at a time; the main bot is not removable.
-const mainBefore = await call("GET", "/api/main", undefined, headers);
-expect("main defaults", mainBefore.json.profileId === "default");
-const deleteMain = await call("DELETE", "/api/profiles/default", undefined, headers);
+// Main bot: the first spawned bot claims main automatically; it is
+// switchable, one at a time, and not removable.
+const mainFirst = await call("GET", "/api/main", undefined, headers);
+expect("first bot became main", mainFirst.json.profileId === bootBot.json.id);
+const deleteMain = await call("DELETE", `/api/profiles/${bootBot.json.id}`, undefined, headers);
 expect("main bot protected", deleteMain.status === 409);
-const setMain = await call("POST", `/api/profiles/${rid}/main`, undefined, headers);
+const setMain = await call("POST", `/api/profiles/${cosProfile.json.id}/main`, undefined, headers);
 expect("set main", setMain.status === 200);
 const mainAfter = await call("GET", "/api/main", undefined, headers);
-expect("main switched", mainAfter.json.profileId === rid);
-const deleteOld = await call("DELETE", "/api/profiles/default", undefined, headers);
+expect("main switched", mainAfter.json.profileId === cosProfile.json.id);
+const deleteOld = await call("DELETE", `/api/profiles/${rid}`, undefined, headers);
 expect("non-main bot removable", deleteOld.status === 200 && deleteOld.json.ok === true);
 const afterDelete = await call("GET", "/api/profiles", undefined, headers);
 expect(
   "deleted bot stays deleted (no resurrection)",
-  afterDelete.json.every((p: { id: string }) => p.id !== "default"),
+  afterDelete.json.every((p: { id: string }) => p.id !== rid),
 );
 
 // Vault: secrets seal; responses carry masks only.

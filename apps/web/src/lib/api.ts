@@ -137,7 +137,8 @@ export const api = {
     send<ProfileInfo>(`/api/profiles/${encodeURIComponent(id)}/archive`, "POST"),
   unarchiveProfile: (id: string): Promise<ProfileInfo> =>
     send<ProfileInfo>(`/api/profiles/${encodeURIComponent(id)}/unarchive`, "POST"),
-  main: (): Promise<{ profileId: string }> => getJson<{ profileId: string }>("/api/main"),
+  main: (): Promise<{ profileId: string | null }> =>
+    getJson<{ profileId: string | null }>("/api/main"),
   setMain: (id: string): Promise<{ ok: boolean }> =>
     send<{ ok: boolean }>(`/api/profiles/${encodeURIComponent(id)}/main`, "POST"),
   mainChat: (profileId: string): Promise<SessionInfo> =>

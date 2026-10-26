@@ -59,7 +59,6 @@ export interface ProfilesService {
   readonly allowTool: (owner: string, profileId: string, tool: string) => Promise<void>;
   /** Remove the profile row and its session rows; returns them for the cascade. */
   readonly remove: (owner: string, id: string) => Promise<SessionInfo[]>;
-  readonly ensureDefault: (owner: string) => Promise<ProfileInfo>;
   /** Bot Mode: the profile's persistent main chat (created lazily, rotated on reset). */
   readonly ensureMain: (owner: string, profileId: string) => Promise<SessionInfo>;
   readonly resetMain: (owner: string, profileId: string) => Promise<SessionInfo>;
@@ -96,8 +95,8 @@ export interface ProfilesService {
   ) => Promise<void>;
   /** Bind a task conversation to its spawner's bot scope (kind "task"). */
   readonly adoptTaskConversation: (key: string, spawnerConversationId: string) => Promise<void>;
-  /** The owner's main bot — the default surface; exactly one at a time. */
-  readonly mainOf: (owner: string) => Promise<string>;
+  /** The owner's main bot — the default surface; exactly one at a time. Null on a fresh workspace. */
+  readonly mainOf: (owner: string) => Promise<string | null>;
   readonly setMain: (owner: string, profileId: string) => Promise<void>;
   /** The conversation scope index: persona, audit and artifact scoping read this. */
   readonly scopeOf: (conversationId: string) => ConversationScope | undefined;
@@ -199,16 +198,6 @@ export const profilesService = (deps: {
   };
 
   const ensureProfileRow = async (owner: string, profileId: string): Promise<ProfileInfo> => {
-    if (profileId === "default") {
-      const existing = await service.get(owner, "default");
-      if (existing !== undefined) return existing;
-      // First touch by a brand-new owner materializes the substrate bot; an
-      // owner who deleted it gets NotFound, not a resurrection.
-      const owned = await run(readProfiles(converse)).then((rows) =>
-        rows.filter((p) => p.owner === owner),
-      );
-      if (owned.length === 0) return service.ensureDefault(owner);
-    }
     const profile = await service.get(owner, profileId);
     if (profile === undefined) throw new NotFound({ what: `profile ${profileId}` });
     return profile;
@@ -273,15 +262,11 @@ export const profilesService = (deps: {
   };
 
   const service: ProfilesService = {
-    list: async (owner) => {
-      // Materialize the default bot only for a brand-new owner; after a
-      // deliberate deletion it must NOT resurrect on every list.
-      const rows = await run(readProfiles(converse)).then((all) =>
-        all.filter((p) => p.owner === owner),
-      );
-      if (rows.length === 0) return [await service.ensureDefault(owner)];
-      return rows;
-    },
+    list: async (owner) =>
+      // No default bot materializes on a fresh workspace — it starts empty and
+      // the first spawned bot becomes main (see create). After a deliberate
+      // deletion the list stays empty; nothing resurrects.
+      run(readProfiles(converse)).then((all) => all.filter((p) => p.owner === owner)),
     get: (owner, id) =>
       run(readProfiles(converse)).then((rows) =>
         rows.find((p) => p.owner === owner && p.id === id),
@@ -312,6 +297,11 @@ export const profilesService = (deps: {
         archivedAt: null,
       };
       return run(commitProfiles(converse, (profiles) => [...profiles, profile])).then(async () => {
+        // The first bot in a fresh workspace claims main automatically — there
+        // is no seeded Ultius anymore.
+        const settings = await run(converse.docs.snapshot(SettingsDoc));
+        const stored = settings?.main[owner];
+        if (stored === undefined || stored === "") await service.setMain(owner, profile.id);
         // Spawning initiates the conversation: the bot's first turn runs
         // under its own identity, built from the provided details. Best
         // effort — admission succeeds even when the model call cannot run.
@@ -402,27 +392,6 @@ export const profilesService = (deps: {
       );
       return mine;
     },
-    ensureDefault: (owner) =>
-      run(readProfiles(converse)).then((rows) => {
-        const existing = rows.find((p) => p.owner === owner && p.id === "default");
-        if (existing !== undefined) return existing;
-        const profile: ProfileInfo = {
-          id: "default",
-          owner,
-          name: "Ultius",
-          description: "The default entity.",
-          persona: "",
-          timezone: defaultTimezone(),
-          model: null,
-          toolAllowlist: null,
-          policies: defaultPolicies(),
-          createdAt: Date.now(),
-          archivedAt: null,
-        };
-        return run(commitProfiles(converse, (profiles) => [...profiles, profile])).then(
-          () => profile,
-        );
-      }),
     ensureMain: (owner, profileId) => {
       const flightKey = `${owner}:${profileId}`;
       const inFlight = mainInFlight.get(flightKey);
@@ -549,7 +518,8 @@ export const profilesService = (deps: {
       const rows = await run(readProfiles(converse));
       const owned = rows.filter((p) => p.owner === owner);
       const fallback = owned.find((p) => p.id === "default") ?? owned[0];
-      return fallback?.id ?? "default";
+      // Fresh workspace: no bots, no main. The first spawn claims it.
+      return fallback?.id ?? null;
     },
     setMain: async (owner, profileId) => {
       const profile = await service.get(owner, profileId);
