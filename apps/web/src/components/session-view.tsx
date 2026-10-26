@@ -43,6 +43,13 @@ const roleStyles = {
   agent: "self-start max-w-full rounded-lg bg-muted px-3 py-2",
 } as const;
 
+/**
+ * Tools that reach outside the conversation (delete/send/pay/publish): their
+ * approval cards carry an explicit warning and a red border.
+ */
+const RISKY_TOOL =
+  /delete|remove|purge|drop|send|post|email|tweet|publish|pay|transfer|archive|overwrite/i;
+
 function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
@@ -384,10 +391,23 @@ export function SessionView({
       <CardFooter className="flex flex-col gap-2">
         {lastError !== null && <p className="w-full text-sm text-destructive">{lastError}</p>}
         {pending !== null && (
-          <Card className="w-full border-ring">
+          <Card
+            className={
+              RISKY_TOOL.test(pending.name) ? "w-full border-destructive" : "w-full border-ring"
+            }
+          >
             <CardHeader className="pb-0">
               <CardTitle className="text-sm">Approve {pending.name}?</CardTitle>
             </CardHeader>
+            {RISKY_TOOL.test(pending.name) && (
+              <CardContent className="pb-0">
+                <p className="text-destructive flex items-center gap-1 text-xs">
+                  <CircleAlertIcon className="size-3.5" />
+                  This reaches outside the conversation and may not be reversible — check the
+                  details.
+                </p>
+              </CardContent>
+            )}
             <CardContent className="pt-2">
               <CodeBlock size="sm">
                 <CodeBlockContent wrap className="max-h-48 overflow-y-auto">

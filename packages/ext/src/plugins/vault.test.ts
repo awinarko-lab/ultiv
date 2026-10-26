@@ -44,11 +44,13 @@ describe("Vault store", () => {
 
   it("scopes items owner-shared or profile-isolated; contacts are readable", () => {
     const store = makeVaultStore(tempRoot());
-    store.create("harry", {
+    const key = store.create("harry", {
       kind: "key",
       name: "API key",
       key: { service: "acme", secret: "tok_123" },
     });
+    // Masks never reveal characters of a secret — not even a prefix.
+    expect(key.masked).not.toContain("tok");
     store.create("harry", {
       kind: "contact",
       name: "Mom",

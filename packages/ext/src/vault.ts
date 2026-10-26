@@ -113,7 +113,9 @@ const maskOf = (input: VaultItemCreate): string => {
       return `${input.card?.brand ?? "CARD"} •••• ${last4}`;
     }
     case "key":
-      return `${input.key?.service ?? "key"} •••• ${(input.key?.secret ?? "").slice(0, 2)}`;
+      // No characters of a key ever surface — even a two-char prefix narrows
+      // guesses (sk-, ghp_, …). The service label identifies the item.
+      return `${input.key?.service ?? "key"} ••••`;
     case "note":
       return "sealed note";
     case "contact":

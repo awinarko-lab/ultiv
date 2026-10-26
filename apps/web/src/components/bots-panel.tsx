@@ -1,15 +1,18 @@
 /**
  * The bots panel: create (with full identity onboarding), edit identity and
- * model preference, set-main, delete — the "profile" surfaced as what it is,
- * a bot. Creation sends name/description/persona/model; the server seeds the
- * bot's first main-chat turn from those details.
+ * model preference, set-main, hide (archive) and delete (typed confirm) —
+ * the "profile" surfaced as what it is, a bot. Creation sends
+ * name/description/persona/model; the server seeds the bot's first main-chat
+ * turn from those details. Hiding is the safe option: reversible, and it only
+ * moves the bot under "Hidden". Delete purges everything and asks for the name.
  */
-import { BotIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
+import { BotIcon, EyeIcon, EyeOffIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogClose, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -41,6 +44,7 @@ function BotDialog({
   children: React.ReactElement;
 }) {
   const [form, setForm] = useState<BotForm>(initial);
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const efforts = useMemo(
@@ -53,14 +57,22 @@ function BotDialog({
     setError(null);
     try {
       await confirm(form);
+      setOpen(false);
     } catch (cause) {
-      setError(String((cause as Error).message ?? cause));
+      // Stay open — the error must be readable against the draft.
+      setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
     }
   };
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setError(null);
+      }}
+    >
       <DialogTrigger render={children} />
       <DialogContent>
         <h2 className="text-lg font-semibold">{title}</h2>
@@ -125,17 +137,13 @@ function BotDialog({
           </div>
           {error !== null && <p className="text-destructive text-sm">{error}</p>}
           <div className="flex justify-end gap-2">
-            <DialogClose
-              render={
-                <Button
-                  variant="default"
-                  disabled={busy || form.name.trim() === ""}
-                  onClick={() => void submit()}
-                />
-              }
+            <Button
+              variant="default"
+              disabled={busy || form.name.trim() === ""}
+              onClick={() => void submit()}
             >
               {busy ? "Working…" : "Save"}
-            </DialogClose>
+            </Button>
           </div>
           <p className="text-muted-foreground text-xs">
             A new bot introduces itself in its main chat from these details; the persona applies to
@@ -146,6 +154,114 @@ function BotDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** One bot's row: open main chat, set-main, edit, hide, delete. */
+function BotRow({
+  bot,
+  mainId,
+  deletable,
+  models,
+  act,
+  refresh,
+  onOpenMain,
+}: {
+  bot: ProfileInfo;
+  mainId: string | null;
+  deletable: boolean;
+  models: ModelInfo[];
+  act: (run: () => Promise<unknown>) => Promise<void>;
+  refresh: () => Promise<void>;
+  onOpenMain: (profileId: string) => Promise<void>;
+}) {
+  const archived = bot.archivedAt !== null;
+  return (
+    <div className={archived ? "flex items-center gap-1 opacity-60" : "flex items-center gap-1"}>
+      <Button
+        variant="ghost"
+        className="min-w-0 flex-1 justify-start"
+        onClick={() => void onOpenMain(bot.id)}
+      >
+        <span className="truncate font-medium">{bot.name}</span>
+        {bot.id === mainId && <Badge variant="secondary">main</Badge>}
+        {archived && <Badge variant="outline">hidden</Badge>}
+        {bot.model !== null && <Badge variant="outline">{bot.model.id}</Badge>}
+        {bot.description !== "" && (
+          <span className="text-muted-foreground truncate text-xs">{bot.description}</span>
+        )}
+      </Button>
+      {bot.id !== mainId && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Make ${bot.name} the main bot`}
+          onClick={() => void act(() => api.setMain(bot.id))}
+        >
+          <StarIcon />
+        </Button>
+      )}
+      <BotDialog
+        title={`Edit ${bot.name}`}
+        models={models}
+        initial={{
+          name: bot.name,
+          description: bot.description,
+          persona: bot.persona,
+          modelId: bot.model?.id ?? "",
+          effort: bot.model?.effort ?? "",
+        }}
+        confirm={async (form) => {
+          await api.updateProfile(bot.id, {
+            name: form.name.trim(),
+            ...(form.description !== "" ? { description: form.description } : {}),
+            ...(form.persona !== "" ? { persona: form.persona } : {}),
+            ...modelPayload(form),
+          });
+        }}
+      >
+        <Button variant="ghost" size="icon" aria-label={`Edit ${bot.name}`}>
+          <PencilIcon />
+        </Button>
+      </BotDialog>
+      {bot.id !== mainId && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={archived ? `Unhide ${bot.name}` : `Hide ${bot.name}`}
+          onClick={() =>
+            void act(() => (archived ? api.unarchiveProfile(bot.id) : api.archiveProfile(bot.id)))
+          }
+        >
+          {archived ? <EyeIcon /> : <EyeOffIcon />}
+        </Button>
+      )}
+      <ConfirmDialog
+        title={`Delete ${bot.name}?`}
+        warning="This permanently removes the bot with all of their chats, memory and artifacts. It cannot be undone."
+        typed={bot.name}
+        confirmLabel="Delete bot"
+        onConfirm={async () => {
+          await api.deleteProfile(bot.id);
+          await refresh();
+        }}
+      >
+        <Button variant="ghost" size="icon" aria-label={`Remove ${bot.name}`} disabled={!deletable}>
+          <Trash2Icon />
+        </Button>
+      </ConfirmDialog>
+    </div>
+  );
+}
+
+function modelPayload(form: BotForm) {
+  return form.modelId === ""
+    ? { model: null }
+    : {
+        model: {
+          id: form.modelId,
+          ...(form.effort !== "" ? { effort: form.effort } : {}),
+        },
+      };
 }
 
 export function BotsPanel({
@@ -169,20 +285,15 @@ export function BotsPanel({
       setError(null);
       await refresh();
     } catch (cause) {
-      const message = await (cause as Response).text?.().catch(() => null);
-      setError(message ?? String((cause as Error).message ?? cause));
+      setError(cause instanceof Error ? cause.message : String(cause));
     }
   };
 
-  const modelPayload = (form: BotForm) =>
-    form.modelId === ""
-      ? { model: null }
-      : {
-          model: {
-            id: form.modelId,
-            ...(form.effort !== "" ? { effort: form.effort } : {}),
-          },
-        };
+  // Hidden bots sort to the bottom under their own label — out of the way,
+  // never out of reach.
+  const ordered = [...profiles].sort(
+    (a, b) => (a.archivedAt === null ? 0 : 1) - (b.archivedAt === null ? 0 : 1),
+  );
 
   return (
     <Card>
@@ -201,6 +312,7 @@ export function BotsPanel({
               ...(form.persona !== "" ? { persona: form.persona } : {}),
               ...modelPayload(form),
             });
+            await refresh();
           }}
         >
           <Button variant="outline" size="sm">
@@ -209,70 +321,23 @@ export function BotsPanel({
         </BotDialog>
       </CardHeader>
       {error !== null && <CardContent className="text-destructive text-sm">{error}</CardContent>}
-      {profiles.length > 0 && (
+      {ordered.length > 0 && (
         <CardContent className="flex flex-col gap-1">
-          {profiles.map((bot, index) => (
+          {ordered.map((bot, index) => (
             <div key={bot.id} className="contents">
               {index > 0 && <Separator className="my-1" />}
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  className="min-w-0 flex-1 justify-start"
-                  onClick={() => void onOpenMain(bot.id)}
-                >
-                  <span className="truncate font-medium">{bot.name}</span>
-                  {bot.id === mainId && <Badge variant="secondary">main</Badge>}
-                  {bot.archivedAt !== null && <Badge variant="outline">archived</Badge>}
-                  {bot.model !== null && <Badge variant="outline">{bot.model.id}</Badge>}
-                  {bot.description !== "" && (
-                    <span className="text-muted-foreground truncate text-xs">
-                      {bot.description}
-                    </span>
-                  )}
-                </Button>
-                {bot.id !== mainId && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Make ${bot.name} the main bot`}
-                    onClick={() => void act(() => api.setMain(bot.id))}
-                  >
-                    <StarIcon />
-                  </Button>
-                )}
-                <BotDialog
-                  title={`Edit ${bot.name}`}
-                  models={models}
-                  initial={{
-                    name: bot.name,
-                    description: bot.description,
-                    persona: bot.persona,
-                    modelId: bot.model?.id ?? "",
-                    effort: bot.model?.effort ?? "",
-                  }}
-                  confirm={async (form) => {
-                    await api.updateProfile(bot.id, {
-                      name: form.name.trim(),
-                      ...(form.description !== "" ? { description: form.description } : {}),
-                      ...(form.persona !== "" ? { persona: form.persona } : {}),
-                      ...modelPayload(form),
-                    });
-                  }}
-                >
-                  <Button variant="ghost" size="icon" aria-label={`Edit ${bot.name}`}>
-                    <PencilIcon />
-                  </Button>
-                </BotDialog>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Remove ${bot.name}`}
-                  disabled={bot.id === mainId || profiles.length <= 1}
-                  onClick={() => void act(() => api.deleteProfile(bot.id))}
-                >
-                  <Trash2Icon />
-                </Button>
-              </div>
+              {bot.archivedAt !== null && ordered[index - 1]?.archivedAt === null && (
+                <p className="text-muted-foreground mt-2 text-xs font-semibold uppercase">Hidden</p>
+              )}
+              <BotRow
+                bot={bot}
+                mainId={mainId}
+                deletable={ordered.length > 1}
+                models={models}
+                act={act}
+                refresh={refresh}
+                onOpenMain={onOpenMain}
+              />
             </div>
           ))}
         </CardContent>

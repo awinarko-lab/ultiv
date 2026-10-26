@@ -1,4 +1,5 @@
 import { Link, useNavigate, createFileRoute } from "@tanstack/react-router";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RoomsPanel } from "@/components/rooms-panel";
@@ -21,9 +22,10 @@ function SessionPage() {
   const isMain = row?.kind === "main";
   const botId = row?.profile;
 
-  const remove = async () => {
-    const ok = await sessions.remove(sessionId);
-    if (ok) await navigate({ to: "/" });
+  // Throws on failure — the confirm dialog stays open and shows the reason.
+  const remove = async (): Promise<void> => {
+    await sessions.remove(sessionId);
+    await navigate({ to: "/" });
   };
 
   return (
@@ -38,9 +40,15 @@ function SessionPage() {
         <div className="flex items-center gap-2">
           {botId !== undefined && <RoomsPanel profiles={sessions.profiles} botId={botId} />}
           {!isMain && (
-            <Button variant="outline" size="sm" onClick={remove}>
-              Delete
-            </Button>
+            <ConfirmDialog
+              title="Delete session?"
+              warning="The conversation and its transcript are removed. This cannot be undone."
+              onConfirm={remove}
+            >
+              <Button variant="outline" size="sm">
+                Delete
+              </Button>
+            </ConfirmDialog>
           )}
         </div>
       </header>

@@ -82,9 +82,10 @@ export function useSessions(): {
 
   const remove = useCallback(
     async (id: string) => {
-      const ok = await api.remove(id);
+      // Fails loudly (ApiError) — callers own the error display.
+      await api.remove(id);
       await refresh(selected);
-      return ok;
+      return true;
     },
     [refresh, selected],
   );

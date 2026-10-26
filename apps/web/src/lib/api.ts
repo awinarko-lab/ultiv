@@ -21,9 +21,31 @@ function base(): string {
   return "";
 }
 
+/** A REST failure carrying the server's own message — never just the status. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, method: string, path: string, detail: string | null) {
+    super(detail === null ? `${method} ${path}: ${status}` : detail);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function failure(response: Response, method: string, path: string): Promise<ApiError> {
+  let detail: string | null = null;
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    if (typeof body.error === "string" && body.error !== "") detail = body.error;
+  } catch {
+    // Non-JSON body — the status line is all we have.
+  }
+  return new ApiError(response.status, method, path, detail);
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${base()}${path}`);
-  if (!response.ok) throw new Error(`GET ${path}: ${response.status}`);
+  if (!response.ok) throw await failure(response, "GET", path);
   return (await response.json()) as T;
 }
 
@@ -34,13 +56,15 @@ async function send<T>(path: string, method: string, body?: unknown): Promise<T>
       ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
       : {}),
   });
-  if (!response.ok) throw new Error(`${method} ${path}: ${response.status}`);
+  if (!response.ok) throw await failure(response, method, path);
   return (await response.json()) as T;
 }
 
+/** DELETE that fails loudly: a swallowed 409 used to read as success. */
 async function drop(path: string): Promise<boolean> {
   const response = await fetch(`${base()}${path}`, { method: "DELETE" });
-  return response.ok;
+  if (!response.ok) throw await failure(response, "DELETE", path);
+  return true;
 }
 
 export interface RoomDetail {
@@ -78,6 +102,10 @@ export const api = {
   ): Promise<ProfileInfo> =>
     send<ProfileInfo>(`/api/profiles/${encodeURIComponent(id)}`, "PATCH", patch),
   deleteProfile: (id: string): Promise<boolean> => drop(`/api/profiles/${encodeURIComponent(id)}`),
+  archiveProfile: (id: string): Promise<ProfileInfo> =>
+    send<ProfileInfo>(`/api/profiles/${encodeURIComponent(id)}/archive`, "POST"),
+  unarchiveProfile: (id: string): Promise<ProfileInfo> =>
+    send<ProfileInfo>(`/api/profiles/${encodeURIComponent(id)}/unarchive`, "POST"),
   main: (): Promise<{ profileId: string }> => getJson<{ profileId: string }>("/api/main"),
   setMain: (id: string): Promise<{ ok: boolean }> =>
     send<{ ok: boolean }>(`/api/profiles/${encodeURIComponent(id)}/main`, "POST"),

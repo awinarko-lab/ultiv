@@ -15,10 +15,12 @@ const statusVariant = {
  * Background tasks of THIS conversation, polled — REST has no push. The panel
  * stays hidden until the session's conversation id is known, so nothing from
  * other conversations leaks in. Stop removes a running task (it is cancelled
- * first and the agent is told); Delete drops settled rows.
+ * first and the agent is told); Delete drops settled rows. Failures surface
+ * instead of silently doing nothing.
  */
 export function TasksPanel({ conversationId }: { conversationId: string | null }) {
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (conversationId === null) return;
@@ -43,8 +45,13 @@ export function TasksPanel({ conversationId }: { conversationId: string | null }
 
   const remove = useCallback(
     async (id: string) => {
-      await api.removeTask(id);
-      void refresh();
+      try {
+        await api.removeTask(id);
+        setError(null);
+        void refresh();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
     },
     [refresh],
   );
@@ -54,6 +61,7 @@ export function TasksPanel({ conversationId }: { conversationId: string | null }
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-xs font-medium text-muted-foreground">Background tasks</p>
+      {error !== null && <p className="text-destructive text-xs">{error}</p>}
       <ul className="flex flex-col gap-1">
         {tasks.map((task) => (
           <li

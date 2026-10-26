@@ -288,7 +288,12 @@ export const profilesService = (deps: {
       if (input.timezone !== undefined && !validTimezone(input.timezone)) {
         throw new InvalidInput({ reason: `unknown timezone: ${input.timezone}` });
       }
-      if (input.model !== undefined && !KENARI_MODELS.some((m) => m.id === input.model?.id)) {
+      // `model: null` means "workspace default" — only a concrete id validates.
+      if (
+        input.model !== undefined &&
+        input.model !== null &&
+        !KENARI_MODELS.some((m) => m.id === input.model?.id)
+      ) {
         throw new InvalidInput({ reason: `unknown model: ${input.model?.id}` });
       }
       const profile: ProfileInfo = {
@@ -316,7 +321,12 @@ export const profilesService = (deps: {
       if (patch.timezone !== undefined && !validTimezone(patch.timezone)) {
         throw new InvalidInput({ reason: `unknown timezone: ${patch.timezone}` });
       }
-      if (patch.model !== undefined && !KENARI_MODELS.some((m) => m.id === patch.model?.id)) {
+      // `model: null` clears the override back to the workspace default.
+      if (
+        patch.model !== undefined &&
+        patch.model !== null &&
+        !KENARI_MODELS.some((m) => m.id === patch.model?.id)
+      ) {
         throw new InvalidInput({ reason: `unknown model: ${patch.model?.id}` });
       }
       const rows = await run(readProfiles(converse));

@@ -2,6 +2,7 @@ import { Link, useNavigate, createFileRoute } from "@tanstack/react-router";
 import { Ping } from "@ultiv/contracts";
 import { Trash2Icon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,6 +73,8 @@ function HomePage() {
   );
 
   const ordered = [...sessions.sessions].sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  // Hidden bots leave the picker — unhide them from the Bots panel first.
+  const choosable = sessions.profiles.filter((profile) => profile.archivedAt === null);
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-4 p-8">
@@ -107,7 +110,7 @@ function HomePage() {
           }
         >
           <option value="">All bots</option>
-          {sessions.profiles.map((profile) => (
+          {choosable.map((profile) => (
             <option key={profile.id} value={profile.id}>
               {profile.name}
               {profile.id === mainId ? " (main)" : ""}
@@ -146,16 +149,21 @@ function HomePage() {
                     </time>
                   </Button>
                   {session.kind !== "main" && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Delete ${session.title === "" ? "session" : session.title}`}
-                      onClick={async () => {
+                    <ConfirmDialog
+                      title="Delete session?"
+                      warning="The conversation and its transcript are removed. This cannot be undone."
+                      onConfirm={async () => {
                         await sessions.remove(session.id);
                       }}
                     >
-                      <Trash2Icon />
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Delete ${session.title === "" ? "session" : session.title}`}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </ConfirmDialog>
                   )}
                 </div>
               </Fragment>
