@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "export PORT=${CHORD_PORT:-8787} VITE_CHORD_URL=ws://127.0.0.1:${CHORD_PORT:-8787}; vpr @ultiv/server#dev & vpr @ultiv/web#dev & wait",
+    "dev": "export PORT=${CHORD_PORT:-8787}; vpr @ultiv/server#dev & vpr @ultiv/web#dev & wait",
     "check": "vp check",
     "build": "vp -C apps/web build",
     "test": "vp test",
