@@ -131,10 +131,19 @@ function HomePage() {
             <select
               className="bg-background max-w-44 rounded-md border px-2 py-1.5 text-sm"
               value={profileId ?? ""}
+              disabled={sessions.phase !== "live" || choosable.length === 0}
               onChange={(event) => chooseBot(event.target.value === "" ? null : event.target.value)}
               aria-label="Chat with bot"
             >
-              {profileId === null && <option value="">Loading…</option>}
+              {profileId === null && (
+                <option value="">
+                  {sessions.phase !== "live"
+                    ? "Loading…"
+                    : choosable.length === 0
+                      ? "No bots yet"
+                      : "Select a bot…"}
+                </option>
+              )}
               {choosable.map((profile) => (
                 <option key={profile.id} value={profile.id}>
                   {profile.name}
