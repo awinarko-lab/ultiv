@@ -186,8 +186,16 @@ function BotRow({
   onOpenMain: (profileId: string) => void;
 }) {
   const archived = bot.archivedAt !== null;
+  // The row is its own container: secondary info yields before the action
+  // icons ever overlap (the sidebar is only ~255px wide, the dialog ~700px).
   return (
-    <div className={archived ? "flex items-center gap-1 opacity-60" : "flex items-center gap-1"}>
+    <div
+      className={
+        archived
+          ? "@container flex items-center gap-1 opacity-60"
+          : "@container flex items-center gap-1"
+      }
+    >
       <Button
         variant="ghost"
         className="min-w-0 flex-1 justify-start"
@@ -197,15 +205,22 @@ function BotRow({
         {needsYou && <Badge variant="destructive">needs you</Badge>}
         {bot.id === mainId && <Badge variant="secondary">main</Badge>}
         {archived && <Badge variant="outline">hidden</Badge>}
-        {bot.model !== null && <Badge variant="outline">{bot.model.id}</Badge>}
+        {bot.model !== null && (
+          <Badge variant="outline" className="hidden max-w-28 truncate @[320px]:inline-flex">
+            {bot.model.id}
+          </Badge>
+        )}
         {bot.description !== "" && (
-          <span className="text-muted-foreground truncate text-xs">{bot.description}</span>
+          <span className="text-muted-foreground hidden min-w-0 truncate text-xs @[440px]:inline">
+            {bot.description}
+          </span>
         )}
       </Button>
       {bot.id !== mainId && (
         <Button
           variant="ghost"
           size="icon"
+          className="shrink-0"
           aria-label={`Make ${bot.name} the main bot`}
           onClick={() => void act(() => api.setMain(bot.id))}
         >
@@ -213,7 +228,12 @@ function BotRow({
         </Button>
       )}
       <MemoryPanel profileId={bot.id} name={bot.name}>
-        <Button variant="ghost" size="icon" aria-label={`What ${bot.name} remembers`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          aria-label={`What ${bot.name} remembers`}
+        >
           <BrainIcon />
         </Button>
       </MemoryPanel>
@@ -236,7 +256,7 @@ function BotRow({
           });
         }}
       >
-        <Button variant="ghost" size="icon" aria-label={`Edit ${bot.name}`}>
+        <Button variant="ghost" size="icon" className="shrink-0" aria-label={`Edit ${bot.name}`}>
           <PencilIcon />
         </Button>
       </BotDialog>
@@ -244,6 +264,7 @@ function BotRow({
         <Button
           variant="ghost"
           size="icon"
+          className="shrink-0"
           aria-label={archived ? `Unhide ${bot.name}` : `Hide ${bot.name}`}
           onClick={() =>
             void act(() => (archived ? api.unarchiveProfile(bot.id) : api.archiveProfile(bot.id)))
@@ -262,7 +283,13 @@ function BotRow({
           await refresh();
         }}
       >
-        <Button variant="ghost" size="icon" aria-label={`Remove ${bot.name}`} disabled={!deletable}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          aria-label={`Remove ${bot.name}`}
+          disabled={!deletable}
+        >
           <Trash2Icon />
         </Button>
       </ConfirmDialog>

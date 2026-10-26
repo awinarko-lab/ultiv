@@ -5,7 +5,7 @@
  * on phones (pattern 12: large targets, no hover-only controls). Deep links to
  * /sessions/$id still work for any individual session.
  */
-import { Link, useNavigate, createFileRoute } from "@tanstack/react-router";
+import { useNavigate, createFileRoute } from "@tanstack/react-router";
 import { Ping } from "@ultiv/contracts";
 import { BotIcon, HistoryIcon, KeyRoundIcon, MessagesSquareIcon, Trash2Icon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
@@ -13,7 +13,6 @@ import { Chat } from "@/components/chat";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BotsPanel } from "@/components/bots-panel";
 import { OnboardingHome } from "@/components/onboarding";
-import { RoomsPanel } from "@/components/rooms-panel";
 import { VaultContent, VaultPanel } from "@/components/vault-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +38,9 @@ function HomePage() {
   const [chatError, setChatError] = useState<string | null>(null);
   // Phones navigate the panels through the bottom tab bar; desktop ignores it.
   const [tab, setTab] = useState<MobileTab>("chat");
+  // A history pick pins THAT session into the home chat; null = the active
+  // bot's main chat. Switching bots clears the pin.
+  const [pinnedSessionId, setPinnedSessionId] = useState<string | null>(null);
 
   const reloadMain = useCallback(async () => {
     try {
@@ -86,6 +88,19 @@ function HomePage() {
   }, [sessions.selected, reloadMain]);
 
   const choosable = sessions.profiles.filter((profile) => profile.archivedAt === null);
+
+  const chooseBot = (id: string | null): void => {
+    setPinnedSessionId(null);
+    setActiveId(id);
+  };
+  const pinSession = (sessionId: string): void => {
+    setPinnedSessionId(sessionId);
+    setTab("chat");
+  };
+  const activeBotName =
+    choosable.find((profile) => profile.id === profileId)?.name ?? "the active bot";
+  const activeChatId = pinnedSessionId ?? chatId;
+
   const botsPanel = (
     <BotsPanel
       profiles={sessions.profiles}
@@ -116,9 +131,7 @@ function HomePage() {
             <select
               className="bg-background max-w-44 rounded-md border px-2 py-1.5 text-sm"
               value={profileId ?? ""}
-              onChange={(event) =>
-                setActiveId(event.target.value === "" ? null : event.target.value)
-              }
+              onChange={(event) => chooseBot(event.target.value === "" ? null : event.target.value)}
               aria-label="Chat with bot"
             >
               {profileId === null && <option value="">Loading…</option>}
@@ -146,9 +159,12 @@ function HomePage() {
                   </DialogContent>
                 </Dialog>
               )}
-              <RoomsPanel profiles={sessions.profiles} />
               <VaultPanel profiles={sessions.profiles} />
-              <HistoryDialog sessions={sessions} triggerClassName="xl:hidden" />
+              <HistoryDialog
+                sessions={sessions}
+                triggerClassName="xl:hidden"
+                onSelect={pinSession}
+              />
             </div>
           </div>
         </header>
@@ -161,17 +177,27 @@ function HomePage() {
               : "mx-auto hidden w-full max-w-4xl min-h-0 flex-1 flex-col sm:flex"
           }
         >
+          {pinnedSessionId !== null && sessions.profiles.length > 0 && (
+            <Button
+              variant="ghost"
+              size="xs"
+              className="w-fit"
+              onClick={() => setPinnedSessionId(null)}
+            >
+              ← Back to {activeBotName}'s main chat
+            </Button>
+          )}
           {sessions.profiles.length === 0 ? (
             <OnboardingHome
               models={sessions.models}
               custom={botsPanel}
               onCreated={async (id) => {
                 await refreshAll();
-                setActiveId(id);
+                chooseBot(id);
               }}
             />
-          ) : chatId !== null ? (
-            <Chat sessionId={chatId} models={sessions.models} />
+          ) : activeChatId !== null ? (
+            <Chat sessionId={activeChatId} models={sessions.models} />
           ) : (
             <Card className="flex flex-1 items-center justify-center">
               <CardContent className="text-muted-foreground text-sm">
@@ -191,7 +217,7 @@ function HomePage() {
         )}
         {tab === "history" && (
           <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
-            <HistoryList sessions={sessions} onNavigate={() => setTab("chat")} />
+            <HistoryList sessions={sessions} onSelect={pinSession} />
           </div>
         )}
 
@@ -228,7 +254,7 @@ function HomePage() {
       {/* Wide desktop: history as a persistent rail instead of a dialog. */}
       <aside className="hidden w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l p-4 xl:flex">
         <h2 className="text-muted-foreground text-xs font-semibold uppercase">History</h2>
-        <HistoryList sessions={sessions} onNavigate={() => setTab("chat")} />
+        <HistoryList sessions={sessions} onSelect={setPinnedSessionId} />
       </aside>
     </div>
   );
@@ -261,20 +287,23 @@ function TabButton({
   );
 }
 
-/** The session history rows + New session — shared by the dialog and the mobile tab. */
+/**
+ * The session history rows + New session — shared by the dialog, the mobile
+ * tab and the desktop rail. Picking a row pins that session into the home
+ * chat (no navigation); New session still opens the full session page.
+ */
 function HistoryList({
   sessions,
-  onNavigate,
+  onSelect,
 }: {
   sessions: ReturnType<typeof useSessions>;
-  onNavigate: () => void;
+  onSelect: (sessionId: string) => void;
 }) {
   const navigate = useNavigate();
   const ordered = [...sessions.sessions].sort((a, b) => b.lastMessageAt - a.lastMessageAt);
 
   const create = async (): Promise<void> => {
     const created = await sessions.create(null);
-    onNavigate();
     if (created !== undefined) {
       await navigate({ to: "/sessions/$sessionId", params: { sessionId: created.id } });
     }
@@ -299,9 +328,7 @@ function HistoryList({
               <Button
                 variant="ghost"
                 className="min-w-0 flex-1 justify-between"
-                nativeButton={false}
-                onClick={onNavigate}
-                render={<Link to="/sessions/$sessionId" params={{ sessionId: session.id }} />}
+                onClick={() => onSelect(session.id)}
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="truncate">
@@ -346,9 +373,11 @@ function HistoryList({
 function HistoryDialog({
   sessions,
   triggerClassName,
+  onSelect,
 }: {
   sessions: ReturnType<typeof useSessions>;
   triggerClassName?: string;
+  onSelect: (sessionId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -363,7 +392,13 @@ function HistoryDialog({
       <DialogContent>
         <DialogTitle>Session history</DialogTitle>
         <div className="mt-3 max-h-96 overflow-y-auto">
-          <HistoryList sessions={sessions} onNavigate={() => setOpen(false)} />
+          <HistoryList
+            sessions={sessions}
+            onSelect={(sessionId) => {
+              setOpen(false);
+              onSelect(sessionId);
+            }}
+          />
         </div>
       </DialogContent>
     </Dialog>
