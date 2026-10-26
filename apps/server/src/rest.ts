@@ -138,6 +138,21 @@ async function route(args: RouteArgs): Promise<void> {
       }),
     );
   }
+  // A bot's durable KV state: the owner can read (and curate) what its bots
+  // wrote — the "what does it think it already did" store.
+  if (path === "/api/state" && method === "GET") {
+    const profile = queryOr(args, "profile");
+    if (profile === undefined) return json(400, { error: "profile is required" });
+    return json(200, await mind.state.list(profile));
+  }
+  if (path.startsWith("/api/state/") && method === "DELETE") {
+    const rest = segment("/api/state/");
+    const slash = rest.indexOf("/");
+    if (slash <= 0) return json(400, { error: "path is /api/state/<profileId>/<key>" });
+    const profile = rest.slice(0, slash);
+    const key = decodeURIComponent(rest.slice(slash + 1));
+    return json(200, { ok: await mind.state.delete(profile, key) });
+  }
   if (await profileRoutes(args)) return;
   if (await memoryRoutes(args)) return;
   if (await mailboxRoutes(args)) return;

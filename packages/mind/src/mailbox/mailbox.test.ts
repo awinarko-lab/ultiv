@@ -6,6 +6,10 @@ import { openMind } from "../entity.ts";
 import { HOP_CAP, PAIR_RATE_PER_HOUR, mailboxService, shouldSignalReply } from "./mailbox.ts";
 import type { MailboxEntry } from "@ultiv/contracts";
 
+// Wake coalescing has a real-world window; tests assert synchronously after
+// sends, so collapse it to near-zero here (the knob is read at service build).
+process.env.MAILBOX_WAKE_DEBOUNCE_MS = "20";
+
 import { messageTools } from "./tools.ts";
 import { taskConversationKey } from "../tasks/tasks.ts";
 
@@ -488,6 +492,8 @@ describe("Mailbox safety rules (offline, MemoryStorage)", () => {
       dead = (await mailbox.dead("harry")).length > 0;
     }
     expect(dead).toBe(true);
+    // Wake coalescing holds signals for a tiny window — let it flush.
+    await new Promise((resolve) => setTimeout(resolve, 100));
     // The failed delivery was ATTEMPTED on the counterpart's main thread…
     const bMain = await Effect.runPromise(
       handle.mind.converse.ensure(

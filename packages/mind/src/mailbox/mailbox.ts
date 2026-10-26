@@ -316,16 +316,39 @@ export const mailboxService = (deps: {
     return last?.originConversation ?? (await mainConversationId(owner, profileId));
   };
 
-  /** Submit a signal into a conversation and settle it in the background. */
-  const wakeConversation = async (conversationId: string, text: string): Promise<void> => {
+  /**
+   * Submit a signal into a conversation and settle it in the background.
+   * Bursts COALESCE: multiple envelopes arriving for the same conversation
+   * within the window ride one wake (joined by a separator), so a bot hit
+   * with five messages wakes once, not five times. Follow-up policy — a
+   * mailbox signal never derails a turn in flight.
+   */
+  const pendingWakes = new Map<string, { timer: ReturnType<typeof setTimeout>; texts: string[] }>();
+  const WAKE_DEBOUNCE_MS = Number(process.env.MAILBOX_WAKE_DEBOUNCE_MS ?? 8_000);
+  const flushWake = async (conversationId: string, texts: string[]): Promise<void> => {
+    const text = texts.join("\n\n---\n\n");
     try {
       const chat = await run(converse.open(conversationId));
       if (chat === undefined) return;
-      const submission = await run(converse.submit(chat, text));
+      const submission = await run(converse.submit(chat, text, "followUp"));
       void run(converse.settle(chat, submission)).catch(() => undefined);
     } catch (cause) {
       console.error("mailbox wake failed:", cause);
     }
+  };
+  const wakeConversation = (conversationId: string, text: string): void => {
+    const existing = pendingWakes.get(conversationId);
+    if (existing !== undefined) {
+      existing.texts.push(text);
+      return;
+    }
+    const texts = [text];
+    const timer = setTimeout(() => {
+      pendingWakes.delete(conversationId);
+      void flushWake(conversationId, texts);
+    }, WAKE_DEBOUNCE_MS);
+    timer.unref?.();
+    pendingWakes.set(conversationId, { timer, texts });
   };
 
   const notifyDead = (entry: MailboxEntry, owner: string, room: RoomRef, toName: string): void => {

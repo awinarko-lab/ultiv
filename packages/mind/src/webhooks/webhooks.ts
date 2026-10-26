@@ -61,6 +61,7 @@ export const listWebhooks = async (converse: ConverseService): Promise<WebhookLi
   ((await Effect.runPromise(converse.docs.snapshot(WebhooksDoc)))?.items ?? []).map((webhook) => ({
     ...webhook,
     profile: webhook.profile ?? "default",
+    whenBusy: webhook.whenBusy ?? "steer",
   }));
 
 /** Read one webhook without pulling the whole list through the caller's hands. */
@@ -206,6 +207,8 @@ export interface WebhookCreate {
   readonly name?: string | null;
   /** JSON Schema every payload must satisfy (TypeBox-compatible); null/omitted accepts any. */
   readonly schema?: Record<string, unknown> | null;
+  /** Mid-turn policy for its wakes (default steer). */
+  readonly whenBusy?: "steer" | "followUp" | "reject";
 }
 
 export const createWebhook = async (
@@ -234,6 +237,7 @@ export const createWebhook = async (
     lastRejectAt: null,
     lastRejectReason: null,
     recentRejects: [],
+    ...(input.whenBusy !== undefined ? { whenBusy: input.whenBusy } : {}),
   };
   await Effect.runPromise(
     converse.docs.commit(async (tx) => {

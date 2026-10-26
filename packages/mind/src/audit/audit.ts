@@ -18,6 +18,12 @@ export interface AuditService {
   readonly record: (event: AuditEvent) => void;
   /** The most recent events, oldest last. */
   readonly tail: (limit: number) => readonly AuditEvent[];
+  /**
+   * The attention hook: fired for every recorded ESCALATION (ok: false) so a
+   * host can page the owner. The audit must never gate — a throwing hook is
+   * swallowed here.
+   */
+  readonly setHooks: (hooks: { readonly onEscalation?: (event: AuditEvent) => void }) => void;
 }
 
 export class Audit extends Context.Service<Audit, AuditService>()("ultiv/mind/Audit") {}
@@ -30,7 +36,11 @@ const clip = (value: string | null): string | null =>
 /** The JSONL file audit: one event per line, tailed from the end. */
 export const makeAudit = (path: string): AuditService => {
   let writable = true;
+  let onEscalation: ((event: AuditEvent) => void) | undefined;
   return {
+    setHooks: (hooks) => {
+      onEscalation = hooks.onEscalation;
+    },
     record: (event) => {
       if (!writable) return;
       try {
@@ -39,6 +49,13 @@ export const makeAudit = (path: string): AuditService => {
       } catch {
         // Unwritable disk must not take the act down; stop trying quietly.
         writable = false;
+      }
+      if (event.kind === "escalation" && onEscalation !== undefined) {
+        try {
+          onEscalation(event);
+        } catch {
+          // A pager must never break the path that paged it.
+        }
       }
     },
     tail: (limit) => {

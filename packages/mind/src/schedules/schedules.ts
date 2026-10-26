@@ -40,6 +40,7 @@ export const readCronJobs = async (converse: ConverseService): Promise<CronJobLi
     once: job.once ?? null,
     fireCount: job.fireCount ?? 0,
     lastFiredAt: job.lastFiredAt ?? null,
+    whenBusy: job.whenBusy ?? "steer",
   }));
 
 export const writeCronJobs = (converse: ConverseService, items: CronJobInfo[]) =>
@@ -101,6 +102,8 @@ export interface CronJobCreate {
   readonly once?: number | null;
   readonly prompt: string;
   readonly enabled?: boolean;
+  /** Mid-turn policy (default steer): the wake joins the turn at the next boundary. */
+  readonly whenBusy?: "steer" | "followUp" | "reject";
 }
 
 export const createCronJob = async (
@@ -123,6 +126,7 @@ export const createCronJob = async (
     lastError: null,
     fireCount: 0,
     lastFiredAt: null,
+    ...(input.whenBusy !== undefined ? { whenBusy: input.whenBusy } : {}),
   };
   const items = await readCronJobs(converse);
   await Effect.runPromise(writeCronJobs(converse, [...items, job]));

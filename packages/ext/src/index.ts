@@ -8,6 +8,7 @@ export * from "./plugins/http.ts";
 export * from "./plugins/tinyfish.ts";
 export * from "./plugins/vault.ts";
 export * from "./plugins/calendar.ts";
+export * from "./plugins/feeds.ts";
 export * from "./plugins/email.ts";
 export * from "./plugins/bash.ts";
 export * from "./fs/durable-fs.ts";

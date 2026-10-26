@@ -19,6 +19,16 @@ dropped, a rotated key indistinguishable from a quiet day.
 | Rate-limit token buckets                        | **no** (in-memory, restart resets)        | server process                        |
 | Debounce windows                                | **no** (payloads already receipted first) | server process                        |
 
+## Attention: escalations must ARRIVE
+
+Every escalation (cron disabled, webhook dead-letter, mailbox dead-letter)
+rides the audit faculty's escalation hook. The server wires it to a pager
+(`apps/server/src/attention.ts`): email through Resend when
+`RESEND_API_KEY` + `EMAIL_FROM` + `ESCALATION_EMAIL` are set, coalesced to
+one notification per kind+subject per hour, and always a loud console line.
+Unconfigured pager ≠ silent system — the audit tail and receipt log remain
+the source of truth.
+
 Agents may rely on the registry and the receipt log. They may NOT treat
 "no state" as "never acted" — a wiped store and a first run are
 indistinguishable from inside; the receipt log exists so they never have to
@@ -62,10 +72,19 @@ an audit escalation (`webhook-dead-letter`). Deliveries to one session
 coalesce within `WEBHOOK_DEBOUNCE_MS` (default 2.5s) — a burst arrives as
 one wake carrying every payload, each with its own receipt.
 
-**The bearer token is never shown to the entity.** Tools and tool outputs
-carry the id/path and the accounting; the owner reads the token in the app.
-Test-fire (`POST /api/webhooks/:id/test`, owner) validates a probe payload
-against the schema without delivering — rejected probes are receipted.
+- **Bearer tokens never reach the entity.** Tools and tool outputs carry the
+  id/path and the accounting; the owner reads the token in the app.
+  Senders SHOULD use the `x-ultiv-token` header over the `?token=` query
+  form — query strings end up in access logs. Test-fire
+  (`POST /api/webhooks/:id/test`, owner) validates a probe payload against
+  the schema without delivering — rejected probes are receipted.
+- **Per-record `whenBusy`** (cron + webhooks, default steer) picks each
+  routine's mid-turn policy: `steer` joins the turn at the next boundary,
+  `followUp` waits, `reject` refuses while busy. Sensors are always
+  follow-ups.
+- **Mailbox wakes coalesce** (`MAILBOX_WAKE_DEBOUNCE_MS`, default 8s): a
+  burst of envelopes to one conversation rides one wake, joined by a
+  separator — follow-up policy, like sensors.
 
 ## Cron
 
@@ -80,19 +99,33 @@ against the schema without delivering — rejected probes are receipted.
 
 ## Sensors
 
-A sensor watches an external source and wakes the entity on events — today,
-**calendar** (the owner's ICS feed, `CALENDAR_ICS_URL`), polled by the
-server's sensor loop (`SENSOR_POLL_MS`, default 5 min). Tools:
+A sensor watches an external source and wakes the entity on events. Tools:
 `sensor_set` / `sensor_list` / `sensor_remove` (set/remove gated).
 
-- **Dedup is the source's natural key** (the ICS UID), stored in a ring on
-  the sensor row — each real-world event wakes the entity exactly once,
-  across restarts. No UID in the feed falls back to `summary@start`.
+- **calendar** — the owner's ICS feed (`CALENDAR_ICS_URL`), polled by the
+  server's sensor loop (`SENSOR_POLL_MS`, default 5 min); wakes
+  `leadMinutes` before matching event starts (1h grace for missed polls).
+- **rss** — the sensor's OWN feed URL (http/https, validated at creation);
+  wakes on every unseen item whose title matches, capped at 5 per poll.
+  Parser: `parseFeed` in `@ultiv/ext` (RSS 2.0 + Atom, minimal).
+
+- **Dedup is the source's natural key** (ICS UID, RSS guid / Atom id),
+  stored in a ring on the sensor row — each real-world event wakes the
+  entity exactly once, across restarts. Missing uid falls back to
+  `summary@start` / `title@pubAt`.
 - Fires are write-ahead receipts (`source: "sensor"`), delivered as
-  **follow-ups** (never steering), `leadMinutes` before the event starts
-  with a 1h grace window for missed polls.
-- No feed configured or feed error lands on the sensor's `lastError` —
-  visible in `GET /api/sensors` and `sensor_list`.
+  **follow-ups** (never steering).
+- Feed errors land on the sensor's `lastError` — visible in
+  `GET /api/sensors` and `sensor_list`.
+
+## Cron missed-tick policy
+
+**Recurring jobs do not catch up.** A fire requires the process alive at
+fire time; a tick missed during downtime is skipped (the receipt log shows
+the gap). One-shots are the opposite: a `once` that passed while down fires
+immediately on boot (retrying a delivery that never succeeded). This is
+deliberate — "daily at 9" after an outage should resume tomorrow at 9, not
+fire a burst of stale prompts at boot.
 
 ## Durable state (the KV plane)
 

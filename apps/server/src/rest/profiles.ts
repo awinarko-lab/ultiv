@@ -10,7 +10,16 @@ import { artifactsDir } from "@ultiv/ext";
 import type { ProfileCreate } from "@ultiv/contracts";
 import { removeCronJobsForSessions } from "../cron.ts";
 import { removeWebhooksForSessions } from "../webhooks.ts";
-import { removeSensorsForSessions } from "@ultiv/mind";
+import {
+  createCronJob,
+  createWebhook,
+  listCronJobs,
+  listSensors,
+  listWebhooks,
+  removeSensorsForSessions,
+  sensorsService,
+  webhooksService,
+} from "@ultiv/mind";
 import { errorOf, type RouteArgs } from "./types.ts";
 
 const ID = "[a-zA-Z0-9][a-zA-Z0-9._-]*";
@@ -264,15 +273,23 @@ interface ExportBundle {
   memory: unknown[];
   vault: { info: unknown; sealed: unknown }[];
   artifacts: { info: unknown; content: string }[];
+  cron: unknown[];
+  webhooks: unknown[];
+  sensors: unknown[];
+  state: { key: string; value: string; updatedAt: number }[];
 }
 
 async function exportBundle(args: RouteArgs, id: string): Promise<unknown> {
   const { mind } = args;
   const profile = await mind.profiles.get(args.owner, id);
   if (profile === undefined) return { error: "unknown profile" };
-  const [sessions, memory] = await Promise.all([
+  const [sessions, memory, cron, webhooks, sensors, state] = await Promise.all([
     mind.profiles.listSessions(args.owner, id),
     mind.memory.read(args.owner, "profile", id),
+    listCronJobs(mind.converse),
+    listWebhooks(mind.converse),
+    listSensors(mind.converse),
+    mind.state.list(id),
   ]);
   const vault = mind.vault?.list(args.owner, { profile: id }) ?? [];
   const bundle: ExportBundle = {
@@ -286,10 +303,18 @@ async function exportBundle(args: RouteArgs, id: string): Promise<unknown> {
         return item === undefined ? [] : [{ info: item.info, sealed: item.sealed }];
       }),
     artifacts: [],
+    cron: cron.filter((job) => job.profile === id),
+    // Tokens never export: an imported webhook gets a FRESH token (counters
+    // reset too — they describe this install's traffic, not the bot's).
+    webhooks: webhooks
+      .filter((hook) => hook.profile === id)
+      .map(({ token: _token, ...hook }) => hook),
+    sensors: sensors.filter((sensor) => sensor.profile === id),
+    state: [...state],
   };
   return {
     ...bundle,
-    note: "vault items re-open only under the same VAULT_KEY; transcripts are not exported",
+    note: "vault items re-open only under the same VAULT_KEY; transcripts are not exported; webhook tokens are regenerated on import",
   };
 }
 
@@ -339,6 +364,72 @@ async function importBundle(args: RouteArgs): Promise<unknown> {
     mind.vault?.importItem(args.owner, item as never, created.id);
     vaultImported += 1;
   }
+  // The routine registries rebind to the imported profile's main session:
+  // schedule/webhook/sensor ids survive, session ids do not.
+  const main = await mind.profiles.ensureMain(args.owner, created.id);
+  const webhooks = webhooksService({ converse: mind.converse, profiles: mind.profiles });
+  const sensors = sensorsService({ converse: mind.converse, profiles: mind.profiles });
+  let cronImported = 0;
+  for (const job of bundle.cron ?? []) {
+    const row = job as {
+      schedule?: string;
+      once?: number | null;
+      prompt?: string;
+      enabled?: boolean;
+    };
+    if (row.prompt === undefined) continue;
+    await createCronJob(mind.converse, mind.profiles, {
+      sessionId: main.id,
+      schedule: row.schedule ?? "",
+      ...(row.once !== undefined && row.once !== null ? { once: row.once } : {}),
+      prompt: row.prompt,
+      ...(row.enabled !== undefined ? { enabled: row.enabled } : {}),
+    });
+    cronImported += 1;
+  }
+  let webhooksImported = 0;
+  for (const hook of bundle.webhooks ?? []) {
+    const row = hook as { name?: string | null; schema?: Record<string, unknown> | null };
+    await webhooks.create({
+      sessionId: main.id,
+      ...(row.name !== undefined && row.name !== null ? { name: row.name } : {}),
+      ...(row.schema !== undefined && row.schema !== null ? { schema: row.schema } : {}),
+    });
+    webhooksImported += 1;
+  }
+  let sensorsImported = 0;
+  for (const sensor of bundle.sensors ?? []) {
+    const row = sensor as {
+      kind?: string;
+      match?: string;
+      leadMinutes?: number;
+      url?: string | null;
+    };
+    if ((row.kind ?? "calendar") === "rss" && typeof row.url !== "string") continue;
+    await sensors.create({
+      sessionId: main.id,
+      kind: row.kind === "rss" ? "rss" : "calendar",
+      ...(row.kind === "rss" ? { url: row.url ?? "" } : {}),
+      match: row.match ?? "",
+      ...(row.leadMinutes !== undefined ? { leadMinutes: row.leadMinutes } : {}),
+    });
+    sensorsImported += 1;
+  }
+  let stateImported = 0;
+  for (const entry of bundle.state ?? []) {
+    if (typeof entry.key !== "string" || typeof entry.value !== "string") continue;
+    await mind.state.set(created.id, entry.key, entry.value);
+    stateImported += 1;
+  }
   void json;
-  return { ok: true, profile: created, memory: (bundle.memory ?? []).length, vault: vaultImported };
+  return {
+    ok: true,
+    profile: created,
+    memory: (bundle.memory ?? []).length,
+    vault: vaultImported,
+    cron: cronImported,
+    webhooks: webhooksImported,
+    sensors: sensorsImported,
+    state: stateImported,
+  };
 }

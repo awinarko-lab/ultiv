@@ -64,6 +64,10 @@ export const WebhookInfoSchema = Type.Object({
   lastRejectReason: Type.Union([Type.String(), Type.Null()]),
   /** The last few rejected payloads, newest first — the schema-drift diagnosis path. */
   recentRejects: Type.Array(WebhookRejectSchema),
+  /** When the bot is mid-turn: steer the turn at the next boundary, or queue as follow-up. */
+  whenBusy: Type.Optional(
+    Type.Union([Type.Literal("steer"), Type.Literal("followUp"), Type.Literal("reject")]),
+  ),
 });
 
 export type WebhookInfo = Omit<Static<typeof WebhookInfoSchema>, "schema"> & {

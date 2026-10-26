@@ -59,6 +59,13 @@ const createTool = (webhooks: WebhooksService, profiles: ProfilesService): Tool 
             "Omit to accept any payload.",
         }),
       ),
+      whenBusy: Type.Optional(
+        Type.Union([Type.Literal("steer"), Type.Literal("followUp"), Type.Literal("reject")], {
+          description:
+            "Mid-turn policy for this webhook's wakes (default steer): join a running turn " +
+            "at the next boundary (steer), wait for it to end (followUp), or refuse (reject).",
+        }),
+      ),
     }),
     structuredOutputSchema: Type.Object({
       id: Type.String(),
@@ -85,6 +92,7 @@ const createTool = (webhooks: WebhooksService, profiles: ProfilesService): Tool 
           sessionId: main.id,
           ...(args.name !== undefined ? { name: args.name } : {}),
           schema,
+          ...(args.whenBusy !== undefined ? { whenBusy: args.whenBusy } : {}),
         });
         return {
           output: [

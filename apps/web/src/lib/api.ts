@@ -215,4 +215,11 @@ export const api = {
     send<{ ok: boolean }>(`/api/sensors/${encodeURIComponent(id)}`, "DELETE"),
   routineEvents: (limit?: number): Promise<RoutineEvent[]> =>
     getJson<RoutineEvent[]>(`/api/routines/events?limit=${limit ?? 30}`),
+  stateOf: (profile: string): Promise<{ key: string; value: string; updatedAt: number }[]> =>
+    getJson(`/api/state?profile=${encodeURIComponent(profile)}`),
+  removeState: (profile: string, key: string): Promise<{ ok: boolean }> =>
+    send<{ ok: boolean }>(
+      `/api/state/${encodeURIComponent(profile)}/${encodeURIComponent(key)}`,
+      "DELETE",
+    ),
 };

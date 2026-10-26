@@ -77,6 +77,9 @@ export const recordSensorFire = async (
 
 export interface SensorCreate {
   readonly sessionId: string;
+  readonly kind?: "calendar" | "rss";
+  /** rss sensors: the feed URL (http/https required). */
+  readonly url?: string;
   readonly match: string;
   readonly leadMinutes?: number;
 }
@@ -86,12 +89,24 @@ export const createSensor = async (
   profiles: { rowOf: (sessionId: string) => Promise<{ profile: string } | undefined> },
   input: SensorCreate,
 ): Promise<SensorInfo> => {
+  const kind = input.kind ?? "calendar";
+  let url: string | null = null;
+  if (kind === "rss") {
+    url = input.url ?? "";
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("scheme");
+    } catch {
+      throw new Error("rss sensors need a valid http(s) feed url");
+    }
+  }
   const row = await profiles.rowOf(input.sessionId);
   const sensor: SensorRow = {
     id: randomUUID(),
     sessionId: input.sessionId,
     profile: row?.profile ?? "default",
-    kind: "calendar",
+    kind,
+    url,
     match: input.match,
     leadMinutes: Math.min(Math.max(input.leadMinutes ?? 10, 0), 24 * 60),
     enabled: true,

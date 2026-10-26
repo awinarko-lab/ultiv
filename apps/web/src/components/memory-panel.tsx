@@ -33,18 +33,21 @@ export function MemoryPanel({
   const [open, setOpen] = useState(false);
   const [records, setRecords] = useState<MemoryRecord[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactRow[]>([]);
+  const [state, setState] = useState<{ key: string; value: string; updatedAt: number }[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      const [memory, files] = await Promise.all([
+      const [memory, files, kv] = await Promise.all([
         api.profileMemory(profileId),
         api.artifacts(profileId),
+        api.stateOf(profileId),
       ]);
       setRecords(Array.isArray(memory) ? memory : []);
       setArtifacts(Array.isArray(files) ? files : []);
+      setState(Array.isArray(kv) ? kv : []);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -130,6 +133,43 @@ export function MemoryPanel({
           >
             {busy ? "Saving…" : "Remember"}
           </Button>
+        </div>
+        <Separator className="my-4" />
+        <p className="text-xs font-medium text-muted-foreground">Durable state (KV)</p>
+        <div className="mt-2 flex max-h-56 flex-col gap-2 overflow-y-auto">
+          {state.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No KV state yet — the bot's dedup ledgers and "already acted" markers live here
+              (state_get / state_set).
+            </p>
+          ) : (
+            state.map((row) => (
+              <div
+                key={row.key}
+                className="flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-sm"
+              >
+                <div className="min-w-0 flex-1">
+                  <code className="text-xs">{row.key}</code>
+                  <p className="text-muted-foreground truncate text-xs">{row.value}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {new Date(row.updatedAt).toLocaleString()}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Delete state ${row.key}`}
+                  onClick={() => {
+                    void api.removeState(profileId, row.key).then(() => {
+                      void load();
+                    });
+                  }}
+                >
+                  <Trash2Icon />
+                </Button>
+              </div>
+            ))
+          )}
         </div>
         <Separator className="my-4" />
         <p className="text-xs font-medium text-muted-foreground">Files {name} made</p>

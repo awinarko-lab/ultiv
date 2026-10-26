@@ -8,6 +8,7 @@
  * + an audit escalation). Delivery is DEBOUNCED per session: bursts that
  * land inside the window coalesce into one wake that carries every payload.
  */
+import { timingSafeEqual } from "node:crypto";
 import type { MindService } from "@ultiv/mind";
 import {
   MAX_WEBHOOK_BODY_BYTES,
@@ -43,7 +44,10 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 /** Per-session coalescing state: entries wait here until the window closes. */
 const pending = new Map<
   string,
-  { timer: NodeJS.Timeout; entries: { eventId: string; text: string }[] }
+  {
+    timer: NodeJS.Timeout;
+    entries: { eventId: string; text: string; whenBusy: "steer" | "followUp" | "reject" }[];
+  }
 >();
 
 /** Shutdown hook: drop pending windows so a flush never races stack close. */
@@ -57,13 +61,16 @@ const enqueueDelivery = (
   sessionId: string,
   eventId: string,
   text: string,
+  whenBusy: "steer" | "followUp" | "reject",
 ): void => {
   const existing = pending.get(sessionId);
   if (existing !== undefined) {
-    existing.entries.push({ eventId, text });
+    existing.entries.push({ eventId, text, whenBusy });
     return;
   }
-  const entries: { eventId: string; text: string }[] = [{ eventId, text }];
+  const entries: { eventId: string; text: string; whenBusy: "steer" | "followUp" | "reject" }[] = [
+    { eventId, text, whenBusy },
+  ];
   const timer = setTimeout(() => {
     pending.delete(sessionId);
     void flush(mind, sessionId, entries);
@@ -77,13 +84,16 @@ const enqueueDelivery = (
 const flush = async (
   mind: MindService,
   sessionId: string,
-  entries: readonly { eventId: string; text: string }[],
+  entries: readonly { eventId: string; text: string; whenBusy: "steer" | "followUp" | "reject" }[],
 ): Promise<void> => {
   try {
     const text = entries.map((entry) => entry.text).join("\n");
+    // A coalesced batch rides the strongest policy any of its payloads carry
+    // (steer beats follow-up) — one wake, one admission.
+    const whenBusy = entries.some((entry) => entry.whenBusy === "steer") ? "steer" : "followUp";
     for (let attempt = 1; attempt <= MAX_DELIVERY_ATTEMPTS; attempt += 1) {
       try {
-        await deliverToSession(mind, sessionId, text, "steer");
+        await deliverToSession(mind, sessionId, text, whenBusy);
         await Promise.all(
           entries.map((entry) => settleRoutineEvent(mind.converse, entry.eventId, "delivered")),
         );
@@ -121,6 +131,13 @@ const flush = async (
   }
 };
 
+/** Constant-time bearer compare — a public endpoint must not leak its own timing. */
+const tokenMatches = (expected: string, presented: string): boolean => {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(presented.padEnd(a.length, "\0"));
+  return Buffer.byteLength(presented) === a.length && timingSafeEqual(a, b);
+};
+
 /**
  * The ingress pipeline. Everything cheap and synchronous happens pre-ack —
  * after the 2xx the sender assumes success and will never hear "no" again.
@@ -147,7 +164,7 @@ export const handleWebhookIngress = async (
     }).then((eventId) => settleRoutineEvent(mind.converse, eventId, "rejected", "size"));
     return { status: 413, json: { error: "payload too large" } };
   }
-  if (webhook.token !== token) {
+  if (!tokenMatches(webhook.token, token)) {
     // The key-rotation alarm: counted per webhook, visible in 24h rejects.
     await recordWebhookReject(mind.converse, id, {
       reason: "auth",
@@ -220,7 +237,7 @@ export const handleWebhookIngress = async (
     fireCount: current.fireCount + 1,
     lastFiredAt: Date.now(),
   }));
-  enqueueDelivery(mind, webhook.sessionId, eventId, text);
+  enqueueDelivery(mind, webhook.sessionId, eventId, text, webhook.whenBusy ?? "steer");
   return { status: 200, json: { ok: true, eventId } };
 };
 

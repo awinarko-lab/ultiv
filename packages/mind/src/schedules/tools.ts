@@ -44,6 +44,13 @@ const SetParams = Type.Object({
         "after firing. Compute it from the `now` tool.",
     }),
   ),
+  whenBusy: Type.Optional(
+    Type.Union([Type.Literal("steer"), Type.Literal("followUp"), Type.Literal("reject")], {
+      description:
+        "Mid-turn policy (default steer): a wake landing mid-turn joins the turn at the " +
+        "next boundary (steer), waits for it to end (followUp), or is refused (reject).",
+    }),
+  ),
 });
 
 const setTool = (schedules: SchedulesService, profiles: ProfilesService): Tool =>
@@ -81,6 +88,7 @@ const setTool = (schedules: SchedulesService, profiles: ProfilesService): Tool =
         schedule,
         prompt: args.prompt,
         ...(once !== null ? { once } : {}),
+        ...(args.whenBusy !== undefined ? { whenBusy: args.whenBusy } : {}),
       });
       // Creation-time preview: the author verifies "daily 9am" in the
       // profile's timezone BEFORE trusting the schedule.

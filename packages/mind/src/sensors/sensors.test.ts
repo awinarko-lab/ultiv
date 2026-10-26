@@ -14,13 +14,26 @@ describe("Sensors faculty (offline, MemoryStorage)", () => {
     const main = await profiles.ensureMain("harry", bot.id);
 
     const created = await sensors.create({ sessionId: main.id, match: "standup" });
+    expect(created.kind).toBe("calendar");
     expect(created.match).toBe("standup");
     expect(created.leadMinutes).toBe(10);
     const clamped = await sensors.create({ sessionId: main.id, match: "", leadMinutes: 99_999 });
     expect(clamped.leadMinutes).toBe(1440);
+    // rss sensors carry their own feed url; a bad one is refused at creation.
+    const rss = await sensors.create({
+      sessionId: main.id,
+      kind: "rss",
+      url: "https://example.com/feed.xml",
+      match: "release",
+    });
+    expect(rss.kind).toBe("rss");
+    expect(rss.url).toBe("https://example.com/feed.xml");
+    await expect(
+      sensors.create({ sessionId: main.id, kind: "rss", url: "not-a-url", match: "" }),
+    ).rejects.toThrow(/http\(s\)/);
 
     const listed = await sensors.list();
-    expect(listed).toHaveLength(2);
+    expect(listed).toHaveLength(3);
 
     // The dedup ring: recording a fire marks the uid seen for next polls.
     await recordSensorFire(converse, created.id, "uid-1");

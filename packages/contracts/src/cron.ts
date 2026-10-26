@@ -23,6 +23,10 @@ export const CronJobInfoSchema = Type.Object({
    */
   fireCount: Type.Optional(Type.Number()),
   lastFiredAt: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+  /** When the bot is mid-turn: steer the turn at the next boundary, or queue as follow-up. */
+  whenBusy: Type.Optional(
+    Type.Union([Type.Literal("steer"), Type.Literal("followUp"), Type.Literal("reject")]),
+  ),
 });
 
 export type CronJobInfo = Static<typeof CronJobInfoSchema>;

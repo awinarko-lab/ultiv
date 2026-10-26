@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { httpPlugin } from "@ultiv/ext";
 import { closeWebhookPump } from "./webhooks.ts";
 import { startSensorLoop, type SensorLoop } from "./sensors.ts";
+import { wireEscalationPager } from "./attention.ts";
 import { openMind } from "@ultiv/mind";
 import { startScheduler, type CronScheduler } from "./cron.ts";
 import { principalFromRequest, type Principal } from "./identity.ts";
@@ -51,6 +52,8 @@ export async function buildStack(options?: {
     },
   });
   const mind = handle.mind;
+  // The attention last-mile: dead-letters and disabled jobs must ARRIVE.
+  wireEscalationPager(mind);
   let refreshSchedules: () => Promise<void> = async () => undefined;
   const scheduler: CronScheduler = await startScheduler(mind);
   refreshSchedules = () => scheduler.refresh();
