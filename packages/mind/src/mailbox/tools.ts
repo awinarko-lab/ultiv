@@ -78,12 +78,17 @@ const messageTool = (mailbox: MailboxService, profiles: ProfilesService): Tool =
           originConversation: String(api.conversationId),
         })
         .then(async (entry) => {
-          const budget = await mailbox.budgetOf(scope.owner, scope.profileId, args.to);
+          const budget = await mailbox.budgetOf(
+            scope.owner,
+            scope.profileId,
+            args.to,
+            String(api.conversationId),
+          );
           const left = budget.cap - budget.used;
           const budgetNote =
             left <= 0
-              ? " That was your FINAL message to this sibling for this exchange — conclude now."
-              : ` ${left} of ${budget.cap} messages left to this sibling.`;
+              ? " That was your FINAL message to this sibling for this exchange — conclude now (a fresh instruction from your owner resets it)."
+              : ` ${left} of ${budget.cap} messages left to this sibling in this exchange.`;
           return {
             output: [
               {

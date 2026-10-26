@@ -1,4 +1,5 @@
 /** Task routes: spawn/status/list/remove over the mind's tasks faculty. */
+import { taskConversationKey } from "@ultiv/mind";
 import { Effect } from "effect";
 import { queryOr, type RouteArgs } from "./types.ts";
 
@@ -18,21 +19,30 @@ export async function taskRoutes(
       json(400, { error: "prompt is required" });
       return true;
     }
+    const spawnerConversationId =
+      body.sessionId !== undefined && body.sessionId !== ""
+        ? ((await Effect.runPromise(
+            mind.converse.conversationIdOf(
+              await mind.profiles.keyForSession(args.owner, body.sessionId),
+            ),
+          )) ?? null)
+        : null;
     const task = await Effect.runPromise(
       mind.tasks.spawn({
         sessionId: body.sessionId ?? "",
         owner: args.owner,
-        conversationId:
-          body.sessionId !== undefined && body.sessionId !== ""
-            ? ((await Effect.runPromise(
-                mind.converse.conversationIdOf(
-                  await mind.profiles.keyForSession(args.owner, body.sessionId),
-                ),
-              )) ?? null)
-            : null,
+        conversationId: spawnerConversationId,
         prompt: body.prompt,
       }),
     );
+    // The task runs AS the bot whose session spawned it (messaging, artifacts,
+    // memory scope) — unscoped only when no session context was given.
+    if (spawnerConversationId !== null) {
+      await mind.profiles.adoptTaskConversation(
+        taskConversationKey(task.id),
+        spawnerConversationId,
+      );
+    }
     json(200, task);
     return true;
   }

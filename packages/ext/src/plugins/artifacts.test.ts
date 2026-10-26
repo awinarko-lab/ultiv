@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import {
   artifactFile,
+  copyArtifact,
+  readArtifactInfo,
   clearArtifacts,
   deleteArtifact,
   listArtifacts,
@@ -97,5 +99,27 @@ describe("Artifact store", () => {
     const dir = tempDir();
     const info = writeArtifact(dir, { name: "blob", mime: "text/csv", content: "a,b" });
     expect(info.mime).toBe("text/csv");
+  });
+});
+
+describe("artifact grants", () => {
+  it("copies an artifact (blob + sidecar) between profile stores", () => {
+    const base = mkdtempSync(join(tmpdir(), "ultiv-grants-"));
+    try {
+      const fromDir = join(base, "guest", "sender");
+      const toDir = join(base, "guest", "recipient");
+      const info = writeArtifact(fromDir, {
+        name: "briefing.md",
+        content: "# hello",
+        conversationId: "1",
+        owner: "guest",
+        profile: "sender",
+      });
+      expect(copyArtifact(fromDir, toDir, info.id)).toBe(true);
+      expect(readArtifactInfo(toDir, info.id)?.name).toBe("briefing.md");
+      expect(copyArtifact(fromDir, toDir, "not-an-id")).toBe(false);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });

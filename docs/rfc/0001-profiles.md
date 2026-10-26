@@ -349,7 +349,10 @@ Also in this wave, from owner feedback:
 - **Session-pinned exchanges.** Every send records its origin conversation:
   an exchange started from a session tunnels back to that session, while the
   counterpart always works on their main thread.
-- **Per-pair exchange cap, acknowledged.** Tool-initiated sends between two
+- **Per-exchange cap, acknowledged.** The 3-send budget counts only since the owner's last real instruction on the sending thread (unbracketed input); wake chains are bracketed, so they accumulate to the cap while a fresh owner brief resets it. Human/REST/cron sends are exempt.
+- **Tasks run as their bot.** Task conversations are adopted under the spawner's profile scope (kind `task`), so background tasks can message, read/write artifacts and remember as their bot. They stay out of session lists.
+- **Artifact grants materialize.** Envelope grants copy the artifact (blob + sidecar) into the recipient's per-profile store at delivery, so `artifact_read` actually resolves granted ids.
+- **Per-pair exchange cap, acknowledged (superseded above).** Tool-initiated sends between two
   bots are capped at 3 per sender per sibling (all topics combined);
   human/REST/cron sends are exempt. The `message` tool output reports the
   remaining budget so a bot can acknowledge the limit and conclude.

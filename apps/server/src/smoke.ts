@@ -15,6 +15,8 @@ process.env.VAULT_KEY = "smoke-vault-key";
 const scratchVault = mkdtempSync(join(tmpdir(), "ultiv-smoke-vault-"));
 const scratchArtifacts = mkdtempSync(join(tmpdir(), "ultiv-smoke-artifacts-"));
 process.env.ARTIFACTS_DIR = scratchArtifacts;
+// Keep the audit trail hermetic: never append to a real var/audit.jsonl.
+process.env.AUDIT_LOG = join(scratchArtifacts, "audit.jsonl");
 
 const stack = await buildStack({ storage: new MemoryStorage(), vault: { dir: scratchVault } });
 await new Promise<void>((resolve, reject) => {

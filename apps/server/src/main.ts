@@ -10,6 +10,8 @@ import type { Storage } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
 import { WebSocketServer } from "ws";
 import { Ping } from "@ultiv/contracts";
+import { artifactsDir, copyArtifact } from "@ultiv/ext";
+import { join } from "node:path";
 import { httpPlugin } from "@ultiv/ext";
 import { openMind } from "@ultiv/mind";
 import { startScheduler, type CronScheduler } from "./cron.ts";
@@ -32,6 +34,16 @@ export async function buildStack(options?: {
     plugins: [httpPlugin],
     ...(options?.storage !== undefined ? { storage: options.storage } : {}),
     ...(options?.vault !== undefined ? { vault: options.vault } : {}),
+    // Envelope artifact grants materialize as file copies between the bots'
+    // per-profile stores (the mailbox calls this on delivery).
+    mailbox: {
+      grantArtifacts: async (owner, from, to, ids) => {
+        const base = artifactsDir();
+        for (const id of ids) {
+          copyArtifact(join(base, owner, from), join(base, owner, to), id);
+        }
+      },
+    },
   });
   const mind = handle.mind;
   const scheduler: CronScheduler = await startScheduler(mind);

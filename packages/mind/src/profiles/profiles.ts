@@ -92,6 +92,8 @@ export interface ProfilesService {
       readonly participants: readonly string[] | null;
     },
   ) => Promise<void>;
+  /** Bind a task conversation to its spawner's bot scope (kind "task"). */
+  readonly adoptTaskConversation: (key: string, spawnerConversationId: string) => Promise<void>;
   /** The owner's main bot — the default surface; exactly one at a time. */
   readonly mainOf: (owner: string) => Promise<string>;
   readonly setMain: (owner: string, profileId: string) => Promise<void>;
@@ -441,7 +443,7 @@ export const profilesService = (deps: {
           // Legacy pair-DM rows predate rooms; they were never the owner's
           // chats (and carried the shared-identity bug) — keep them out of
           // the list. DELETE /api/sessions/:id still removes them.
-          .filter((row) => row.kind !== "dm")
+          .filter((row) => row.kind !== "dm" && row.kind !== "task")
           .filter((row) =>
             profileId === undefined
               ? row.owner === owner
@@ -528,6 +530,18 @@ export const profilesService = (deps: {
       );
     },
     scopeOf: (conversationId) => scopeIndex.get(String(conversationId)),
+    /**
+     * Bind a background task's conversation to its SPAWNER's bot scope: the
+     * task runs AS that bot (identity section, messaging, artifacts, memory).
+     * No-op when the spawner is itself unscoped.
+     */
+    adoptTaskConversation: async (key, spawnerConversationId) => {
+      const scope = scopeIndex.get(String(spawnerConversationId));
+      if (scope === undefined) return;
+      const profile = await service.get(scope.owner, scope.profileId);
+      if (profile === undefined) return;
+      await ensureConversationFor(key, profile, { ...scope, kind: "task" });
+    },
     profileOf: (conversationId) => profileByConversation.get(String(conversationId)),
     agentFor: (profile): AgentChange => {
       const tools =

@@ -22,6 +22,7 @@ import type { ConverseService } from "../converse/converse.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 import type { RoomsService } from "../profiles/rooms.ts";
 import type { RoomInfo } from "@ultiv/contracts";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 
 export const MailboxDoc = defineDoc<{ items: MailboxEntry[] }>({
   kind: "ultiv.mailbox",
@@ -125,6 +126,7 @@ export interface MailboxService {
     owner: string,
     from: string,
     to: string,
+    originConversation?: string | null,
   ) => Promise<{ readonly used: number; readonly cap: number }>;
   /** Dead-lettered entries — the attention path reads this. */
   readonly dead: (owner: string) => Promise<MailboxList>;
@@ -202,11 +204,59 @@ const dayStart = (): number => {
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
 };
 
+/**
+ * When the owner last gave this conversation a REAL instruction (an input
+ * that is not bracketed machinery). The exchange cap counts sends after this
+ * moment, so every fresh owner brief opens a new exchange budget — while
+ * autonomous wake chains (bracketed inputs only) keep accumulating to the
+ * cap. 0 when unknown → conservative all-time counting.
+ */
+const lastBriefedAt = async (
+  converse: ConverseService,
+  conversationId: string | null,
+): Promise<number> => {
+  if (conversationId === null || conversationId === "") return 0;
+  try {
+    const chat = await run(converse.open(conversationId));
+    if (chat === undefined) return 0;
+    const view = await chat.viewState(BACKGROUND_CONTEXT);
+    const entries = view.value?.entries ?? [];
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      for (const message of (entries[index]?.model ?? []) as readonly unknown[]) {
+        const record = message as {
+          role?: string;
+          content?: unknown;
+          timestamp?: unknown;
+        };
+        if (record.role !== "user") continue;
+        const text = String(
+          (Array.isArray(record.content)
+            ? (record.content as readonly { text?: unknown }[])[0]?.text
+            : record.content) ?? "",
+        );
+        if (text.trim() !== "" && !text.trim().startsWith("[")) {
+          return typeof record.timestamp === "number" ? record.timestamp : 0;
+        }
+      }
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+};
+
 export const mailboxService = (deps: {
   readonly converse: ConverseService;
   readonly profiles: ProfilesService;
   readonly rooms: RoomsService;
   readonly audit: AuditService;
+  /** Materializes envelope artifact grants (copy into the recipient's store). */
+  readonly grantArtifacts?: (
+    owner: string,
+    from: string,
+    to: string,
+    ids: readonly string[],
+  ) => Promise<void>;
   readonly options?: {
     readonly globalLanes?: number;
     readonly profileLanes?: number;
@@ -316,6 +366,19 @@ export const mailboxService = (deps: {
         rooms.ensure(owner, [envelope.from, envelope.to], topic),
         readEntries(converse),
       ]);
+      // Envelope artifact grants materialize as copies into the recipient's
+      // store — otherwise "granted artifacts" are ids the recipient can't read.
+      if (
+        envelope.artifacts.length > 0 &&
+        !isExternal(envelope.from) &&
+        deps.grantArtifacts !== undefined
+      ) {
+        await deps
+          .grantArtifacts(owner, envelope.from, envelope.to, envelope.artifacts)
+          .catch((cause: unknown) => {
+            console.error("mailbox artifact grant failed:", cause);
+          });
+      }
       const endpointId = await endpointOf(owner, room, envelope.to, entries);
       const endpoint = await run(converse.open(endpointId));
       if (endpoint === undefined) throw new Error(`tunnel endpoint ${endpointId} unmapped`);
@@ -374,6 +437,7 @@ export const mailboxService = (deps: {
     chain: readonly string[],
     artifacts: readonly string[],
     origin: MailboxOrigin,
+    originConversation: string | null,
   ): Promise<void> => {
     if (from === to) throw new InvalidInput({ reason: "cannot message yourself" });
     if (chain.includes(to)) {
@@ -422,19 +486,24 @@ export const mailboxService = (deps: {
     if (origin === "tool") {
       // Ad-hoc exchanges don't run forever: each bot gets a fixed number of
       // sends per sibling (all topics combined), so back-and-forth converges.
+      // The window opens at the owner's LAST real instruction on the sending
+      // thread — a fresh brief resets the budget; autonomous wake chains
+      // (bracketed inputs only) accumulate to the cap.
+      const cutoff = await lastBriefedAt(converse, originConversation);
       const inRoom = entries.filter(
         (candidate) =>
           (candidate.owner ?? "") === owner &&
           candidate.origin !== "human" &&
           candidate.origin !== "cron" &&
           candidate.envelope.from === from &&
-          candidate.envelope.to === to,
+          candidate.envelope.to === to &&
+          candidate.envelope.at > cutoff,
       );
       if (inRoom.length >= ROOM_EXCHANGE_CAP) {
         throw new InvalidInput({
           reason:
-            `pair exchange cap reached (${ROOM_EXCHANGE_CAP} messages to this sibling) — ` +
-            "conclude the exchange here; if the owner needs more, they will re-brief you",
+            `exchange cap reached (${ROOM_EXCHANGE_CAP} messages to this sibling in this exchange) — ` +
+            "conclude here; a fresh instruction from your owner on this thread resets it",
         });
       }
     }
@@ -496,6 +565,7 @@ export const mailboxService = (deps: {
         [input.from],
         input.artifacts ?? [],
         input.origin,
+        input.originConversation ?? null,
       );
       const envelope: MailboxEnvelope = {
         id: randomUUID(),
@@ -515,7 +585,7 @@ export const mailboxService = (deps: {
       const sender = `external:${input.from.replace(/^external:/, "")}`;
       const chain = [...input.chain, sender];
       const topic = (input.topic ?? "").trim();
-      await validate(input.owner, sender, input.to, chain, [], "external");
+      await validate(input.owner, sender, input.to, chain, [], "external", null);
       const envelope: MailboxEnvelope = {
         id: randomUUID(),
         chain,
@@ -557,15 +627,17 @@ export const mailboxService = (deps: {
     },
     endpointOf: (owner, room, profileId) =>
       readEntries(converse).then((entries) => endpointOf(owner, room, profileId, entries)),
-    budgetOf: async (owner, from, to) => {
+    budgetOf: async (owner, from, to, originConversation = null) => {
       const entries = await readEntries(converse);
+      const cutoff = await lastBriefedAt(converse, originConversation);
       const used = entries.filter(
         (candidate) =>
           (candidate.owner ?? "") === owner &&
           candidate.origin !== "human" &&
           candidate.origin !== "cron" &&
           candidate.envelope.from === from &&
-          candidate.envelope.to === to,
+          candidate.envelope.to === to &&
+          candidate.envelope.at > cutoff,
       ).length;
       return { used, cap: ROOM_EXCHANGE_CAP };
     },

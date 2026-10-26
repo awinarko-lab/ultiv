@@ -99,6 +99,15 @@ export interface MindOptions {
   readonly generate?: GenerateOptions;
   /** Options for the vault (directory override). */
   readonly vault?: { readonly dir?: string };
+  /** Mailbox wiring; `grantArtifacts` materializes envelope artifact grants. */
+  readonly mailbox?: {
+    readonly grantArtifacts?: (
+      owner: string,
+      from: string,
+      to: string,
+      ids: readonly string[],
+    ) => Promise<void>;
+  };
 }
 
 /** Everything that can fail while booting the mind. */
@@ -108,6 +117,13 @@ export type MindError = External | ConfigError | Unavailable | Duplicate;
 interface MindWiring {
   readonly holder: ScopeHolder;
   readonly vaultStore: VaultStore | null;
+  /** Materializes mailbox envelope artifact grants (server copies files). */
+  readonly grantArtifacts?: (
+    owner: string,
+    from: string,
+    to: string,
+    ids: readonly string[],
+  ) => Promise<void>;
 }
 
 const mindLayerRaw = (
@@ -144,7 +160,13 @@ const mindLayerRaw = (
       });
       const profilesRef: ProfilesService = profiles;
       const rooms = roomsService({ converse });
-      const mailbox = mailboxService({ converse, profiles, rooms, audit });
+      const mailbox = mailboxService({
+        converse,
+        profiles,
+        rooms,
+        audit,
+        ...(wiring.grantArtifacts !== undefined ? { grantArtifacts: wiring.grantArtifacts } : {}),
+      });
       const memory = memoryService({ converse, profiles });
       // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
       // through the holder the registry was built with — set now that the
@@ -179,7 +201,9 @@ const mindLayerRaw = (
       piRegistry.install(act.extension());
       piRegistry.install(codemodeExtension());
       piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
-      piRegistry.install(defineExtension({ name: "ultius.mind.tasks", tools: taskTools(tasks) }));
+      piRegistry.install(
+        defineExtension({ name: "ultius.mind.tasks", tools: taskTools(tasks, profiles) }),
+      );
       piRegistry.install(
         defineExtension({
           name: "ultius.mind.mailbox",
@@ -229,7 +253,13 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
   // conversation→profile index exists. Same lifecycle for the vault store.
   const holder = createScopeHolder();
   const vaultStore = vaultConfigured() ? makeVaultStore(options.vault?.dir ?? vaultDir()) : null;
-  const wiring: MindWiring = { holder, vaultStore };
+  const wiring: MindWiring = {
+    holder,
+    vaultStore,
+    ...(options.mailbox?.grantArtifacts !== undefined
+      ? { grantArtifacts: options.mailbox.grantArtifacts }
+      : {}),
+  };
   const registry = Layer.effect(
     Registry,
     Effect.gen(function* () {

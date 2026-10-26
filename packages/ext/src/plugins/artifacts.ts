@@ -7,7 +7,15 @@
  * Metadata lives in the sidecar, so list/read need no database; ids are
  * UUIDs and are re-validated before ever touching a path.
  */
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Type } from "typebox";
@@ -127,6 +135,15 @@ export const readArtifactInfo = (dir: string, id: string): ArtifactInfo | undefi
   const sidecar = sidecarOf(dir, id);
   if (!existsSync(sidecar)) return undefined;
   return normalize(JSON.parse(readFileSync(sidecar, "utf8")) as ArtifactInfo);
+};
+
+/** Copy one artifact (blob + sidecar) between stores — envelope grants. */
+export const copyArtifact = (fromDir: string, toDir: string, id: string): boolean => {
+  if (!validId(id) || !existsSync(sidecarOf(fromDir, id))) return false;
+  mkdirSync(toDir, { recursive: true });
+  copyFileSync(blobOf(fromDir, id), blobOf(toDir, id));
+  copyFileSync(sidecarOf(fromDir, id), sidecarOf(toDir, id));
+  return true;
 };
 
 /** Delete one artifact (blob + sidecar); false when it was not there. */

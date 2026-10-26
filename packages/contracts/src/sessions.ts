@@ -6,6 +6,8 @@ export const SessionKindSchema = Type.Union([
   Type.Literal("session"),
   Type.Literal("dm"),
   Type.Literal("room"),
+  /** A background task conversation — inherits its spawner's bot scope. */
+  Type.Literal("task"),
 ]);
 
 export type SessionKind = Static<typeof SessionKindSchema>;

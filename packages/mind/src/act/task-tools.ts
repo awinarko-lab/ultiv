@@ -11,6 +11,8 @@ import { External } from "@ultiv/core";
 import { definePlugin, toolCapability, type Plugin, type Tool } from "@ultiv/ext";
 import { defineTool } from "@ultiv/ext";
 import type { TasksService } from "../tasks/tasks.ts";
+import { taskConversationKey } from "../tasks/tasks.ts";
+import type { ProfilesService } from "../profiles/profiles.ts";
 
 const SpawnParams = Type.Object({
   prompt: Type.String({
@@ -46,7 +48,7 @@ type SpawnReply =
 /** Agent-spawned tasks are filed under their own owner label. */
 const AGENT_OWNER = "agent";
 
-const spawnTool = (tasks: TasksService): Tool =>
+const spawnTool = (tasks: TasksService, profiles: ProfilesService): Tool =>
   defineTool({
     name: "task_spawn",
     description:
@@ -77,12 +79,23 @@ const spawnTool = (tasks: TasksService): Tool =>
               });
             }
             return Effect.map(
-              tasks.spawn({
-                sessionId: args.sessionId ?? "",
-                owner: AGENT_OWNER,
-                conversationId: spawningConversation,
-                prompt: args.prompt,
-              }),
+              Effect.flatMap(
+                tasks.spawn({
+                  sessionId: args.sessionId ?? "",
+                  owner: AGENT_OWNER,
+                  conversationId: spawningConversation,
+                  prompt: args.prompt,
+                }),
+                (spawned) =>
+                  // The task runs AS the spawning bot: messaging, artifacts
+                  // and memory scope flow through the spawner's profile.
+                  Effect.promise(() =>
+                    profiles.adoptTaskConversation(
+                      taskConversationKey(spawned.id),
+                      spawningConversation,
+                    ),
+                  ).pipe(Effect.as(spawned)),
+              ),
               (task) => ({
                 output: [
                   {
@@ -199,18 +212,18 @@ const listTool = (tasks: TasksService): Tool =>
   });
 
 /** The task tools in registry order. */
-export const taskTools = (tasks: TasksService): readonly Tool[] => [
-  spawnTool(tasks),
+export const taskTools = (tasks: TasksService, profiles: ProfilesService): readonly Tool[] => [
+  spawnTool(tasks, profiles),
   statusTool(tasks),
   cancelTool(tasks),
   listTool(tasks),
 ];
 
 /** The mind's background-task faculty as an installable plugin. */
-export const taskPlugin = (tasks: TasksService): Plugin =>
+export const taskPlugin = (tasks: TasksService, profiles: ProfilesService): Plugin =>
   definePlugin({
     id: "ultiv.mind.tasks",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "The mind's background tasks: spawn, track and read back its own sub-agent work.",
-    capabilities: taskTools(tasks).map(toolCapability),
+    capabilities: taskTools(tasks, profiles).map(toolCapability),
   });
