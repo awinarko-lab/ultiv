@@ -221,7 +221,6 @@ const WriteParams = Type.Object({
 const artifactWriteTool = (dirOf: (conversationId: string) => string, holder?: ScopeHolder): Tool =>
   defineTool({
     name: "artifact_write",
-    gated: true,
     description:
       "Write a file into the workspace the app can serve: reports, data, code, anything the " +
       "user should keep. Returns the artifact id clients fetch it by.",
@@ -336,9 +335,9 @@ export const artifactsPlugin = (options: ArtifactsOptions = {}): Plugin => {
     holder === undefined ? root : scopeDir(holder, conversationId, root);
   return definePlugin({
     id: "ultiv.artifacts",
-    version: "1.2.0",
+    version: "1.2.1",
     description:
-      "The artifact workspace: gated writes and deletes, reads, and session-scoped search, " +
+      "The artifact workspace: open writes, gated deletes, reads, and session-scoped search, " +
       "partitioned per profile when a scope resolver is wired.",
     capabilities: [
       toolCapability(artifactWriteTool(dirOf, holder)),
