@@ -100,121 +100,137 @@ function HomePage() {
   );
 
   return (
-    <main className="mx-auto flex h-dvh w-full max-w-3xl flex-col gap-3 p-4 pb-24 sm:p-8 sm:pb-8">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <h1 className="font-heading text-xl font-semibold tracking-tight">ultiv</h1>
-          <Badge variant="secondary">v{Ping.def.version}</Badge>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="bg-background max-w-44 rounded-md border px-2 py-1.5 text-sm"
-            value={profileId ?? ""}
-            onChange={(event) => setActiveId(event.target.value === "" ? null : event.target.value)}
-            aria-label="Chat with bot"
-          >
-            {profileId === null && <option value="">Loading…</option>}
-            {choosable.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name}
-                {profile.id === mainId ? " (main)" : ""}
-              </option>
-            ))}
-          </select>
-          {/* Desktop keeps the panels in the header; phones use the bottom bar. */}
-          <div className="hidden items-center gap-2 sm:flex">
-            {sessions.profiles.length > 0 && (
-              <Dialog>
-                <DialogTrigger
-                  render={
-                    <Button variant="outline" size="sm">
-                      <BotIcon /> Bots
-                    </Button>
-                  }
-                />
-                <DialogContent>
-                  <DialogTitle>Bots</DialogTitle>
-                  <div className="mt-3">{botsPanel}</div>
-                </DialogContent>
-              </Dialog>
-            )}
-            <RoomsPanel profiles={sessions.profiles} />
-            <VaultPanel profiles={sessions.profiles} />
-            <HistoryDialog sessions={sessions} />
+    <div className="flex h-dvh w-full">
+      {/* Desktop: the bots sidebar is persistent (pattern 2's profile sidebar). */}
+      <aside className="hidden w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r p-4 lg:flex">
+        <h2 className="text-muted-foreground text-xs font-semibold uppercase">Bots</h2>
+        {botsPanel}
+      </aside>
+      <main className="flex min-w-0 flex-1 flex-col gap-3 p-4 pb-24 sm:p-8 sm:pb-8">
+        <header className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <h1 className="font-heading text-xl font-semibold tracking-tight">ultiv</h1>
+            <Badge variant="secondary">v{Ping.def.version}</Badge>
           </div>
-        </div>
-      </header>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="bg-background max-w-44 rounded-md border px-2 py-1.5 text-sm"
+              value={profileId ?? ""}
+              onChange={(event) =>
+                setActiveId(event.target.value === "" ? null : event.target.value)
+              }
+              aria-label="Chat with bot"
+            >
+              {profileId === null && <option value="">Loading…</option>}
+              {choosable.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                  {profile.id === mainId ? " (main)" : ""}
+                </option>
+              ))}
+            </select>
+            {/* Desktop keeps the panels in the header; phones use the bottom bar. */}
+            <div className="hidden items-center gap-2 sm:flex">
+              {sessions.profiles.length > 0 && (
+                <Dialog>
+                  <DialogTrigger
+                    render={
+                      <Button variant="outline" size="sm" className="lg:hidden">
+                        <BotIcon /> Bots
+                      </Button>
+                    }
+                  />
+                  <DialogContent>
+                    <DialogTitle>Bots</DialogTitle>
+                    <div className="mt-3">{botsPanel}</div>
+                  </DialogContent>
+                </Dialog>
+              )}
+              <RoomsPanel profiles={sessions.profiles} />
+              <VaultPanel profiles={sessions.profiles} />
+              <HistoryDialog sessions={sessions} triggerClassName="xl:hidden" />
+            </div>
+          </div>
+        </header>
 
-      {/* The chat never unmounts — switching tabs only hides it (chord link stays). */}
-      <div
-        className={
-          tab === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden sm:flex min-h-0 flex-1 flex-col"
-        }
-      >
-        {sessions.profiles.length === 0 ? (
-          <OnboardingHome
-            models={sessions.models}
-            custom={botsPanel}
-            onCreated={async (id) => {
-              await refreshAll();
-              setActiveId(id);
-            }}
-          />
-        ) : chatId !== null ? (
-          <Chat sessionId={chatId} models={sessions.models} />
-        ) : (
-          <Card className="flex flex-1 items-center justify-center">
-            <CardContent className="text-muted-foreground text-sm">
-              {chatError !== null ? `Could not open the chat: ${chatError}` : "Opening the chat…"}
-            </CardContent>
-          </Card>
+        {/* The chat never unmounts — switching tabs only hides it (chord link stays). */}
+        <div
+          className={
+            tab === "chat"
+              ? "mx-auto flex w-full max-w-4xl min-h-0 flex-1 flex-col"
+              : "mx-auto hidden w-full max-w-4xl min-h-0 flex-1 flex-col sm:flex"
+          }
+        >
+          {sessions.profiles.length === 0 ? (
+            <OnboardingHome
+              models={sessions.models}
+              custom={botsPanel}
+              onCreated={async (id) => {
+                await refreshAll();
+                setActiveId(id);
+              }}
+            />
+          ) : chatId !== null ? (
+            <Chat sessionId={chatId} models={sessions.models} />
+          ) : (
+            <Card className="flex flex-1 items-center justify-center">
+              <CardContent className="text-muted-foreground text-sm">
+                {chatError !== null ? `Could not open the chat: ${chatError}` : "Opening the chat…"}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {tab === "bots" && sessions.profiles.length > 0 && (
+          <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">{botsPanel}</div>
         )}
-      </div>
+        {tab === "vault" && (
+          <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
+            <VaultContent profiles={sessions.profiles} />
+          </div>
+        )}
+        {tab === "history" && (
+          <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
+            <HistoryList sessions={sessions} onNavigate={() => setTab("chat")} />
+          </div>
+        )}
 
-      {tab === "bots" && sessions.profiles.length > 0 && (
-        <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">{botsPanel}</div>
-      )}
-      {tab === "vault" && (
-        <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
-          <VaultContent profiles={sessions.profiles} />
-        </div>
-      )}
-      {tab === "history" && (
-        <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
-          <HistoryList sessions={sessions} onNavigate={() => setTab("chat")} />
-        </div>
-      )}
-
-      <nav
-        aria-label="Sections"
-        className="bg-card fixed inset-x-0 bottom-0 z-40 flex border-t sm:hidden"
-      >
-        <TabButton
-          icon={MessagesSquareIcon}
-          label="Chat"
-          active={tab === "chat"}
-          onClick={() => setTab("chat")}
-        />
-        <TabButton
-          icon={BotIcon}
-          label="Bots"
-          active={tab === "bots"}
-          onClick={() => setTab("bots")}
-        />
-        <TabButton
-          icon={KeyRoundIcon}
-          label="Vault"
-          active={tab === "vault"}
-          onClick={() => setTab("vault")}
-        />
-        <TabButton
-          icon={HistoryIcon}
-          label="History"
-          active={tab === "history"}
-          onClick={() => setTab("history")}
-        />
-      </nav>
-    </main>
+        <nav
+          aria-label="Sections"
+          className="bg-card fixed inset-x-0 bottom-0 z-40 flex border-t sm:hidden"
+        >
+          <TabButton
+            icon={MessagesSquareIcon}
+            label="Chat"
+            active={tab === "chat"}
+            onClick={() => setTab("chat")}
+          />
+          <TabButton
+            icon={BotIcon}
+            label="Bots"
+            active={tab === "bots"}
+            onClick={() => setTab("bots")}
+          />
+          <TabButton
+            icon={KeyRoundIcon}
+            label="Vault"
+            active={tab === "vault"}
+            onClick={() => setTab("vault")}
+          />
+          <TabButton
+            icon={HistoryIcon}
+            label="History"
+            active={tab === "history"}
+            onClick={() => setTab("history")}
+          />
+        </nav>
+      </main>
+      {/* Wide desktop: history as a persistent rail instead of a dialog. */}
+      <aside className="hidden w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l p-4 xl:flex">
+        <h2 className="text-muted-foreground text-xs font-semibold uppercase">History</h2>
+        <HistoryList sessions={sessions} onNavigate={() => setTab("chat")} />
+      </aside>
+    </div>
   );
 }
 
@@ -327,13 +343,19 @@ function HistoryList({
 }
 
 /** The desktop header entry: history behind a dialog. */
-function HistoryDialog({ sessions }: { sessions: ReturnType<typeof useSessions> }) {
+function HistoryDialog({
+  sessions,
+  triggerClassName,
+}: {
+  sessions: ReturnType<typeof useSessions>;
+  triggerClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" className={triggerClassName}>
             <HistoryIcon /> History
           </Button>
         }

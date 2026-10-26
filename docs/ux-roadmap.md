@@ -73,3 +73,8 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
 
 Basics to fold in continuously (8): dark mode, Cmd-K palette, streaming with
 stable keys, a11y labels, empty/loading states.
+
+**Desktop full width** (Harry's add, 2026-10-26): the home is a three-column
+desktop layout — persistent Bots sidebar (lg+), capped chat center, History
+rail (xl+); header Bots/History dialog buttons appear only in the middle
+breakpoints; mobile keeps the bottom tab bar. Verified at 1440 / 800 / 390.
