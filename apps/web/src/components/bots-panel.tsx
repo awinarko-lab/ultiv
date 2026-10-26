@@ -186,14 +186,13 @@ function BotRow({
   onOpenMain: (profileId: string) => void;
 }) {
   const archived = bot.archivedAt !== null;
-  // The row is its own container: secondary info yields before the action
-  // icons ever overlap (the sidebar is only ~255px wide, the dialog ~700px).
+  // Two-line row: the name opens the bot's main chat; the actions live under
+  // the name, so they never fight the text for width. The row is its own
+  // container: secondary info yields before anything overlaps.
   return (
     <div
       className={
-        archived
-          ? "@container flex items-center gap-1 opacity-60"
-          : "@container flex items-center gap-1"
+        archived ? "@container flex flex-col gap-1 opacity-60" : "@container flex flex-col gap-1"
       }
     >
       <Button
@@ -216,83 +215,85 @@ function BotRow({
           </span>
         )}
       </Button>
-      {bot.id !== mainId && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0"
-          aria-label={`Make ${bot.name} the main bot`}
-          onClick={() => void act(() => api.setMain(bot.id))}
+      <div className="flex items-center gap-0.5 pl-2">
+        {bot.id !== mainId && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            aria-label={`Make ${bot.name} the main bot`}
+            onClick={() => void act(() => api.setMain(bot.id))}
+          >
+            <StarIcon />
+          </Button>
+        )}
+        <MemoryPanel profileId={bot.id} name={bot.name}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            aria-label={`What ${bot.name} remembers`}
+          >
+            <BrainIcon />
+          </Button>
+        </MemoryPanel>
+        <BotDialog
+          title={`Edit ${bot.name}`}
+          models={models}
+          initial={{
+            name: bot.name,
+            description: bot.description,
+            persona: bot.persona,
+            modelId: bot.model?.id ?? "",
+            effort: bot.model?.effort ?? "",
+          }}
+          confirm={async (form) => {
+            await api.updateProfile(bot.id, {
+              name: form.name.trim(),
+              ...(form.description !== "" ? { description: form.description } : {}),
+              ...(form.persona !== "" ? { persona: form.persona } : {}),
+              ...modelPayload(form),
+            });
+          }}
         >
-          <StarIcon />
-        </Button>
-      )}
-      <MemoryPanel profileId={bot.id} name={bot.name}>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0"
-          aria-label={`What ${bot.name} remembers`}
+          <Button variant="ghost" size="icon" className="shrink-0" aria-label={`Edit ${bot.name}`}>
+            <PencilIcon />
+          </Button>
+        </BotDialog>
+        {bot.id !== mainId && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            aria-label={archived ? `Unhide ${bot.name}` : `Hide ${bot.name}`}
+            onClick={() =>
+              void act(() => (archived ? api.unarchiveProfile(bot.id) : api.archiveProfile(bot.id)))
+            }
+          >
+            {archived ? <EyeIcon /> : <EyeOffIcon />}
+          </Button>
+        )}
+        <ConfirmDialog
+          title={`Delete ${bot.name}?`}
+          warning="This permanently removes the bot with all of their chats, memory and artifacts. It cannot be undone."
+          typed={bot.name}
+          confirmLabel="Delete bot"
+          onConfirm={async () => {
+            await api.deleteProfile(bot.id);
+            await refresh();
+          }}
         >
-          <BrainIcon />
-        </Button>
-      </MemoryPanel>
-      <BotDialog
-        title={`Edit ${bot.name}`}
-        models={models}
-        initial={{
-          name: bot.name,
-          description: bot.description,
-          persona: bot.persona,
-          modelId: bot.model?.id ?? "",
-          effort: bot.model?.effort ?? "",
-        }}
-        confirm={async (form) => {
-          await api.updateProfile(bot.id, {
-            name: form.name.trim(),
-            ...(form.description !== "" ? { description: form.description } : {}),
-            ...(form.persona !== "" ? { persona: form.persona } : {}),
-            ...modelPayload(form),
-          });
-        }}
-      >
-        <Button variant="ghost" size="icon" className="shrink-0" aria-label={`Edit ${bot.name}`}>
-          <PencilIcon />
-        </Button>
-      </BotDialog>
-      {bot.id !== mainId && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0"
-          aria-label={archived ? `Unhide ${bot.name}` : `Hide ${bot.name}`}
-          onClick={() =>
-            void act(() => (archived ? api.unarchiveProfile(bot.id) : api.archiveProfile(bot.id)))
-          }
-        >
-          {archived ? <EyeIcon /> : <EyeOffIcon />}
-        </Button>
-      )}
-      <ConfirmDialog
-        title={`Delete ${bot.name}?`}
-        warning="This permanently removes the bot with all of their chats, memory and artifacts. It cannot be undone."
-        typed={bot.name}
-        confirmLabel="Delete bot"
-        onConfirm={async () => {
-          await api.deleteProfile(bot.id);
-          await refresh();
-        }}
-      >
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0"
-          aria-label={`Remove ${bot.name}`}
-          disabled={!deletable}
-        >
-          <Trash2Icon />
-        </Button>
-      </ConfirmDialog>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            aria-label={`Remove ${bot.name}`}
+            disabled={!deletable}
+          >
+            <Trash2Icon />
+          </Button>
+        </ConfirmDialog>
+      </div>
     </div>
   );
 }

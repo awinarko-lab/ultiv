@@ -5,7 +5,7 @@
  * on phones (pattern 12: large targets, no hover-only controls). Deep links to
  * /sessions/$id still work for any individual session.
  */
-import { useNavigate, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { Ping } from "@ultiv/contracts";
 import { BotIcon, HistoryIcon, KeyRoundIcon, MessagesSquareIcon, Trash2Icon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
@@ -288,9 +288,10 @@ function TabButton({
 }
 
 /**
- * The session history rows + New session — shared by the dialog, the mobile
- * tab and the desktop rail. Picking a row pins that session into the home
- * chat (no navigation); New session still opens the full session page.
+ * The extra-session history rows + New session — shared by the dialog, the
+ * mobile tab and the desktop rail. Main chats never appear here (each bot's
+ * main chat IS the home screen). Picking a row pins that session into the
+ * home chat (no navigation); New session pins the fresh session too.
  */
 function HistoryList({
   sessions,
@@ -299,14 +300,13 @@ function HistoryList({
   sessions: ReturnType<typeof useSessions>;
   onSelect: (sessionId: string) => void;
 }) {
-  const navigate = useNavigate();
-  const ordered = [...sessions.sessions].sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  const ordered = sessions.sessions
+    .filter((session) => session.kind !== "main")
+    .sort((a, b) => b.lastMessageAt - a.lastMessageAt);
 
   const create = async (): Promise<void> => {
     const created = await sessions.create(null);
-    if (created !== undefined) {
-      await navigate({ to: "/sessions/$sessionId", params: { sessionId: created.id } });
-    }
+    if (created !== undefined) onSelect(created.id);
   };
 
   return (
@@ -320,7 +320,11 @@ function HistoryList({
         New session
       </Button>
       <div className="flex flex-col gap-1">
-        {ordered.length === 0 && <p className="text-muted-foreground text-sm">No sessions yet.</p>}
+        {ordered.length === 0 && (
+          <p className="text-muted-foreground text-sm">
+            No extra sessions yet — each bot's main chat lives on the home screen.
+          </p>
+        )}
         {ordered.map((session, index) => (
           <Fragment key={session.id}>
             {index > 0 && <Separator className="my-1" />}
@@ -330,33 +334,29 @@ function HistoryList({
                 className="min-w-0 flex-1 justify-between"
                 onClick={() => onSelect(session.id)}
               >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate">
-                    {session.title === "" ? "Untitled session" : session.title}
-                  </span>
-                  {session.kind === "main" && <Badge variant="outline">main chat</Badge>}
+                <span className="truncate">
+                  {session.title === "" ? "Untitled session" : session.title}
                 </span>
-                <time className="text-muted-foreground">
+                <time className="text-muted-foreground shrink-0 pl-2">
                   {new Date(session.lastMessageAt).toLocaleString()}
                 </time>
               </Button>
-              {session.kind !== "main" && (
-                <ConfirmDialog
-                  title="Delete session?"
-                  warning="The conversation and its transcript are removed. This cannot be undone."
-                  onConfirm={async () => {
-                    await sessions.remove(session.id);
-                  }}
+              <ConfirmDialog
+                title="Delete session?"
+                warning="The conversation and its transcript are removed. This cannot be undone."
+                onConfirm={async () => {
+                  await sessions.remove(session.id);
+                }}
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  aria-label={`Delete ${session.title === "" ? "session" : session.title}`}
                 >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Delete ${session.title === "" ? "session" : session.title}`}
-                  >
-                    <Trash2Icon />
-                  </Button>
-                </ConfirmDialog>
-              )}
+                  <Trash2Icon />
+                </Button>
+              </ConfirmDialog>
             </div>
           </Fragment>
         ))}
