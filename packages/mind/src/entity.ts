@@ -268,7 +268,17 @@ const mindLayerRaw = (
         describe: () => ({
           entity: ENTITY_NAME,
           decide: decide.available,
-          tools: act.tools().map((tool) => tool.name),
+          // The truth: registry plugins AND the late pi-registry installs
+          // (memory, schedules, history, tasks, mailbox) that act.tools() misses.
+          tools: [
+            ...new Set([
+              ...act.tools().map((tool) => tool.name),
+              ...piRegistry
+                .snapshot()
+                .tools()
+                .map(({ tool }) => tool.name),
+            ]),
+          ],
         }),
       };
     }),
