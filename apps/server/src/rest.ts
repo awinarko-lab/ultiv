@@ -121,6 +121,20 @@ async function route(args: RouteArgs): Promise<void> {
       .filter((event) => profile === undefined || event.profile === profile);
     return json(200, events);
   }
+  // Routine fire receipts — "did it actually fire?" is a lookup, not a guess.
+  if (path === "/api/routines/events" && method === "GET") {
+    const limit = Number(args.url.searchParams.get("limit") ?? "100");
+    const routine = queryOr(args, "routine");
+    const source = queryOr(args, "source");
+    return json(
+      200,
+      await mind.receipts.list({
+        ...(routine !== undefined ? { routineId: routine } : {}),
+        ...(source !== undefined ? { source: source as "cron" | "webhook" | "test" } : {}),
+        limit: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 400) : 100,
+      }),
+    );
+  }
   if (await profileRoutes(args)) return;
   if (await memoryRoutes(args)) return;
   if (await mailboxRoutes(args)) return;

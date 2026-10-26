@@ -8,7 +8,7 @@
 import { Type } from "typebox";
 import { defineTool, type Tool } from "@ultiv/ext";
 import type { CronJobInfo } from "@ultiv/contracts";
-import { isValidJobStart, type SchedulesService } from "./schedules.ts";
+import { isValidJobStart, nextFireTimes, type SchedulesService } from "./schedules.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 
 const scopeOfOrNone = (profiles: ProfilesService, conversationId: string) =>
@@ -21,6 +21,8 @@ const jobSummary = (job: CronJobInfo): Record<string, unknown> => ({
   enabled: job.enabled,
   failures: job.failures,
   lastError: job.lastError,
+  fireCount: job.fireCount ?? 0,
+  lastFiredAt: job.lastFiredAt ?? null,
 });
 
 const SetParams = Type.Object({
@@ -53,7 +55,7 @@ const setTool = (schedules: SchedulesService, profiles: ProfilesService): Tool =
       "When it fires, `prompt` arrives in your main chat as an input and you act on it. Use " +
       "`now` to ground times; cron renders in the profile's timezone.",
     parameters: SetParams,
-    structuredOutputSchema: Type.Object({ id: Type.String() }),
+    structuredOutputSchema: Type.Object({ id: Type.String(), next: Type.Array(Type.Number()) }),
     execute: async (args, api) => {
       const scope = profiles.scopeOf(String(api.conversationId));
       if (scope === undefined) {
@@ -80,14 +82,24 @@ const setTool = (schedules: SchedulesService, profiles: ProfilesService): Tool =
         prompt: args.prompt,
         ...(once !== null ? { once } : {}),
       });
+      // Creation-time preview: the author verifies "daily 9am" in the
+      // profile's timezone BEFORE trusting the schedule.
+      const profile = await profiles.get(scope.owner, scope.profileId);
+      const next = nextFireTimes(
+        { schedule, ...(once !== null ? { once } : {}) },
+        profile?.timezone,
+      );
+      const rendered = next.map((at) => new Date(at).toISOString()).join(", ");
       return {
         output: [
           {
             type: "text" as const,
-            text: `scheduled ${job.id}: ${once !== null ? `once at ${new Date(once).toISOString()}` : `cron "${schedule}"`} — delivers into ${main.id}`,
+            text:
+              `scheduled ${job.id}: ${once !== null ? `once at ${new Date(once).toISOString()}` : `cron "${schedule}"`} — delivers into ${main.id}` +
+              (next.length > 0 ? `\nnext fires: ${rendered} (verify this is what you meant)` : ""),
           },
         ],
-        structuredOutput: { id: job.id },
+        structuredOutput: { id: job.id, next },
       };
     },
   });
@@ -105,6 +117,8 @@ const listTool = (schedules: SchedulesService, profiles: ProfilesService): Tool 
         enabled: Type.Boolean(),
         failures: Type.Number(),
         lastError: Type.Union([Type.String(), Type.Null()]),
+        fireCount: Type.Number(),
+        lastFiredAt: Type.Union([Type.Number(), Type.Null()]),
       }),
     ),
     execute: async (_args, api) => {
@@ -127,6 +141,8 @@ const listTool = (schedules: SchedulesService, profiles: ProfilesService): Tool 
           enabled: job.enabled,
           failures: job.failures,
           lastError: job.lastError,
+          fireCount: job.fireCount ?? 0,
+          lastFiredAt: job.lastFiredAt ?? null,
         })),
       };
     },

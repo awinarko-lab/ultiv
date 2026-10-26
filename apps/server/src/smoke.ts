@@ -112,8 +112,64 @@ expect("artifact download", raw.status === 200 && (await raw.text()) === "# ok")
 
 const hook = await call("POST", "/api/webhooks", { sessionId: created.json.id });
 expect(
-  "webhook create + auth",
-  hook.status === 200 && (await call("POST", `/hooks/${hook.json.id}?token=x`, "b")).status === 404,
+  "webhook create + bad token is 401",
+  hook.status === 200 && (await call("POST", `/hooks/${hook.json.id}?token=x`, "b")).status === 401,
+);
+// The right token acks with a correlation id and leaves a fire receipt.
+const hookAck = await fetch(`${base}/hooks/${hook.json.id}?token=${hook.json.token}`, {
+  method: "POST",
+  body: JSON.stringify({ ping: 1 }),
+  headers: { "content-type": "application/json" },
+});
+const ackJson = (await hookAck.json()) as { ok: boolean; eventId: string };
+expect(
+  "webhook ack carries eventId",
+  hookAck.status === 200 && ackJson.ok === true && typeof ackJson.eventId === "string",
+);
+
+// Schema gate: mismatched payloads are 422 pre-ack; matching ones pass.
+const schemaHook = await call("POST", "/api/webhooks", {
+  sessionId: created.json.id,
+  name: "deploys",
+  schema: { type: "object", required: ["event"], properties: { event: { type: "string" } } },
+});
+expect("webhook with schema", schemaHook.status === 200 && schemaHook.json.schema !== null);
+const schemaReject = await call(
+  "POST",
+  `/hooks/${schemaHook.json.id}?token=${schemaHook.json.token}`,
+  { wrong: 1 },
+);
+expect("schema mismatch is 422", schemaReject.status === 422);
+const schemaAccept = await call(
+  "POST",
+  `/hooks/${schemaHook.json.id}?token=${schemaHook.json.token}`,
+  { event: "deploy" },
+);
+expect("schema match is acked", schemaAccept.status === 200);
+// Test-fire: the schema debugger — no delivery, receipted evidence.
+const testOk = await call("POST", `/api/webhooks/${schemaHook.json.id}/test`, {
+  payload: { event: "probe" },
+});
+const testBad = await call("POST", `/api/webhooks/${schemaHook.json.id}/test`, {
+  payload: { nope: true },
+});
+expect(
+  "test-fire validates schema",
+  testOk.status === 200 && testOk.json.accepted === true && testBad.json.accepted === false,
+);
+// Fire receipts: ingress left durable evidence a lookup can find.
+const receipts = await call(
+  "GET",
+  `/api/routines/events?routine=${schemaHook.json.id}`,
+  undefined,
+  { "x-ultiv-user": "smoker" },
+);
+expect(
+  "routine receipts recorded",
+  receipts.status === 200 &&
+    Array.isArray(receipts.json) &&
+    receipts.json.some((e: { status: string }) => e.status === "rejected") &&
+    receipts.json.some((e: { status: string }) => e.status === "accepted"),
 );
 
 const badCron = await call("POST", "/api/cron", { sessionId: "s", schedule: "nope", prompt: "x" });
@@ -123,6 +179,10 @@ const cron = await call("POST", "/api/cron", {
   schedule: "*/5 * * * *",
   prompt: "tick",
 });
+expect(
+  "cron create previews next fires",
+  cron.status === 200 && Array.isArray(cron.json.next) && cron.json.next.length === 3,
+);
 expect(
   "cron create + delete",
   cron.status === 200 && (await call("DELETE", `/api/cron/${cron.json.id}`)).json.ok === true,

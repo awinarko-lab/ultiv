@@ -17,6 +17,12 @@ export const CronJobInfoSchema = Type.Object({
   createdAt: Type.Number(),
   lastRunAt: Type.Union([Type.Number(), Type.Null()]),
   lastError: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * Fire receipts: every actual fire increments these (write-ahead receipt in
+   * the routine-events log), so a schedule that "never fired" is checkable.
+   */
+  fireCount: Type.Optional(Type.Number()),
+  lastFiredAt: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
 });
 
 export type CronJobInfo = Static<typeof CronJobInfoSchema>;

@@ -13,6 +13,7 @@ import { Ping } from "@ultiv/contracts";
 import { artifactsDir, copyArtifact } from "@ultiv/ext";
 import { join } from "node:path";
 import { httpPlugin } from "@ultiv/ext";
+import { closeWebhookPump } from "./webhooks.ts";
 import { openMind } from "@ultiv/mind";
 import { startScheduler, type CronScheduler } from "./cron.ts";
 import { principalFromRequest, type Principal } from "./identity.ts";
@@ -73,6 +74,9 @@ export async function buildStack(options?: {
 
   const close = async () => {
     scheduler.stop();
+    // Pending webhook windows first: a flush racing the mind's teardown
+    // would otherwise write into a closed session.
+    closeWebhookPump();
     // Drop connected links first: wss.close() waits for clients otherwise, so
     // one live browser tab would block shutdown (and node --watch restarts) forever.
     for (const client of wss.clients) client.terminate();

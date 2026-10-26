@@ -53,6 +53,9 @@ import { historyService, type HistoryService } from "./history/history.ts";
 import { historyTools } from "./history/tools.ts";
 import { schedulesService, type SchedulesService } from "./schedules/schedules.ts";
 import { scheduleTools } from "./schedules/tools.ts";
+import { receiptsService, type ReceiptsService } from "./routines/receipts.ts";
+import { webhooksService, type WebhooksService } from "./webhooks/webhooks.ts";
+import { webhookTools } from "./webhooks/tools.ts";
 import {
   Generate,
   generateLayer,
@@ -94,6 +97,10 @@ export interface MindService {
   readonly history: HistoryService;
   /** Self-set schedules: cron and one-shot wake-ups the entity owns. */
   readonly schedules: SchedulesService;
+  /** Routine fire receipts — the durable ledger that a trigger FIRED. */
+  readonly receipts: ReceiptsService;
+  /** Self-set inbound webhooks with schema validation and reject accounting. */
+  readonly webhooks: WebhooksService;
   /** The credential vault, when VAULT_KEY is configured; else null. */
   readonly vault: VaultStore | null;
   /** The append-only trail of the mind's acts. */
@@ -193,6 +200,8 @@ const mindLayerRaw = (
           ? { onChanged: wiring.onSchedulesChanged }
           : {}),
       });
+      const receipts = receiptsService({ converse });
+      const webhooks = webhooksService({ converse, profiles });
       // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
       // through the holder the registry was built with — set now that the
       // conversation→profile index exists.
@@ -246,6 +255,12 @@ const mindLayerRaw = (
       );
       piRegistry.install(
         defineExtension({
+          name: "ultius.mind.webhooks",
+          tools: webhookTools(webhooks, receipts, profiles),
+        }),
+      );
+      piRegistry.install(
+        defineExtension({
           name: "ultius.mind.history",
           tools: historyTools(history, profiles),
         }),
@@ -262,6 +277,8 @@ const mindLayerRaw = (
         mailbox,
         memory,
         schedules,
+        receipts,
+        webhooks,
         history,
         vault: wiring.vaultStore,
         audit,

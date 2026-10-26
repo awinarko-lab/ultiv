@@ -38,6 +38,8 @@ export const readCronJobs = async (converse: ConverseService): Promise<CronJobLi
     profile: job.profile ?? "default",
     failures: job.failures ?? 0,
     once: job.once ?? null,
+    fireCount: job.fireCount ?? 0,
+    lastFiredAt: job.lastFiredAt ?? null,
   }));
 
 export const writeCronJobs = (converse: ConverseService, items: CronJobInfo[]) =>
@@ -58,6 +60,32 @@ export const isValidSchedule = (schedule: string): boolean => {
     return valid;
   } catch {
     return false;
+  }
+};
+
+/**
+ * The next fire times of a job, epoch ms — the creation-time preview that
+ * lets the author verify "daily 9am" actually means what they think before
+ * the schedule commits. Recurring jobs use the profile's timezone; one-shot
+ * jobs are simply their `once` epoch.
+ */
+export const nextFireTimes = (
+  job: { schedule: string; once?: number | null },
+  timezone?: string,
+): number[] => {
+  if (job.once !== undefined && job.once !== null) return [job.once];
+  try {
+    const cron = new Cron(job.schedule, {
+      ...(timezone !== undefined ? { timezone } : {}),
+      startAt: new Date(Date.now() + 1_000),
+    });
+    const runs = (cron.nextRuns(3) ?? [])
+      .map((date) => date.getTime())
+      .filter((at) => Number.isFinite(at));
+    cron.stop();
+    return runs;
+  } catch {
+    return [];
   }
 };
 
@@ -93,6 +121,8 @@ export const createCronJob = async (
     createdAt: Date.now(),
     lastRunAt: null,
     lastError: null,
+    fireCount: 0,
+    lastFiredAt: null,
   };
   const items = await readCronJobs(converse);
   await Effect.runPromise(writeCronJobs(converse, [...items, job]));

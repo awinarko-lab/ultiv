@@ -1,5 +1,5 @@
 /** Cron routes: the registry, profile-stamped and rendered in the profile's timezone. */
-import { isValidJobStart } from "@ultiv/mind";
+import { isValidJobStart, nextFireTimes } from "@ultiv/mind";
 import { createCronJob, listCronJobs, removeCronJob } from "../cron.ts";
 import { queryOr, type RouteArgs } from "./types.ts";
 
@@ -39,7 +39,17 @@ export async function cronRoutes(
       prompt: body.prompt,
     });
     await scheduler.refresh();
-    json(200, job);
+    // Creation-time preview: the caller verifies the schedule means what
+    // they think (rendered in the profile's timezone) before trusting it.
+    const row = await mind.profiles.rowOf(job.sessionId);
+    const profile = row !== undefined ? await mind.profiles.get(row.owner, job.profile) : undefined;
+    json(200, {
+      ...job,
+      next: nextFireTimes(
+        { schedule: job.schedule, ...(job.once !== null ? { once: job.once } : {}) },
+        profile?.timezone,
+      ),
+    });
     return true;
   }
   if (path.startsWith("/api/cron/") && method === "DELETE") {

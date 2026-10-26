@@ -14,8 +14,10 @@ import {
   isValidSchedule,
   listCronJobs,
   readCronJobs,
+  recordRoutineFire,
   removeCronJob,
   removeCronJobsForSessions,
+  settleRoutineEvent,
   writeCronJobs,
 } from "@ultiv/mind";
 import { Effect } from "effect";
@@ -38,6 +40,7 @@ const setJobOutcome = async (
     failuresReset?: boolean;
     failures?: number;
     disable?: boolean;
+    fired?: boolean;
   },
 ): Promise<void> => {
   const items = await readCronJobs(mind.converse);
@@ -53,6 +56,8 @@ const setJobOutcome = async (
           lastError: outcome.lastError,
           failures,
           enabled: outcome.disable === true ? false : job.enabled,
+          fireCount: (job.fireCount ?? 0) + (outcome.fired === true ? 1 : 0),
+          lastFiredAt: outcome.fired === true ? outcome.lastRunAt : (job.lastFiredAt ?? null),
         };
       }),
     ),
@@ -70,8 +75,15 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 
 const armedJob = (mind: MindService, job: CronJobInfo, scheduler: CronScheduler): Cron => {
   const fire = async (): Promise<void> => {
+    // WRITE-AHEAD: the fire receipt exists before the delivery — a crash
+    // mid-flight leaves a visible "accepted" receipt, never silence.
+    const eventId = await recordRoutineFire(mind.converse, {
+      routineId: job.id,
+      source: "cron",
+    });
     try {
       await deliverToSession(mind, job.sessionId, `[cron ${job.id}] ${job.prompt}`);
+      await settleRoutineEvent(mind.converse, eventId, "delivered");
       // A one-shot's whole purpose is that single delivery — retire it.
       if (job.once !== undefined && job.once !== null) {
         await removeCronJob(mind.converse, job.id);
@@ -80,16 +92,20 @@ const armedJob = (mind: MindService, job: CronJobInfo, scheduler: CronScheduler)
           lastRunAt: Date.now(),
           lastError: null,
           failuresReset: true,
+          fired: true,
         });
       }
     } catch (cause) {
       const failures = job.failures + 1;
       const error = String(cause).slice(0, 300);
       const disable = failures >= MAX_CONSECUTIVE_FAILURES;
+      await settleRoutineEvent(mind.converse, eventId, "failed", error);
       await setJobOutcome(mind, job.id, {
         lastRunAt: Date.now(),
         lastError: error,
         failures,
+        // A failed one-shot must DEAD-LETTER, not vanish or retry forever:
+        // disable it (job stays listed, visibly dead) after the cap.
         ...(disable ? { disable } : {}),
       });
       if (disable) {

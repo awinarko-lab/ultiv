@@ -83,11 +83,9 @@ export const defaultPolicies = (): ProfilePolicies => ({
 });
 
 export const defaultTimezone = (): string => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
-  } catch {
-    return "UTC";
-  }
+  // The owner's day is WIB (GMT+7): the default profile timezone is pinned
+  // to Asia/Jakarta unless explicitly set otherwise at creation/patch.
+  return "Asia/Jakarta";
 };
 
 export const validTimezone = (tz: string): boolean => {
