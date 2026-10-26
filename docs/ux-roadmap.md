@@ -63,8 +63,13 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
   out to be the prompt-side fallback for missing artifact ids in
   `session.ts` `withAttachments`, not a UI label — nothing to fix there.
   Remaining: fold the panel into profile tabs when pattern 1 lands.
-- **12 — Phone-first layout** (L): bottom tab bar, large targets, no
-  hover-only controls — the UI is usually reached over Tailscale from a phone.
+- **12 — Phone-first layout** (L): core DONE — phones get a bottom tab bar
+  (Chat / Bots / Vault / History) with real views instead of dialogs; the chat
+  only hides when you leave its tab (the chord link stays mounted); form
+  controls are 16px on small screens so iOS doesn't zoom on focus. Desktop is
+  unchanged. Remaining: per-bot notification switch (no notification system
+  exists yet to switch), and a 44px tap-target audit of the remaining icon
+  buttons.
 
 Basics to fold in continuously (8): dark mode, Cmd-K palette, streaming with
 stable keys, a11y labels, empty/loading states.

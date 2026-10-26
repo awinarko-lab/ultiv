@@ -134,3 +134,12 @@
 .root {
   isolation: isolate;
 }
+
+/* Phones: form controls at 16px so iOS Safari doesn't zoom on focus. */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
