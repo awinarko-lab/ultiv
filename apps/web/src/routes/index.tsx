@@ -314,7 +314,12 @@ function HistoryList({
       <Button
         variant="outline"
         size="sm"
-        disabled={sessions.phase !== "live"}
+        disabled={sessions.phase !== "live" || sessions.profiles.length === 0}
+        title={
+          sessions.profiles.length === 0
+            ? "Spawn a bot first — sessions attach to a bot"
+            : undefined
+        }
         onClick={() => void create()}
       >
         New session
