@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { defineDocFamily } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
-import { InvalidInput } from "@ultiv/core";
+import { InvalidInput, NotFound } from "@ultiv/core";
 import type { MemoryRecord } from "@ultiv/contracts";
 import type { ConverseService } from "../converse/converse.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
@@ -53,6 +53,8 @@ export interface MemoryService {
     profileId?: string,
   ) => Promise<MemoryRecord[]>;
   readonly removeProfile: (owner: string, profileId: string) => Promise<number>;
+  /** Remove one profile-scope record — the human's per-item delete. */
+  readonly remove: (owner: string, profileId: string, recordId: string) => Promise<void>;
 }
 
 export const memoryService = (deps: {
@@ -132,6 +134,15 @@ export const memoryService = (deps: {
         await writeStore(profileKey(owner, profileId), []);
         return records.length;
       }),
+    remove: async (owner, profileId, recordId) => {
+      const key = profileKey(owner, profileId);
+      const records = await readStore(key);
+      const next = records.filter((record) => record.id !== recordId);
+      if (next.length === records.length) {
+        throw new NotFound({ what: `memory record ${recordId}` });
+      }
+      await writeStore(key, next);
+    },
   };
   return service;
 };

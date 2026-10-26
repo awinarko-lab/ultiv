@@ -146,6 +146,16 @@ export async function profileRoutes(args: RouteArgs): Promise<boolean> {
     );
     return true;
   }
+  const memoryRecord = rest.match(/^\/memory\/([^/]+)$/);
+  if (memoryRecord !== null && method === "DELETE") {
+    try {
+      await mind.memory.remove(args.owner, id, memoryRecord[1] ?? "");
+      json(200, { ok: true });
+    } catch (cause) {
+      json(404, { error: errorOf(cause) });
+    }
+    return true;
+  }
   if (rest === "/export" && method === "GET") {
     json(200, await exportBundle(args, id));
     return true;

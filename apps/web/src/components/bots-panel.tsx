@@ -6,9 +6,18 @@
  * turn from those details. Hiding is the safe option: reversible, and it only
  * moves the bot under "Hidden". Delete purges everything and asks for the name.
  */
-import { BotIcon, EyeIcon, EyeOffIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
+import {
+  BotIcon,
+  BrainIcon,
+  EyeIcon,
+  EyeOffIcon,
+  PencilIcon,
+  StarIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { MemoryPanel } from "@/components/memory-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -203,6 +212,11 @@ function BotRow({
           <StarIcon />
         </Button>
       )}
+      <MemoryPanel profileId={bot.id} name={bot.name}>
+        <Button variant="ghost" size="icon" aria-label={`What ${bot.name} remembers`}>
+          <BrainIcon />
+        </Button>
+      </MemoryPanel>
       <BotDialog
         title={`Edit ${bot.name}`}
         models={models}

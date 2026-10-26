@@ -1,4 +1,5 @@
 import type {
+  MemoryRecord,
   ModelInfo,
   ProfileInfo,
   RoomInfo,
@@ -84,6 +85,18 @@ export interface PendingApprovalRow {
   input: unknown;
 }
 
+/** One row of GET /api/artifacts — a file a bot made (or the owner uploaded). */
+export interface ArtifactRow {
+  id: string;
+  name: string;
+  mime: string;
+  bytes: number;
+  createdAt: number;
+  conversationId: string | null;
+  owner: string | null;
+  profile: string | null;
+}
+
 export const api = {
   sessions: (profile?: string): Promise<SessionInfo[]> =>
     getJson<SessionInfo[]>(
@@ -122,6 +135,15 @@ export const api = {
     send<{ ok: boolean }>(`/api/profiles/${encodeURIComponent(id)}/main`, "POST"),
   mainChat: (profileId: string): Promise<SessionInfo> =>
     getJson<SessionInfo>(`/api/profiles/${encodeURIComponent(profileId)}/main`),
+  profileMemory: (id: string): Promise<MemoryRecord[]> =>
+    getJson<MemoryRecord[]>(`/api/profiles/${encodeURIComponent(id)}/memory`),
+  profileMemoryAdd: (id: string, text: string): Promise<MemoryRecord> =>
+    send<MemoryRecord>(`/api/profiles/${encodeURIComponent(id)}/memory`, "POST", { text }),
+  profileMemoryRemove: (id: string, recordId: string): Promise<boolean> =>
+    drop(`/api/profiles/${encodeURIComponent(id)}/memory/${encodeURIComponent(recordId)}`),
+  artifacts: (profile: string): Promise<ArtifactRow[]> =>
+    getJson<ArtifactRow[]>(`/api/artifacts?profile=${encodeURIComponent(profile)}`),
+  artifactUrl: (id: string): string => `${base()}/api/artifacts/${encodeURIComponent(id)}`,
   room: (id: string): Promise<RoomDetail> =>
     getJson<RoomDetail>(`/api/rooms/${encodeURIComponent(id)}`),
   roomSay: (id: string, to: string, text: string): Promise<{ ok: boolean }> =>

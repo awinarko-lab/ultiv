@@ -38,8 +38,13 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
   (Take over button).
 - **11 — First-run onboarding** (M): template bots, "what can this bot do"
   checklist, suggestion chips under an empty chat.
-- **10 — Memory view per profile** (M): per-item edit/delete + artifacts shelf
-  (fix "(unknown)" attachment names first).
+- **10 — Memory view per profile** (M): DONE as a per-bot panel — "What X
+  remembers" on every bot row: list / add / per-item forget (new
+  `mind.memory.remove` + `DELETE /api/profiles/:id/memory/:recordId`) and an
+  artifacts shelf with downloads. The review's "(unknown)" attachments turned
+  out to be the prompt-side fallback for missing artifact ids in
+  `session.ts` `withAttachments`, not a UI label — nothing to fix there.
+  Remaining: fold the panel into profile tabs when pattern 1 lands.
 - **12 — Phone-first layout** (L): bottom tab bar, large targets, no
   hover-only controls — the UI is usually reached over Tailscale from a phone.
 
