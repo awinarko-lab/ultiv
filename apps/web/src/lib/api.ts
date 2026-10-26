@@ -97,6 +97,13 @@ export interface ArtifactRow {
   profile: string | null;
 }
 
+/** One row of GET /api/tasks/:id/activity — progress, waiting gate, conversation. */
+export interface TaskActivity {
+  conversationId: string | null;
+  waiting: { callId: string; name: string; input: unknown } | null;
+  steps: { kind: string; at: number; text: string }[];
+}
+
 export const api = {
   sessions: (profile?: string): Promise<SessionInfo[]> =>
     getJson<SessionInfo[]>(
@@ -160,6 +167,16 @@ export const api = {
     }),
   remove: (id: string): Promise<boolean> => drop(`/api/sessions/${encodeURIComponent(id)}`),
   tasks: (): Promise<TaskInfo[]> => getJson<TaskInfo[]>("/api/tasks"),
+  taskActivity: (id: string): Promise<TaskActivity> =>
+    getJson<TaskActivity>(`/api/tasks/${encodeURIComponent(id)}/activity`),
+  approvalDecide: (conversationId: string, callId: string, approved: boolean): Promise<boolean> =>
+    send<boolean>(
+      `/api/approvals/${encodeURIComponent(conversationId)}/${encodeURIComponent(callId)}`,
+      "POST",
+      { approved },
+    ),
+  artifactsFor: (conversationId: string): Promise<ArtifactRow[]> =>
+    getJson<ArtifactRow[]>(`/api/artifacts?conversationId=${encodeURIComponent(conversationId)}`),
   pendingApprovals: (): Promise<PendingApprovalRow[]> =>
     getJson<PendingApprovalRow[]>("/api/approvals"),
   removeTask: (id: string): Promise<boolean> => drop(`/api/tasks/${encodeURIComponent(id)}`),

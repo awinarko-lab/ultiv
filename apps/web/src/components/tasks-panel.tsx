@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { TaskInfo } from "@ultiv/contracts";
 import { api } from "@/lib/api";
+import { TaskActivityDialog } from "@/components/task-activity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -69,9 +70,15 @@ export function TasksPanel({ conversationId }: { conversationId: string | null }
             className="flex items-center gap-2 rounded-md border bg-card/50 px-2.5 py-1.5 text-xs"
           >
             <Badge variant={statusVariant[task.status]}>{task.status}</Badge>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {task.prompt.slice(0, 90)}
-            </span>
+            <TaskActivityDialog task={task}>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground min-w-0 flex-1 cursor-pointer truncate text-left"
+                title={task.prompt}
+              >
+                {task.prompt.slice(0, 90)}
+              </button>
+            </TaskActivityDialog>
             {task.status === "running" ? (
               <Button variant="outline" size="xs" onClick={() => void remove(task.id)}>
                 Stop

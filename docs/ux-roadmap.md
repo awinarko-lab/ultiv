@@ -38,7 +38,11 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
   /sessions/$id; deep links intact; empty state spawns the first bot.
   Remaining: profile tabs (Activity/Scheduled/Memory/Files) once the views
   exist — the memory panel is ready to move in.
-- **9 — Activity view per task** (M): progress, files, results.
+- **9 — Activity view per task** (M): DONE — every task row opens an activity
+  dialog: progress (the task conversation's projected tail via the new
+  `GET /api/tasks/:id/activity`), the result/error when settled, files made
+  (artifacts by conversation), and any approval waiting on the task with
+  Approve/Deny inline. Polls at 2.5 s while open.
 - **4 — Three outcomes for actions** (M): proceed / approve / "you do it"
   (Take over button).
 - **11 — First-run onboarding** (M): template bots, "what can this bot do"

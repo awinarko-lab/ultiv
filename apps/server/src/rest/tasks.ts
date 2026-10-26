@@ -1,7 +1,35 @@
-/** Task routes: spawn/status/list/remove over the mind's tasks faculty. */
+/** Task routes: spawn/status/list/remove/activity over the mind's tasks faculty. */
+import type { LiveState } from "@earendil-works/pi-durable";
 import { taskConversationKey } from "@ultiv/mind";
+import { projectTranscript } from "@ultiv/mind";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { TranscriptEntry } from "@ultiv/contracts";
 import { Effect } from "effect";
 import { queryOr, type RouteArgs } from "./types.ts";
+
+function liveOf(view: unknown): LiveState | undefined {
+  const docs = (view as { docs?: Record<string, unknown> }).docs;
+  return docs?.["pi.live"] as LiveState | undefined;
+}
+
+/** A compact, size-capped step for the activity view (no full tool dumps). */
+function compactSteps(entries: readonly TranscriptEntry[]): {
+  kind: string;
+  at: number;
+  text: string;
+}[] {
+  return entries.slice(-14).map((entry) => {
+    if (entry.kind === "tool") {
+      const output = entry.step.output;
+      return {
+        kind: "tool",
+        at: entry.at,
+        text: `${entry.step.name}${output ? ` → ${output.slice(0, 300)}` : " …"}`,
+      };
+    }
+    return { kind: entry.kind, at: entry.at, text: entry.text.slice(0, 400) };
+  });
+}
 
 export async function taskRoutes(
   args: RouteArgs,
@@ -44,6 +72,39 @@ export async function taskRoutes(
       );
     }
     json(200, task);
+    return true;
+  }
+  // The activity view: progress (projected transcript tail), the task's own
+  // conversation id (files hang off it), and any approval waiting on it.
+  // Before the generic single-task branch, which would otherwise shadow it.
+  const activity = path.match(/^\/api\/tasks\/([^/]+)\/activity$/);
+  if (activity !== null && method === "GET") {
+    const id = activity[1] ?? "";
+    const task = await Effect.runPromise(mind.tasks.get(id));
+    if (task === undefined) {
+      json(404, { error: "unknown task" });
+      return true;
+    }
+    const conversationId =
+      (await Effect.runPromise(mind.converse.conversationIdOf(taskConversationKey(id)))) ?? null;
+    let waiting: { callId: string; name: string; input: unknown } | null = null;
+    let steps: { kind: string; at: number; text: string }[] = [];
+    if (conversationId !== null) {
+      const pending = mind.approvals.pendingFor(conversationId)[0];
+      if (pending !== undefined) {
+        waiting = { callId: pending.callId, name: pending.name, input: pending.input };
+      }
+      const chat = await Effect.runPromise(mind.converse.open(conversationId));
+      if (chat !== undefined) {
+        const value = (await chat.viewState(BACKGROUND_CONTEXT)).value;
+        if (value !== undefined) {
+          steps = compactSteps(
+            projectTranscript(value.entries, liveOf(value), task.status === "running"),
+          );
+        }
+      }
+    }
+    json(200, { conversationId, waiting, steps });
     return true;
   }
   if (path.startsWith("/api/tasks/") && method === "GET") {
