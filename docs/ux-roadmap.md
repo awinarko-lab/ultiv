@@ -31,8 +31,13 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
 
 ## Wave 3 — then (M/L)
 
-- **1 — One chat per profile as the home screen** (M): profile switcher on top,
-  Activity/Scheduled/Memory/Files as profile tabs; other panels move behind it.
+- **1 — One chat per profile as the home screen** (M): DONE for the core —
+  home IS the active bot's main chat (main bot by default, switcher on top,
+  chat swaps in place on switch); Bots/Rooms/Vault/History live behind header
+  dialogs; a shared `Chat` component serves both home and
+  /sessions/$id; deep links intact; empty state spawns the first bot.
+  Remaining: profile tabs (Activity/Scheduled/Memory/Files) once the views
+  exist — the memory panel is ready to move in.
 - **9 — Activity view per task** (M): progress, files, results.
 - **4 — Three outcomes for actions** (M): proceed / approve / "you do it"
   (Take over button).

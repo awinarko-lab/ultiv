@@ -1,12 +1,10 @@
 import { Link, useNavigate, createFileRoute } from "@tanstack/react-router";
+import { Chat } from "@/components/chat";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RoomsPanel } from "@/components/rooms-panel";
-import { SessionView } from "@/components/session-view";
-import { TasksPanel } from "@/components/tasks-panel";
 import { useSessions } from "@/lib/use-sessions";
-import { useSession } from "@/lib/use-session";
 
 export const Route = createFileRoute("/sessions/$sessionId")({
   component: SessionPage,
@@ -14,7 +12,6 @@ export const Route = createFileRoute("/sessions/$sessionId")({
 
 function SessionPage() {
   const { sessionId } = Route.useParams();
-  const session = useSession(sessionId);
   const sessions = useSessions();
   const navigate = useNavigate();
 
@@ -52,27 +49,12 @@ function SessionPage() {
           )}
         </div>
       </header>
-      <TasksPanel conversationId={session.conversationId} />
-      <SessionView
-        link={session.link}
-        transcript={session.transcript}
-        phase={session.phase}
-        lastError={session.lastError}
-        pending={session.pending}
-        usage={session.usage}
-        model={session.model}
-        effort={session.effort}
-        models={sessions.models}
-        onInput={session.input}
-        onDecide={session.decide}
-        onConfigure={session.configure}
-        onInterrupt={session.interrupt}
-      />
+      <Chat sessionId={sessionId} models={sessions.models} />
       <Link
         className="w-fit text-sm text-muted-foreground underline-offset-4 hover:underline"
         to="/"
       >
-        ← All sessions
+        ← Home
       </Link>
     </main>
   );

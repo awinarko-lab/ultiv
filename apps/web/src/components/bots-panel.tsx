@@ -183,7 +183,7 @@ function BotRow({
   models: ModelInfo[];
   act: (run: () => Promise<unknown>) => Promise<void>;
   refresh: () => Promise<void>;
-  onOpenMain: (profileId: string) => Promise<void>;
+  onOpenMain: (profileId: string) => void;
 }) {
   const archived = bot.archivedAt !== null;
   return (
@@ -292,7 +292,7 @@ export function BotsPanel({
   models: ModelInfo[];
   mainId: string | null;
   refresh: () => Promise<void>;
-  onOpenMain: (profileId: string) => Promise<void>;
+  onOpenMain: (profileId: string) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   // Which bots have a gate waiting on the owner (polled — REST has no push).
