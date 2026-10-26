@@ -21,10 +21,13 @@ and Meta's Muse against our web app. Effort: S small, M medium, L large.
   releases pending cards (each waiter denied) instead of leaving them active.
   Remaining: expiry tuning for background asks, and `always` support in the
   REST approval inbox.
-- **2 — Live task updates** (M): still polling (3 s tasks, 250 ms approvals in
-  the session projection). Needs a push path (REST has none — chord
-  replicated-object attach desyncs, so SSE/long-poll on REST is the option).
-  The Stop affordance exists in the composer and tasks panel.
+- **2 — Sidebar badge** (S): DONE — bots with a pending approval show a
+  destructive "needs you" badge (polls the owner-scoped
+  `GET /api/approvals` inbox every 5 s; Hide landed in wave 1).
+- **Push instead of poll** (M): still polling (3 s tasks, 5 s badge, 250 ms
+  approvals in the session projection). Needs a push path (REST has none —
+  chord replicated-object attach desyncs, so SSE/long-poll on REST is the
+  option). The Stop affordance exists in the composer and tasks panel.
 
 ## Wave 3 — then (M/L)
 
