@@ -3,7 +3,7 @@ import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueuedChips } from "./queued-chips.tsx";
 import { canSend } from "./send-button.tsx";
-import { queueLabel } from "../lib/queue-text.ts";
+import { queueLabel, turnActivity } from "../lib/queue-text.ts";
 
 const QUEUED = [
   { id: "7", text: "also check the weather", mode: "steer" as const },
@@ -35,6 +35,40 @@ describe("QueuedChips", () => {
     expect(html).toContain("Will send at the next step");
     expect(html).toContain("Will send after it finishes");
     expect(html).toContain('aria-label="Cancel queued message: then book it"');
+  });
+
+  it("tells the truth about when a steered message lands", () => {
+    const tool = {
+      id: 1,
+      kind: "tool" as const,
+      at: 0,
+      step: {
+        callId: "c",
+        name: "web_search",
+        status: "running" as const,
+        input: null,
+        output: null,
+        durationMs: null,
+      },
+    };
+    const writing = { id: 2, kind: "output" as const, at: 0, text: "Here is", streaming: true };
+    expect(turnActivity([tool])).toBe("working");
+    expect(turnActivity([tool, writing])).toBe("writing");
+    expect(turnActivity([])).toBe("working");
+    expect(queueLabel("steer", false, "writing")).toBe("Will answer right after this reply");
+    expect(queueLabel("steer", false, "working")).toBe("Will send at the next step");
+    expect(queueLabel("followUp", false, "writing")).toBe("Will send after it finishes");
+    expect(queueLabel("steer", true, "writing")).toBe("Waiting for your approval first");
+    const html = renderToStaticMarkup(
+      <QueuedChips
+        queued={QUEUED}
+        approvalPending={false}
+        activity="writing"
+        onWithdraw={() => {}}
+      />,
+    );
+    expect(html).toContain("Will answer right after this reply");
+    expect(html).toContain("Pending message: also check the weather");
   });
 
   it("says an approval comes first, and renders nothing when the queue is empty", () => {

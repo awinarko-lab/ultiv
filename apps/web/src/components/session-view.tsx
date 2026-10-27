@@ -19,6 +19,7 @@ import { QueuedChips } from "@/components/queued-chips";
 import { ChatHeader, type ChatBot, type LinkState } from "@/components/chat-header";
 import { TranscriptItems } from "@/components/transcript-items";
 import { describeTool } from "@/lib/approval-text";
+import { turnActivity } from "@/lib/queue-text";
 import { aboveComposer, useChatScroll } from "@/lib/use-chat-scroll";
 
 /**
@@ -117,7 +118,7 @@ export function SessionView({
   model: string | null;
   effort: ThinkingLevel | null;
   models: ModelInfo[];
-  /** Messages waiting for the running turn, shown as chips above the composer. */
+  /** Messages waiting for the running turn, shown as pending bubbles at the end of the transcript. */
   queued?: readonly QueuedInput[];
   onInput: (text: string, whenBusy?: WhenBusy) => Promise<void>;
   onWithdraw?: (id: string) => Promise<void>;
@@ -135,6 +136,7 @@ export function SessionView({
     transcript,
     busy,
     pending,
+    queued,
   ]);
 
   const control = (action: () => Promise<void>): void => {
@@ -178,6 +180,15 @@ export function SessionView({
             ) : (
               busy && <StatusRow bot={bot} transcript={transcript} pending={pending} />
             )}
+            {/* Sent while busy: pending bubbles, in order, until the turn picks them up. */}
+            {onWithdraw !== undefined && (
+              <QueuedChips
+                queued={queued}
+                approvalPending={pending !== null}
+                activity={turnActivity(transcript)}
+                onWithdraw={(id) => control(() => onWithdraw(id))}
+              />
+            )}
           </ul>
         </ScrollArea>
       </div>
@@ -208,13 +219,6 @@ export function SessionView({
         {lastError !== null && <p className={floatingError}>{lastError}</p>}
         {controlError !== null && (
           <p className={floatingError}>Couldn't apply that: {controlError}</p>
-        )}
-        {onWithdraw !== undefined && (
-          <QueuedChips
-            queued={queued}
-            approvalPending={pending !== null}
-            onWithdraw={(id) => control(() => onWithdraw(id))}
-          />
         )}
         <Composer
           botName={bot?.name}
