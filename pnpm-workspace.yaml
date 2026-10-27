@@ -8,6 +8,8 @@ packages:
 allowBuilds:
   "@google/genai": false
   protobufjs: false
+  "@mongodb-js/zstd": false
+  node-liblzma: false
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@1.4.0
   vite-plus: 1.4.0
