@@ -143,7 +143,11 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
     <>
       {!configured && (
         <p className="text-destructive mt-2 text-sm">
-          The vault isn't set up on the server yet, so nothing can be saved.
+          The vault isn't set up on the server yet, so nothing can be saved. To turn it on, add a
+          long random <code className="font-mono">VAULT_KEY</code> to the repo's{" "}
+          <code className="font-mono">.env</code> (for example{" "}
+          <code className="font-mono">openssl rand -hex 32</code>), restart the server, and back the
+          key up — losing it makes every saved item unreadable.
         </p>
       )}
       <div className="mt-3 flex flex-col gap-2">
