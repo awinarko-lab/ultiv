@@ -13,6 +13,7 @@
  * Parts: store.ts (the doc), wake.ts (the parent wake).
  */
 import { randomUUID } from "node:crypto";
+import type { Conversation, Submission } from "@earendil-works/pi-durable";
 import { Context, Effect, Layer } from "effect";
 import { External } from "@ultiv/core";
 import type { TaskInfo, TaskList } from "@ultiv/contracts";
@@ -59,6 +60,12 @@ export interface TasksService {
   readonly remove: (
     id: string,
   ) => Effect.Effect<{ readonly removed: boolean; readonly cancelled: boolean }, External>;
+  /**
+   * Steer a RUNNING task with new instructions, like the owner steering a
+   * chat: the text lands at the task's next step (or right after its current
+   * reply). "not_running" when the task is unknown or already settled.
+   */
+  readonly message: (id: string, text: string) => Effect.Effect<"sent" | "not_running", External>;
   /** True when the conversation belongs to a background task: tasks cannot spawn sub-tasks. */
   readonly isTaskConversation: (conversationId: string) => Effect.Effect<boolean, External>;
   /**
@@ -76,10 +83,22 @@ const RESUME_NOTE =
   "[resume] You were interrupted by a server restart. Continue the task from where the " +
   "transcript left off and produce the final deliverable now.";
 
+/** Framing the task sees once, above its brief (the row keeps the raw prompt). */
+export const TASK_BRIEF =
+  "[task brief] You are a background task your bot started; your final reply is the result " +
+  "it receives. A [from parent] line is a new instruction from it — follow it.";
+
+/** The wake prefix a parent bot's task_message arrives under, in the task's chat. */
+export const FROM_PARENT = "[from parent]";
+
 /** Mutable wiring shared by the service's parts. */
 interface TaskRuntime {
   readonly converse: ConverseService;
   binder: TaskBinder | null;
+  /** Parent messages admitted into a running task, settled before it reports. */
+  readonly followers: Map<string, Submission[]>;
+  /** Tasks past their last drain: new messages are refused, not lost. */
+  readonly closing: Set<string>;
 }
 
 /** Ensure and bind the task's conversation before any turn reaches it. */
@@ -97,6 +116,46 @@ const bindTask = async (
 };
 
 /**
+ * Settle the parent messages a task received while it ran. A message steered
+ * into the run settles with the same answer; one that arrived as the reply
+ * was ending starts its own turn — its answer becomes the task's result.
+ */
+const drainFollowers = async (
+  rt: TaskRuntime,
+  id: string,
+  conversation: Conversation,
+  text: string,
+): Promise<string> => {
+  let latest = text;
+  const queue = (): Submission[] => rt.followers.get(id) ?? [];
+  for (let pass = 0; pass < 2; pass += 1) {
+    // The second pass runs after `closing` is set: nothing can slip in after it.
+    if (pass === 1) rt.closing.add(id);
+    while (queue().length > 0) {
+      const next = queue().shift() as Submission;
+      const settled = await Effect.runPromise(rt.converse.settle(conversation, next));
+      if (settled.text.trim() !== "") latest = settled.text;
+    }
+  }
+  return latest;
+};
+
+/** Admit a parent message into a running task's conversation (steer semantics). */
+const messageTask =
+  (rt: TaskRuntime): TasksService["message"] =>
+  (id, text) =>
+    Effect.gen(function* () {
+      const task = yield* findTask(rt.converse, id);
+      if (task === undefined || task.status !== "running" || rt.closing.has(id)) {
+        return "not_running" as const;
+      }
+      const conversation = yield* rt.converse.ensure(taskConversationKey(id));
+      const submission = yield* rt.converse.submit(conversation, `${FROM_PARENT} ${text}`, "steer");
+      rt.followers.set(id, [...(rt.followers.get(id) ?? []), submission]);
+      return "sent" as const;
+    });
+
+/**
  * Settles a spawned (or resumed) task in the background: the registry doc
  * carries the outcome and the spawning conversation is woken with it. A
  * cancellation wins over both outcomes: once the doc says "cancelled", the
@@ -107,7 +166,8 @@ const runTask = (rt: TaskRuntime, task: TaskInfo, prompt: string): void => {
   void (async () => {
     try {
       const conversation = await Effect.runPromise(converse.ensure(taskConversationKey(task.id)));
-      const result = await Effect.runPromise(converse.turn(conversation, prompt));
+      const first = await Effect.runPromise(converse.turn(conversation, prompt));
+      const result = { text: await drainFollowers(rt, task.id, conversation, first.text) };
       await Effect.runPromise(
         updateTask(converse, task.id, (current) =>
           current.status === "cancelled"
@@ -131,6 +191,8 @@ const runTask = (rt: TaskRuntime, task: TaskInfo, prompt: string): void => {
         ),
       ).catch(() => undefined);
     }
+    rt.followers.delete(task.id);
+    rt.closing.delete(task.id);
     await wakeParent(converse, task.id);
   })();
 };
@@ -195,7 +257,7 @@ const spawnTask =
       yield* Effect.flatMap(readTasks(rt.converse), (tasks) =>
         writeTasks(rt.converse, [...tasks, task]),
       );
-      runTask(rt, task, input.prompt);
+      runTask(rt, task, `${TASK_BRIEF}\n\n${input.prompt}`);
       return task;
     });
 
@@ -220,13 +282,19 @@ const resumeRunning = async (rt: TaskRuntime): Promise<void> => {
 };
 
 export const tasksService = (converse: ConverseService): TasksService => {
-  const rt: TaskRuntime = { converse, binder: null };
+  const rt: TaskRuntime = {
+    converse,
+    binder: null,
+    followers: new Map(),
+    closing: new Set(),
+  };
   let attached = false;
   return {
     spawn: spawnTask(rt),
     get: (id) => findTask(converse, id),
     list: () => readTasks(converse),
     cancel: (id) => cancelTask(converse, id),
+    message: messageTask(rt),
     remove: (id) =>
       Effect.gen(function* () {
         const task = yield* findTask(converse, id);

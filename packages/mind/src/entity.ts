@@ -41,6 +41,7 @@ import { temporalPlugin } from "./act/temporal.ts";
 import { Audit, auditLayer, type AuditService } from "./audit/audit.ts";
 import { Converse, converseLayer, type ConverseService } from "./converse/converse.ts";
 import { PiRegistry, piRegistryLayer } from "./converse/pi-registry.ts";
+import { runningTasksSection } from "./act/task-live.ts";
 import { Tasks, tasksLayer, type TasksService } from "./tasks/tasks.ts";
 import { profilesService, type ProfilesService } from "./profiles/profiles.ts";
 import { profilesExtension } from "./profiles/section.ts";
@@ -250,7 +251,11 @@ const mindLayerRaw = (
       piRegistry.install(codemodeExtension());
       piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
       piRegistry.install(
-        defineExtension({ name: "ultius.mind.tasks", tools: taskTools(tasks, profiles) }),
+        defineExtension({
+          name: "ultius.mind.tasks",
+          tools: taskTools(tasks, profiles),
+          sections: [runningTasksSection(tasks, profiles)],
+        }),
       );
       piRegistry.install(
         defineExtension({

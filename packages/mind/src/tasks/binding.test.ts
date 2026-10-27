@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
 import { MemoryStorage } from "@earendil-works/pi-durable";
 import type { TaskInfo } from "@ultiv/contracts";
-import { tasksVisibleTo } from "../act/task-tools.ts";
+import { runningTasksText, tasksVisibleTo } from "../act/task-live.ts";
 import { openMind, type MindHandle } from "../entity.ts";
 import { TasksDoc, taskConversationKey } from "./tasks.ts";
 
@@ -129,5 +129,16 @@ describe("Tasks run as their bot", () => {
       "legacy",
     ]);
     expect(tasksVisibleTo(profiles, "unscoped", list)).toEqual([]);
+  });
+
+  it("the running-tasks prompt line names id, title and a stable start time", () => {
+    const at = Date.UTC(2026, 9, 28, 7, 5);
+    const text = runningTasksText(
+      [row("t1", "main-a", { title: "Flight prices", createdAt: at })],
+      "Asia/Jakarta",
+    );
+    expect(text).toContain('- t1 "Flight prices" (started 14:05)');
+    expect(text).toContain("task_message");
+    expect(runningTasksText([], "Asia/Jakarta")).toBeUndefined();
   });
 });
