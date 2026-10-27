@@ -125,8 +125,10 @@ const reasonOf = (cause: unknown, scrub: (text: string) => string, stderr: strin
   if (code === "ENOENT") return "the command was not found on this machine";
   if (code === "ECONNREFUSED" || /ECONNREFUSED/.test(message))
     return "nothing is listening at that address";
+  const status = statusOf(cause);
+  const http = status === undefined ? "" : ` (the server answered HTTP ${status})`;
   const tail = scrub(stderr).trim().split("\n").slice(-2).join(" ").slice(0, 200);
-  return tail === "" ? message : `${message} (stderr: ${tail})`;
+  return `${message.replace(/:\s*$/, "")}${http}${tail === "" ? "" : ` (stderr: ${tail})`}`;
 };
 
 interface Live {

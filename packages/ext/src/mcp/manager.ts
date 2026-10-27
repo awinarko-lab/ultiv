@@ -189,7 +189,11 @@ const makeCore = (options: McpManagerOptions): Core => {
         : {
             store: oauthStore,
             pending: makeOAuthPending(),
-            redirectFor: (owner, id) => redirects.get(keyOf(owner, id)) ?? defaultRedirectUrl(),
+            // The last sign-in's redirect wins, so a restart keeps the registered client.
+            redirectFor: (owner, id) =>
+              redirects.get(keyOf(owner, id)) ??
+              oauthStore.read(owner, id).clientRedirect ??
+              defaultRedirectUrl(),
             onSecretForms: (owner, id, forms) => {
               const entry = entries.get(keyOf(owner, id));
               entry?.scrubber.add(forms);
