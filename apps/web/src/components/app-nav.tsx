@@ -10,13 +10,14 @@ import {
   HistoryIcon,
   KeyRoundIcon,
   MessageCircleIcon,
+  PlugIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useApp } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 
-type Section = "/" | "/bots" | "/vault" | "/routines" | "/history" | "/rooms";
+type Section = "/" | "/bots" | "/vault" | "/connectors" | "/routines" | "/history" | "/rooms";
 
 interface NavItem {
   to: Section;
@@ -30,6 +31,7 @@ const ITEMS: readonly NavItem[] = [
   { to: "/", label: "Chat", icon: MessageCircleIcon, phone: true },
   { to: "/bots", label: "Bots", icon: BotIcon, phone: true },
   { to: "/vault", label: "Vault", icon: KeyRoundIcon, phone: true },
+  { to: "/connectors", label: "Connectors", icon: PlugIcon, phone: false },
   { to: "/routines", label: "Routines", icon: BellIcon, phone: true },
   { to: "/history", label: "History", icon: HistoryIcon, phone: true },
   { to: "/rooms", label: "Bot talks", icon: UsersIcon, phone: false },

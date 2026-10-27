@@ -10,6 +10,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   PlusIcon,
+  PlugIcon,
   SettingsIcon,
   StarIcon,
   UsersIcon,
@@ -146,6 +147,12 @@ export function BotSwitcher({
                   <UsersIcon className="size-4" />
                 </span>
                 <span className="text-sm font-medium">Bot talks</span>
+              </Popover.Close>
+              <Popover.Close className={row} onClick={() => void navigate({ to: "/connectors" })}>
+                <span className="bg-muted inline-flex size-7 items-center justify-center rounded-full">
+                  <PlugIcon className="size-4" />
+                </span>
+                <span className="text-sm font-medium">Connectors</span>
               </Popover.Close>
               <Popover.Close className={row} onClick={() => void navigate({ to: "/bots" })}>
                 <span className="bg-muted inline-flex size-7 items-center justify-center rounded-full">

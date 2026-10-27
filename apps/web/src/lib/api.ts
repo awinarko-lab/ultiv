@@ -3,6 +3,10 @@ import type {
   CredentialBinding,
   CredentialBindingInput,
   CronJobInfo,
+  McpConnectReply,
+  McpServerInfo,
+  McpServerInput,
+  McpServerList,
   MemoryRecord,
   ModelInfo,
   ProfileInfo,
@@ -186,6 +190,19 @@ export const api = {
     send<{ ok: boolean }>(`/api/rooms/${encodeURIComponent(id)}/say`, "POST", { to, text }),
   mailboxCancel: (id: string): Promise<unknown> =>
     send<unknown>(`/api/mailbox/${encodeURIComponent(id)}/cancel`, "POST", {}),
+  mcpServers: (): Promise<McpServerList> => getJson<McpServerList>("/api/mcp/servers"),
+  mcpAdd: (input: McpServerInput): Promise<McpServerInfo> =>
+    send<McpServerInfo>("/api/mcp/servers", "POST", input),
+  mcpUpdate: (id: string, input: McpServerInput): Promise<McpServerInfo> =>
+    send<McpServerInfo>(`/api/mcp/servers/${encodeURIComponent(id)}`, "PATCH", input),
+  mcpRemove: (id: string): Promise<boolean> => drop(`/api/mcp/servers/${encodeURIComponent(id)}`),
+  mcpReconnect: (id: string): Promise<McpServerInfo> =>
+    send<McpServerInfo>(`/api/mcp/servers/${encodeURIComponent(id)}/reconnect`, "POST"),
+  /** Start sign-in: open the returned url (null = already signed in). */
+  mcpConnect: (id: string): Promise<McpConnectReply> =>
+    send<McpConnectReply>(`/api/mcp/servers/${encodeURIComponent(id)}/connect`, "POST"),
+  mcpSignOut: (id: string): Promise<McpServerInfo> =>
+    send<McpServerInfo>(`/api/mcp/servers/${encodeURIComponent(id)}/signout`, "POST"),
   vault: (): Promise<VaultItemInfo[]> => getJson<VaultItemInfo[]>("/api/vault"),
   vaultCreate: (item: Record<string, unknown>): Promise<VaultItemInfo> =>
     send<VaultItemInfo>("/api/vault", "POST", item),
