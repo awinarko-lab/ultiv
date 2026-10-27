@@ -4,17 +4,18 @@
  * plus the workspace-wide owner memory (not editable here — that store belongs
  * to the whole workspace). Human writes are always allowed (writer: null).
  */
-import { DownloadIcon, Trash2Icon } from "lucide-react";
+import { DownloadIcon, PinIcon, SparklesIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { MemoryRecord } from "@ultiv/contracts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DevDetails } from "@/components/ui/dev-details";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { api, type ArtifactRow } from "@/lib/api";
+import { api, type ArtifactRow, type MemoryV2Line, type MemoryV2State } from "@/lib/api";
 import { formatWhen } from "@/lib/format";
 
 const formatBytes = (n: number): string =>
@@ -59,20 +60,24 @@ export function MemoryPanel({
   const [records, setRecords] = useState<MemoryRecord[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactRow[]>([]);
   const [state, setState] = useState<{ key: string; value: string; updatedAt: number }[]>([]);
+  const [v2, setV2] = useState<MemoryV2State | null>(null);
   const [draft, setDraft] = useState("");
+  const [coreDraft, setCoreDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      const [memory, files, kv] = await Promise.all([
+      const [memory, files, kv, v2State] = await Promise.all([
         api.profileMemory(profileId),
         api.artifacts(profileId),
         api.stateOf(profileId),
+        api.memoryV2(profileId).catch(() => null),
       ]);
       setRecords(Array.isArray(memory) ? memory : []);
       setArtifacts(Array.isArray(files) ? files : []);
       setState(Array.isArray(kv) ? kv : []);
+      setV2(v2State);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -164,6 +169,150 @@ export function MemoryPanel({
             {busy ? "Saving…" : "Remember"}
           </Button>
         </form>
+        <Separator className="my-4" />
+        <SectionHeader title="Core memory" />
+        <p className="text-muted-foreground mt-1 text-xs">
+          The few lines that sit in every prompt — always in context.
+        </p>
+        <div className="mt-2 flex flex-col gap-1.5">
+          {(v2 === null ? [] : [...v2.core.owner, ...v2.core.profile]).length === 0 && (
+            <p className="text-muted-foreground text-sm">
+              Empty. Core lines are always in {name}'s context, so keep them short and few.
+            </p>
+          )}
+          {(v2 === null ? [] : [...v2.core.owner, ...v2.core.profile]).map((line: MemoryV2Line) => (
+            <div
+              key={line.id}
+              className="flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-sm"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="break-words">{line.text}</p>
+                {line.pinned && (
+                  <span className="text-muted-foreground mt-1 flex items-center gap-1 text-xs">
+                    <PinIcon className="size-3" /> pinned
+                  </span>
+                )}
+              </div>
+              <ConfirmDialog
+                title="Remove this core line?"
+                warning="The bot stops seeing it from its next turn. This cannot be undone."
+                onConfirm={async () => {
+                  await api.memoryCoreRemove(line.id, profileId);
+                  await load();
+                }}
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remove core line: ${line.text.slice(0, 40)}`}
+                >
+                  <Trash2Icon />
+                </Button>
+              </ConfirmDialog>
+            </div>
+          ))}
+        </div>
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (coreDraft.trim() === "") return;
+            setBusy(true);
+            void api
+              .memoryCoreAdd(coreDraft.trim(), profileId)
+              .then(() => {
+                setCoreDraft("");
+                return load();
+              })
+              .finally(() => setBusy(false));
+          }}
+        >
+          <Input
+            className="flex-1"
+            aria-label="A core line"
+            placeholder="A short line always in context…"
+            value={coreDraft}
+            onChange={(event) => setCoreDraft(event.target.value)}
+          />
+          <Button
+            type="submit"
+            variant="outline"
+            size="sm"
+            disabled={busy || coreDraft.trim() === ""}
+          >
+            Add
+          </Button>
+        </form>
+        <Separator className="my-4" />
+        <SectionHeader title="Tidy suggestions" />
+        <p className="text-muted-foreground mt-1 text-xs">
+          The Sunday tidy proposes; nothing changes until you accept.
+        </p>
+        <div className="mt-2 flex flex-col gap-2">
+          {v2 !== null && v2.openCount > 0 && (
+            <Badge variant="secondary" className="w-fit">
+              <SparklesIcon className="size-3" /> {v2.openCount} open
+            </Badge>
+          )}
+          {(v2?.proposals ?? []).filter((proposal) => proposal.status === "open").length === 0 && (
+            <p className="text-muted-foreground text-sm">No suggestions right now.</p>
+          )}
+          {(v2?.proposals ?? [])
+            .filter((proposal) => proposal.status === "open")
+            .map((proposal) => (
+              <div key={proposal.id} className="rounded-lg border px-2.5 py-2 text-sm">
+                <p className="break-words">{proposal.summary}</p>
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void api
+                        .memoryProposalDecide(proposal.id, "accept", profileId)
+                        .then(() => load());
+                    }}
+                  >
+                    Accept
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      void api
+                        .memoryProposalDecide(proposal.id, "reject", profileId)
+                        .then(() => load());
+                    }}
+                  >
+                    Not now
+                  </Button>
+                </div>
+              </div>
+            ))}
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                void api.memoryTidyRun().then(() => load());
+              }}
+            >
+              Run tidy now
+            </Button>
+            <ConfirmDialog
+              title="Purge forgotten facts?"
+              warning="Every forgotten fact loses its text for good. Tombstones stay, but the words are gone. This cannot be undone."
+              confirmLabel="Purge"
+              onConfirm={async () => {
+                await api.memoryPurge(profileId);
+                await load();
+              }}
+            >
+              <Button variant="ghost" size="sm" className="text-destructive">
+                Purge forgotten
+              </Button>
+            </ConfirmDialog>
+          </div>
+        </div>
         <Separator className="my-4" />
         <SectionHeader title="Already handled" />
         <div className="mt-2 flex flex-col gap-2">

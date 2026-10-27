@@ -153,6 +153,39 @@ export interface TaskActivity {
   }[];
 }
 
+/** GET /api/memory/v2 — the v2 store: facts, entities, core, tidy proposals. */
+export interface MemoryV2Proposal {
+  id: string;
+  kind: string;
+  at: number;
+  factIds: string[];
+  summary: string;
+  status: "open" | "accepted" | "rejected";
+}
+export interface MemoryV2Line {
+  id: string;
+  text: string;
+  pinned: boolean;
+  at: number;
+}
+export interface MemoryV2Fact {
+  id: string;
+  text: string;
+  status: "current" | "superseded" | "archived" | "forgotten";
+  kind: string;
+  tags: string[];
+  importance: number;
+  trust: string;
+  createdAt: number;
+}
+export interface MemoryV2State {
+  facts: MemoryV2Fact[];
+  entities: { id: string; name: string; type: string; aliases: string[] }[];
+  core: { owner: MemoryV2Line[]; profile: MemoryV2Line[] };
+  proposals: MemoryV2Proposal[];
+  openCount: number;
+}
+
 export const api = {
   sessions: (profile?: string): Promise<SessionInfo[]> =>
     getJson<SessionInfo[]>(
@@ -198,6 +231,36 @@ export const api = {
     send<MemoryRecord>(`/api/profiles/${encodeURIComponent(id)}/memory`, "POST", { text }),
   profileMemoryRemove: (id: string, recordId: string): Promise<boolean> =>
     drop(`/api/profiles/${encodeURIComponent(id)}/memory/${encodeURIComponent(recordId)}`),
+  memoryV2: (profile?: string): Promise<MemoryV2State> =>
+    getJson<MemoryV2State>(`/api/memory/v2?profile=${encodeURIComponent(profile ?? "owner")}`),
+  memoryProposalDecide: (
+    id: string,
+    verdict: "accept" | "reject",
+    profile?: string,
+  ): Promise<{ id: string; status: string }> =>
+    send<{ id: string; status: string }>(
+      `/api/memory/v2/proposals/${encodeURIComponent(id)}/${verdict}?profile=${encodeURIComponent(profile ?? "owner")}`,
+      "POST",
+    ),
+  memoryCoreAdd: (text: string, profile?: string): Promise<MemoryV2Line> =>
+    send<MemoryV2Line>(
+      `/api/memory/v2/core?profile=${encodeURIComponent(profile ?? "owner")}`,
+      "POST",
+      {
+        text,
+      },
+    ),
+  memoryCoreRemove: (lineId: string, profile?: string): Promise<boolean> =>
+    drop(
+      `/api/memory/v2/core/${encodeURIComponent(lineId)}?profile=${encodeURIComponent(profile ?? "owner")}`,
+    ),
+  memoryPurge: (profile?: string): Promise<{ purged: number }> =>
+    send<{ purged: number }>(
+      `/api/memory/purge?profile=${encodeURIComponent(profile ?? "owner")}`,
+      "POST",
+    ),
+  memoryTidyRun: (): Promise<{ proposals: number }> =>
+    send<{ proposals: number }>("/api/memory/tidy/run", "POST"),
   artifacts: (profile: string): Promise<ArtifactRow[]> =>
     getJson<ArtifactRow[]>(`/api/artifacts?profile=${encodeURIComponent(profile)}`),
   artifactUrl: (id: string): string => `${base()}/api/artifacts/${encodeURIComponent(id)}`,
