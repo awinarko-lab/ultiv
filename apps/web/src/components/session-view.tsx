@@ -7,6 +7,7 @@ import type {
   ThinkingLevel,
   TranscriptEntry,
   UsageSummary,
+  WhenBusy,
 } from "@ultiv/contracts";
 import { ArrowDownIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,17 +43,18 @@ function useAnnouncement(
 }
 
 /** The draft and sending it. A failed send keeps the draft and offers a retry. */
-function useSend(onInput: (text: string) => Promise<void>, busy: boolean) {
+function useSend(onInput: (text: string, whenBusy?: WhenBusy) => Promise<void>) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendFailed, setSendFailed] = useState(false);
-  const run = async (): Promise<void> => {
+  // While the bot works a send joins its turn (or waits for it): busy does not block.
+  const run = async (whenBusy?: WhenBusy): Promise<void> => {
     const text = draft.trim();
-    if (text === "" || busy || sending) return;
+    if (text === "" || sending) return;
     setSending(true);
     setSendFailed(false);
     try {
-      await onInput(text);
+      await onInput(text, whenBusy);
       // Clear only what was sent — anything typed meanwhile stays.
       setDraft((current) => (current.trim() === text ? "" : current));
     } catch {
@@ -117,7 +119,7 @@ export function SessionView({
   models: ModelInfo[];
   /** Messages waiting for the running turn, shown as chips above the composer. */
   queued?: readonly QueuedInput[];
-  onInput: (text: string) => Promise<void>;
+  onInput: (text: string, whenBusy?: WhenBusy) => Promise<void>;
   onWithdraw?: (id: string) => Promise<void>;
   onDecide: Decide;
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => Promise<void>;
@@ -126,7 +128,7 @@ export function SessionView({
   tasks?: React.ReactNode;
 }) {
   const busy = phase === "working";
-  const { draft, setDraft, sending, sendFailed, run } = useSend(onInput, busy);
+  const { draft, setDraft, sending, sendFailed, run } = useSend(onInput);
   // Control failures (model/effort/stop) are reported above the composer.
   const [controlError, setControlError] = useState<string | null>(null);
   const { transcriptRef, footerRef, footerHeight, atBottom, jumpToLatest } = useChatScroll([
@@ -222,7 +224,7 @@ export function SessionView({
           sendFailed={sendFailed}
           draft={draft}
           onDraft={setDraft}
-          onSend={() => void run()}
+          onSend={(whenBusy) => void run(whenBusy)}
           onStop={() => control(onInterrupt)}
         />
       </footer>

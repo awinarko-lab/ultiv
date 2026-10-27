@@ -2,10 +2,14 @@
  * The pill composer: a round "+" (quick prompts) on the left, the message box,
  * and a round send arrow on the right (Stop joins it while the bot works).
  * Desktop: Enter sends, Shift+Enter is a newline. Touch: Enter is a newline.
+ * While the bot works a send steers the running turn; Alt+Enter (or the send
+ * button's long-press menu) holds it until the turn finishes.
  */
 import { Popover } from "@base-ui/react/popover";
-import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
+import type { WhenBusy } from "@ultiv/contracts";
+import { PlusIcon, SquareIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { canSend, SendButton } from "@/components/send-button";
 
 /** Starter prompts: the "+" menu and the empty chat both offer them. */
 export const SUGGESTIONS = [
@@ -36,7 +40,7 @@ export function Composer({
   sendFailed: boolean;
   draft: string;
   onDraft: (text: string) => void;
-  onSend: () => void;
+  onSend: (whenBusy?: WhenBusy) => void;
   onStop: () => void;
 }) {
   const round = "shrink-0 rounded-full";
@@ -102,7 +106,7 @@ export function Composer({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey && !coarsePointer()) {
               event.preventDefault();
-              onSend();
+              onSend(event.altKey ? "followUp" : undefined);
             }
           }}
         />
@@ -120,16 +124,7 @@ export function Composer({
             <SquareIcon className="fill-current" />
           </Button>
         )}
-        <Button
-          type="submit"
-          size="icon-lg"
-          className={round}
-          aria-label="Send"
-          title="Send"
-          disabled={!live || busy || sending || draft.trim() === ""}
-        >
-          <ArrowUpIcon />
-        </Button>
+        <SendButton busy={busy} enabled={canSend(live, sending, draft)} onSend={onSend} />
       </div>
       {sendFailed && (
         <p
