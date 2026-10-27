@@ -122,3 +122,7 @@ export function hintOf(input: unknown): string | null {
   }
   return null;
 }
+
+/** Cards "Always allow" may not cover: a credential's first use on a host is asked every time. */
+export const canAlwaysAllow = (name: string): boolean =>
+  name !== "http_request (first use of a credential)";

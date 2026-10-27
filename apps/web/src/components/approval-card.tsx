@@ -10,7 +10,7 @@ import { ChevronRightIcon, EllipsisIcon, ShieldAlertIcon, ShieldCheckIcon } from
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
-import { describeTool, hintOf } from "@/lib/approval-text";
+import { canAlwaysAllow, describeTool, hintOf } from "@/lib/approval-text";
 import { cn } from "@/lib/utils";
 
 export type Decide = (
@@ -111,15 +111,17 @@ export function ApprovalCard({
           <Menu.Portal>
             <Menu.Positioner side="top" align="end" sideOffset={6} className="z-50">
               <Menu.Popup className="bg-popover text-popover-foreground w-64 rounded-xl border p-1 shadow-lg outline-none">
-                <Menu.Item
-                  className={item}
-                  onClick={() => void decide("always", () => onDecide(true, true))}
-                >
-                  Always allow
-                  <span className="text-muted-foreground text-xs">
-                    Approve now and stop asking before it does this again.
-                  </span>
-                </Menu.Item>
+                {canAlwaysAllow(name) && (
+                  <Menu.Item
+                    className={item}
+                    onClick={() => void decide("always", () => onDecide(true, true))}
+                  >
+                    Always allow
+                    <span className="text-muted-foreground text-xs">
+                      Approve now and stop asking before it does this again.
+                    </span>
+                  </Menu.Item>
+                )}
                 <Menu.Item
                   className={item}
                   onClick={() => void decide("takeover", () => onDecide(false, undefined, true))}

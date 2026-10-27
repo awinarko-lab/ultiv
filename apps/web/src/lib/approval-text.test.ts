@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { describeTool, hintOf } from "./approval-text.ts";
+import { canAlwaysAllow, describeTool, hintOf } from "./approval-text.ts";
 
 describe("describeTool", () => {
   it("words known tools plainly", () => {
@@ -19,6 +19,8 @@ describe("describeTool", () => {
     expect(describeTool("http_request (first use of a credential)").action).toBe(
       "use a saved credential on a site for the first time",
     );
+    expect(canAlwaysAllow("http_request")).toBe(true);
+    expect(canAlwaysAllow("http_request (first use of a credential)")).toBe(false);
     expect(hintOf({ method: "POST", url: "https://api.x.com/v1", credential: "Stripe" })).toBe(
       "https://api.x.com/v1",
     );

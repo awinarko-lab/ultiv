@@ -4,7 +4,7 @@
  * describe() truth. Each profile runs as its own entity over these.
  */
 import { defineExtension } from "@earendil-works/pi-durable";
-import type { ScopeHolder } from "@ultiv/ext";
+import { FIRST_USE_APPROVAL, type ScopeHolder } from "@ultiv/ext";
 import type { ApprovalsService } from "./approvals.ts";
 import type { actService } from "./act/act.ts";
 import { codemodeExtension } from "./act/codemode.ts";
@@ -126,7 +126,9 @@ export const wirePolicies = (
   });
   // Per-profile approval policy (auto-approve lists, timeout escalation).
   approvals.setHooks({
+    // A credential's first use on a host is always asked, whatever the list says.
     autoApprove: (conversationId, request) =>
+      request.name !== FIRST_USE_APPROVAL &&
       profiles.profileOf(conversationId)?.policies.autoApprove.includes(request.name) === true,
     onExpire: (conversationId, request) => {
       audit.record({
