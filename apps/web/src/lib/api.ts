@@ -77,7 +77,20 @@ async function drop(path: string): Promise<boolean> {
 export interface RoomDetail {
   room: RoomInfo;
   participants: { profileId: string; name: string }[];
-  timeline: { at: number; speaker: string; text: string; system: boolean }[];
+  timeline: RoomLine[];
+}
+
+/** Delivery status of a bot-to-bot message (mailbox lines only). */
+export type RoomLineStatus = "pending" | "replied" | "failed" | "dead" | "expired" | "cancelled";
+
+export interface RoomLine {
+  at: number;
+  speaker: string;
+  text: string;
+  system: boolean;
+  id?: string;
+  status?: RoomLineStatus;
+  error?: string | null;
 }
 
 /** One row of GET /api/approvals — a gate waiting on the owner somewhere. */
@@ -162,6 +175,8 @@ export const api = {
     getJson<RoomDetail>(`/api/rooms/${encodeURIComponent(id)}`),
   roomSay: (id: string, to: string, text: string): Promise<{ ok: boolean }> =>
     send<{ ok: boolean }>(`/api/rooms/${encodeURIComponent(id)}/say`, "POST", { to, text }),
+  mailboxCancel: (id: string): Promise<unknown> =>
+    send<unknown>(`/api/mailbox/${encodeURIComponent(id)}/cancel`, "POST", {}),
   vault: (): Promise<VaultItemInfo[]> => getJson<VaultItemInfo[]>("/api/vault"),
   vaultCreate: (item: Record<string, unknown>): Promise<VaultItemInfo> =>
     send<VaultItemInfo>("/api/vault", "POST", item),

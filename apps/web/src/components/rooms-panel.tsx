@@ -12,9 +12,66 @@ import { EmptyState, ErrorState } from "@/components/ui/empty-state";
 import { ListRow } from "@/components/ui/list-row";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { api, type RoomDetail } from "@/lib/api";
+import { api, type RoomDetail, type RoomLine } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
 import { formatWhen } from "@/lib/format";
+
+/** Plain-language delivery status; a delivered message shows nothing. */
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Waiting for a reply",
+  failed: "Couldn't be delivered",
+  dead: "Couldn't be delivered (tried 3 times)",
+  expired: "Timed out — no reply in time",
+  cancelled: "Cancelled",
+};
+
+function LineStatus({ line, onChanged }: { line: RoomLine; onChanged: () => Promise<void> }) {
+  const [cancelling, setCancelling] = useState(false);
+  const label = line.status === undefined ? undefined : STATUS_LABEL[line.status];
+  if (label === undefined) return null;
+  const cancel = async (): Promise<void> => {
+    if (line.id === undefined) return;
+    setCancelling(true);
+    try {
+      await api.mailboxCancel(line.id);
+      await onChanged();
+    } catch (cause) {
+      notifyError("Couldn't cancel the message", cause);
+    } finally {
+      setCancelling(false);
+    }
+  };
+  return (
+    <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs">
+      <span className={line.status === "pending" ? "" : "text-destructive"}>{label}</span>
+      {line.status === "pending" && line.id !== undefined ? (
+        <Button variant="outline" size="sm" disabled={cancelling} onClick={() => void cancel()}>
+          Cancel
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function TimelineLine({ line, onChanged }: { line: RoomLine; onChanged: () => Promise<void> }) {
+  if (line.system) return <p className="text-muted-foreground text-xs italic">{line.text}</p>;
+  return (
+    <>
+      <span
+        className={
+          line.speaker === "owner" ? "text-accent-foreground font-semibold" : "font-semibold"
+        }
+      >
+        {line.speaker}
+      </span>
+      <span className="text-muted-foreground ml-2 text-xs">{formatWhen(line.at)}</span>
+      <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
+        <LazyMarkdown text={line.text} />
+      </div>
+      <LineStatus line={line} onChanged={onChanged} />
+    </>
+  );
+}
 
 function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void> }) {
   const [detail, setDetail] = useState<RoomDetail | null>(null);
@@ -61,35 +118,12 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
         {detail.timeline.length === 0 ? (
           <p className="text-muted-foreground text-xs">No messages yet.</p>
         ) : (
-          detail.timeline.map((line, index) => {
+          detail.timeline.map((line, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: append-only timeline
-            const body = line.text;
-            return (
-              <div key={index} className="mb-2">
-                {line.system ? (
-                  <p className="text-muted-foreground text-xs italic">{line.text}</p>
-                ) : (
-                  <>
-                    <span
-                      className={
-                        line.speaker === "owner"
-                          ? "text-accent-foreground font-semibold"
-                          : "font-semibold"
-                      }
-                    >
-                      {line.speaker}
-                    </span>
-                    <span className="text-muted-foreground ml-2 text-xs">
-                      {formatWhen(line.at)}
-                    </span>
-                    <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
-                      <LazyMarkdown text={body} />
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })
+            <div key={line.id ?? index} className="mb-2">
+              <TimelineLine line={line} onChanged={load} />
+            </div>
+          ))
         )}
       </div>
       <div className="flex gap-2">
