@@ -1,9 +1,11 @@
 /** Small pieces the Connectors screen shares: status dot, switches, chips, secret rows. */
 import { PlusIcon, XIcon } from "lucide-react";
+import { useState } from "react";
 import type { McpState, VaultItemInfo } from "@ultiv/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { NewKeyField } from "@/components/secure/new-key";
 import { stateTone, type SecretRow } from "@/lib/connector-text";
 import { cn } from "@/lib/utils";
 
@@ -79,7 +81,12 @@ export function Chip(props: { label: string; checked: boolean; onChange: (on: bo
   );
 }
 
-/** Header or env rows whose values come from vault items (never typed here). */
+const NEW_KEY = "__new";
+
+/**
+ * Header or env rows whose values come from vault items: pick one, or paste
+ * a new key that goes straight to the vault (the form keeps only its id).
+ */
 export function SecretRows(props: {
   rows: SecretRow[];
   onChange: (rows: SecretRow[]) => void;
@@ -87,7 +94,15 @@ export function SecretRows(props: {
   namePlaceholder: string;
   addLabel: string;
   withPrefix: boolean;
+  /** Names new vault items ("<connector> key"). */
+  keyName?: string;
 }) {
+  const [pasting, setPasting] = useState<number | null>(null);
+  const [added, setAdded] = useState<VaultItemInfo[]>([]);
+  const items = [
+    ...props.items,
+    ...added.filter((item) => !props.items.some((known) => known.id === item.id)),
+  ];
   const set = (index: number, patch: Partial<SecretRow>): void =>
     props.onChange(props.rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
   return (
@@ -113,11 +128,16 @@ export function SecretRows(props: {
           <Select
             aria-label="Vault item"
             className="min-w-40 flex-[2]"
-            value={row.item}
-            onChange={(event) => set(index, { item: event.target.value })}
+            value={pasting === index ? NEW_KEY : row.item}
+            onChange={(event) => {
+              if (event.target.value === NEW_KEY) return setPasting(index);
+              setPasting(null);
+              set(index, { item: event.target.value });
+            }}
           >
             <option value="">Pick a vault item…</option>
-            {props.items.map((item) => (
+            <option value={NEW_KEY}>Paste a new key…</option>
+            {items.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name} ({item.masked})
               </option>
@@ -132,6 +152,18 @@ export function SecretRows(props: {
           >
             <XIcon />
           </Button>
+          {pasting === index && (
+            <NewKeyField
+              label={`Key for ${row.name || props.namePlaceholder}`}
+              name={`${props.keyName?.trim() || "Connector"} ${row.name || "key"}`}
+              onCancel={() => setPasting(null)}
+              onSaved={(item) => {
+                setAdded((current) => [...current, item]);
+                setPasting(null);
+                set(index, { item: item.id });
+              }}
+            />
+          )}
         </div>
       ))}
       <Button
@@ -149,9 +181,9 @@ export function SecretRows(props: {
         <PlusIcon />
         {props.addLabel}
       </Button>
-      {props.items.length === 0 && (
+      {items.length === 0 && (
         <p className="text-muted-foreground text-xs">
-          Save the key in the Vault first (as a Key or Note), then pick it here.
+          Pick "Paste a new key…" to save one to your vault right here.
         </p>
       )}
     </div>

@@ -94,6 +94,7 @@ function AuthFields(props: { form: ConnectorForm; patch: Patch; items: VaultItem
           items={items}
           namePlaceholder="API_TOKEN"
           addLabel="Add variable"
+          keyName={form.name}
           withPrefix={false}
         />
       </div>
@@ -126,6 +127,7 @@ function AuthFields(props: { form: ConnectorForm; patch: Patch; items: VaultItem
           items={items}
           namePlaceholder="Authorization"
           addLabel="Add header"
+          keyName={form.name}
           withPrefix
         />
       )}

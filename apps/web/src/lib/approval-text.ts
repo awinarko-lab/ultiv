@@ -70,6 +70,36 @@ const KNOWN: Record<string, Known> = {
     risk: "Approving lets it use that credential on this host from now on. The bot never sees the secret.",
     risky: true,
   },
+  connector_add: {
+    action: "add a connector",
+    risk: "Its tools become available to the bots listed below. Check the address first.",
+    risky: true,
+  },
+  connector_update: {
+    action: "change a connector",
+    risk: "Only the changes listed below are made.",
+    risky: true,
+  },
+  connector_disable: {
+    action: "switch a connector off",
+    risk: "Lower risk: it is kept and can be switched back on.",
+    risky: false,
+  },
+  connector_enable: {
+    action: "switch a connector back on",
+    risk: "Its tools become available again to the bots listed below.",
+    risky: true,
+  },
+  connector_remove: {
+    action: "remove a connector",
+    risk: "Higher risk: every bot loses it, and its sign-in is forgotten.",
+    risky: true,
+  },
+  secret_request: {
+    action: "get a key from you",
+    risk: "What you type goes straight to your vault. The bot never sees it.",
+    risky: false,
+  },
 };
 
 /** "schedule_set" -> "schedule set"; camelCase too. */
@@ -123,6 +153,16 @@ export function hintOf(input: unknown): string | null {
   return null;
 }
 
-/** Cards "Always allow" may not cover: a credential's first use on a host is asked every time. */
+/** Connector changes: always shown on their own card, never pre-approved. */
+export const isConnectorChange = (name: string): boolean =>
+  /^connector_(add|update|disable|enable|remove)$/.test(name);
+
+/**
+ * Cards "Always allow" may not cover: a credential's or connector's first
+ * use, connector changes and secure inputs are asked every time.
+ */
 export const canAlwaysAllow = (name: string): boolean =>
-  name !== "http_request (first use of a credential)";
+  name !== "http_request (first use of a credential)" &&
+  !name.startsWith("mcp (first use of ") &&
+  !isConnectorChange(name) &&
+  name !== "secret_request";

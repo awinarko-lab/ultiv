@@ -76,6 +76,7 @@ function SheetBody({ task, open }: { task: TaskInfo; open: boolean }) {
             name={activity.waiting.name}
             input={activity.waiting.input}
             who="This task"
+            callId={activity.waiting.callId}
             onDecide={decide}
           />
         )}

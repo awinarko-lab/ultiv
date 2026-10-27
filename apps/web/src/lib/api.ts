@@ -45,6 +45,11 @@ export class ApiError extends Error {
   }
 }
 
+export interface SecretStored {
+  ok: boolean;
+  stored: { key: string; name: string }[];
+}
+
 async function failure(response: Response, method: string, path: string): Promise<ApiError> {
   let detail: string | null = null;
   try {
@@ -215,6 +220,11 @@ export const api = {
     send<McpConnectReply>(`/api/mcp/servers/${encodeURIComponent(id)}/connect`, "POST"),
   mcpSignOut: (id: string): Promise<McpServerInfo> =>
     send<McpServerInfo>(`/api/mcp/servers/${encodeURIComponent(id)}/signout`, "POST"),
+  /** Secure input: typed values go straight to the vault; only names come back. */
+  secretSubmit: (callId: string, values: Record<string, string>): Promise<SecretStored> =>
+    send<SecretStored>(`/api/secrets/${encodeURIComponent(callId)}`, "POST", { values }),
+  secretCancel: (callId: string): Promise<{ ok: boolean }> =>
+    send<{ ok: boolean }>(`/api/secrets/${encodeURIComponent(callId)}`, "POST", { cancel: true }),
   vault: (): Promise<VaultItemInfo[]> => getJson<VaultItemInfo[]>("/api/vault"),
   vaultCreate: (item: Record<string, unknown>): Promise<VaultItemInfo> =>
     send<VaultItemInfo>("/api/vault", "POST", item),

@@ -21,6 +21,14 @@ describe("describeTool", () => {
     );
     expect(canAlwaysAllow("http_request")).toBe(true);
     expect(canAlwaysAllow("http_request (first use of a credential)")).toBe(false);
+    for (const name of [
+      "connector_add",
+      "connector_remove",
+      "secret_request",
+      "mcp (first use of fake)",
+    ])
+      expect(canAlwaysAllow(name)).toBe(false);
+    expect(canAlwaysAllow("connector_list")).toBe(true);
     expect(hintOf({ method: "POST", url: "https://api.x.com/v1", credential: "Stripe" })).toBe(
       "https://api.x.com/v1",
     );

@@ -10,6 +10,8 @@ import { ChevronRightIcon, EllipsisIcon, ShieldAlertIcon, ShieldCheckIcon } from
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
+import { ChangeDetails, connectorChangeOf } from "@/components/connectors/change-details";
+import { SecretCard, secretAskOf } from "@/components/secure/secret-card";
 import { canAlwaysAllow, describeTool, hintOf } from "@/lib/approval-text";
 import { cn } from "@/lib/utils";
 
@@ -20,13 +22,27 @@ export type Decide = (
   takeover?: boolean,
 ) => Promise<void>;
 
-export function ApprovalCard({
+export function ApprovalCard(props: {
+  /** The tool's name. */
+  name: string;
+  input: unknown;
+  who?: string | undefined;
+  /** The waiting call; secure inputs post to it directly. */
+  callId?: string | undefined;
+  onDecide: (approved: boolean, always?: boolean, takeover?: boolean) => Promise<void>;
+}) {
+  const ask = props.name === "secret_request" ? secretAskOf(props.input) : null;
+  if (ask !== null && props.callId !== undefined)
+    return <SecretCard key={props.callId} callId={props.callId} ask={ask} who={props.who} />;
+  return <DecisionCard {...props} />;
+}
+
+function DecisionCard({
   name,
   input,
   who,
   onDecide,
 }: {
-  /** The tool's name. */
   name: string;
   input: unknown;
   /** Who is asking ("Eve"); defaults to "Your bot". */
@@ -36,8 +52,11 @@ export function ApprovalCard({
   const [deciding, setDeciding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [details, setDetails] = useState(false);
-  const { action, risky, risk } = describeTool(name);
-  const hint = hintOf(input);
+  const change = connectorChangeOf(input);
+  const described = describeTool(name);
+  const { action, risk } = described;
+  const risky = described.risky || change?.runsOnMac === true;
+  const hint = change !== null ? change.server : hintOf(input);
   const RiskIcon = risky ? ShieldAlertIcon : ShieldCheckIcon;
 
   const decide = async (label: string, run: () => Promise<void>): Promise<void> => {
@@ -78,6 +97,7 @@ export function ApprovalCard({
         <RiskIcon className="size-3.5 shrink-0" aria-hidden />
         {risk}
       </p>
+      {change !== null && <ChangeDetails change={change} />}
       <button
         type="button"
         aria-expanded={details}

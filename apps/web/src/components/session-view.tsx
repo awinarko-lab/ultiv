@@ -176,6 +176,7 @@ export function SessionView({
                   name={pending.name}
                   input={pending.input}
                   who={bot?.name}
+                  callId={pending.callId}
                   onDecide={(approved, always, takeover) =>
                     onDecide(pending.callId, approved, always, takeover)
                   }
