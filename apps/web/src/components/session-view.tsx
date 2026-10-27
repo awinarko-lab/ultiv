@@ -9,6 +9,7 @@ import type {
 } from "@ultiv/contracts";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ApprovalCard, type Decide } from "@/components/approval-card";
+import { ChatSkeleton, EmptyChat, StatusRow } from "@/components/chat-states";
 import { Composer } from "@/components/composer";
 import { ChatHeader, type ChatBot, type LinkState } from "@/components/chat-header";
 import { TranscriptItems } from "@/components/transcript-items";
@@ -117,12 +118,14 @@ export function SessionView({
         <div ref={transcriptRef} className="h-full min-h-0">
           <ScrollArea className="h-full">
             <ul className="flex flex-col gap-3 pr-2">
+              {transcript.length === 0 && link === "connecting" && <ChatSkeleton />}
+              {transcript.length === 0 && link === "live" && !busy && (
+                <EmptyChat bot={bot} onPick={setDraft} />
+              )}
               <TranscriptItems transcript={transcript} />
-              {busy &&
-                pending === null &&
-                !transcript.some((entry) => entry.kind === "output" && entry.streaming) && (
-                  <li className="self-start text-sm text-muted-foreground">working…</li>
-                )}
+              {(busy || pending !== null) && (
+                <StatusRow bot={bot} transcript={transcript} pending={pending} />
+              )}
             </ul>
           </ScrollArea>
         </div>
