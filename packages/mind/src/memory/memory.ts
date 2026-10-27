@@ -22,6 +22,7 @@ import type { DecideService } from "../decide/decide.ts";
 import type { GenerateService } from "../generate/generate.ts";
 import { ensureMigrated } from "./migrate.ts";
 import { writeFactV2, type WriteFactResult } from "./consolidate.ts";
+import { coreService, type CoreService } from "./core.ts";
 import {
   ArchiveDoc,
   CoreDoc,
@@ -110,6 +111,8 @@ export interface MemoryService {
     readonly origin?: string;
     readonly conversation?: string | null;
   }) => Promise<WriteFactResult>;
+  /** The always-on core block: read/add/replace/remove with budgets. */
+  readonly core: CoreService;
 }
 
 export const memoryService = (deps: {
@@ -309,7 +312,10 @@ export const memoryService = (deps: {
             episodes: [],
           });
           episodes.episodes = [];
-          const core = await tx.doc(CoreDoc, profileKey(owner, profileId), { lines: [] });
+          const core = await tx.doc(CoreDoc, profileKey(owner, profileId), {
+            lines: [],
+            seededAt: null,
+          });
           core.lines = [];
         }),
       );
@@ -360,6 +366,7 @@ export const memoryService = (deps: {
       await ensureMigrated(deps, input.owner, input.profileId);
       return writeFactV2(deps, (owner, profileId) => service.readFacts(owner, profileId), input);
     },
+    core: coreService({ converse, profiles }),
   };
   return service;
 };

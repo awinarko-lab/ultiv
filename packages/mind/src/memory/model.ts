@@ -82,7 +82,10 @@ export const EpisodesDoc = defineDocFamily<
 });
 
 /** The always-on block, rendered as its own prompt section. */
-export const CoreDoc = defineDocFamily<{ lines: CoreLine[] }, { lines: CoreLine[] }>({
+export const CoreDoc = defineDocFamily<
+  { lines: CoreLine[]; seededAt: number | null },
+  { lines: CoreLine[]; seededAt: number | null }
+>({
   kind: "ultiv.mem.core",
   version: 1,
   scope: "session",

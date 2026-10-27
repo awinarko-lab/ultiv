@@ -20,6 +20,7 @@ export * from "./profiles/section.ts";
 export * from "./mailbox/mailbox.ts";
 export * from "./mailbox/tools.ts";
 export * from "./memory/memory.ts";
+export * from "./memory/core.ts";
 export * from "./memory/model.ts";
 export * from "./memory/migrate.ts";
 export * from "./memory/text.ts";

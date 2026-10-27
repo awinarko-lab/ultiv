@@ -17,7 +17,7 @@ import type { AuditService } from "./audit/audit.ts";
 import type { ConverseService } from "./converse/converse.ts";
 import type { TasksService } from "./tasks/tasks.ts";
 import type { ProfilesService } from "./profiles/profiles.ts";
-import { profilesExtension } from "./profiles/section.ts";
+import { profilesExtension, memoryCoreExtension } from "./profiles/section.ts";
 import type { RoomsService } from "./profiles/rooms.ts";
 import type { MailboxService } from "./mailbox/mailbox.ts";
 import { messageTools } from "./mailbox/tools.ts";
@@ -70,6 +70,7 @@ export const installFaculties = (
   piRegistry.install(act.extension());
   piRegistry.install(codemodeExtension());
   piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
+  piRegistry.install(memoryCoreExtension(memory, profiles));
   piRegistry.install(defineExtension({ name: "ultius.mind.bots", tools: [...f.botTools] }));
   piRegistry.install(
     defineExtension({

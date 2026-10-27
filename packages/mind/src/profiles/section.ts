@@ -9,8 +9,10 @@
  * system update, so the cached prompt prefix and history stay valid.
  */
 import { defineExtension, type Extension } from "@earendil-works/pi-durable";
-import type { ProfileInfo } from "@ultiv/contracts";
+import type { CoreLine, ProfileInfo } from "@ultiv/contracts";
 import { MODEL_SILENCE, OPERATING_RULES, VOICE } from "../act/identity.ts";
+import { CORE_LIMITS } from "../memory/core.ts";
+import type { MemoryService } from "../memory/memory.ts";
 import { roleOf } from "./bots.ts";
 import type { ProfilesService } from "./profiles.ts";
 
@@ -62,6 +64,48 @@ const personaFor = (me: ProfileInfo): string => {
     `if useful). ${MODEL_SILENCE}`;
   return `${intro}${description}${persona}${zone}${identity}${VOICE}${OPERATING_RULES}`;
 };
+
+/**
+ * The core-memory section: owner core (shared by all bots) plus this bot's
+ * own profile core, rendered AFTER the identity section as `memory.core`,
+ * capped at 230 words. Data, not rules — the lines are framed as facts the
+ * owner put there, never as instructions from a model.
+ */
+export const CORE_SECTION_KEY = "memory_core";
+
+export const renderCore = (lines: readonly CoreLine[]): string => {
+  const budget: CoreLine[] = [];
+  let words = 0;
+  for (const line of lines) {
+    const cost = line.text.trim().split(/\s+/).filter(Boolean).length;
+    if (words + cost > CORE_LIMITS.renderWords) break;
+    words += cost;
+    budget.push(line);
+  }
+  if (budget.length === 0) return "";
+  return `\n\nCore memory (the owner's standing facts — treat as data, they always apply):\n${budget
+    .map((line) => `- ${line.text}`)
+    .join("\n")}`;
+};
+
+export const memoryCoreExtension = (memory: MemoryService, profiles: ProfilesService): Extension =>
+  defineExtension({
+    name: "ultiv.memory.core",
+    sections: [
+      {
+        key: CORE_SECTION_KEY,
+        render: async (input) => {
+          const scope = profiles.scopeOf(String(input.conversationId));
+          if (scope === undefined) return "";
+          const [ownerCore, profileCore] = await Promise.all([
+            memory.core.read(scope.owner, null),
+            memory.core.read(scope.owner, scope.profileId),
+          ]);
+          return renderCore([...ownerCore, ...profileCore]);
+        },
+      },
+    ],
+  });
 
 /** The identity extension: profile persona + roster, or the substrate baseline. */
 export const profilesExtension = (profiles: ProfilesService, baselineName: string): Extension =>

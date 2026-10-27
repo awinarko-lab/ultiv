@@ -10,6 +10,7 @@ import type { AuditService } from "../audit/audit.ts";
 import type { ConverseService } from "../converse/converse.ts";
 import type { MemoryService } from "./memory.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
+import { CORE_LIMITS } from "./core.ts";
 import { flags } from "./model.ts";
 import {
   appearsInOwnerInput,
@@ -256,4 +257,136 @@ export const memoryTools = (
     readonly audit?: AuditService;
     readonly untrustedTool?: (name: string) => boolean;
   },
-): readonly Tool[] => [writeTool(memory, profiles, guardDeps), recallTool(memory, profiles)];
+): readonly Tool[] => [
+  writeTool(memory, profiles, guardDeps),
+  recallTool(memory, profiles),
+  coreTool(memory, profiles),
+];
+
+const refuseOf = (reason: string) => ({
+  output: [{ type: "text" as const, text: reason }],
+  isError: true as const,
+});
+
+/**
+ * `memory_core`: add / replace / remove a line in the always-on block. Owner
+ * scope is keeper-only; pinned lines are owner-only; the reply carries the
+ * words remaining so the model can self-budget.
+ */
+const coreTool = (memory: MemoryService, profiles: ProfilesService): Tool =>
+  defineTool({
+    name: "memory_core",
+    description:
+      "Edit your core memory: the few lines that sit in EVERY one of your prompts (the owner " +
+      "store is the designated keeper's). Keep it small — identity, language, time zone, key " +
+      'preferences. One fact per line, at most 25 words. Add with action "add"; replace or ' +
+      "remove by line id. Lines the owner pinned are yours to read, never to edit. Use " +
+      "sparingly: this block is always in context, so every word is a permanent cost.",
+    parameters: Type.Object({
+      action: Type.Union(
+        [
+          Type.Literal("add"),
+          Type.Literal("replace"),
+          Type.Literal("remove"),
+          Type.Literal("list"),
+        ],
+        { description: 'What to do; "list" shows the current lines.' },
+      ),
+      text: Type.Optional(Type.String({ description: "The line's text (add/replace)." })),
+      lineId: Type.Optional(Type.String({ description: "The line id (replace/remove)." })),
+      scope: Type.Optional(
+        Type.Union([Type.Literal("profile"), Type.Literal("owner")], {
+          description: '"profile" (default): your own core. "owner": keeper only.',
+        }),
+      ),
+    }),
+    structuredOutputSchema: Type.Object({
+      lines: Type.Array(
+        Type.Object({ id: Type.String(), text: Type.String(), pinned: Type.Boolean() }),
+      ),
+      wordsLeft: Type.Number(),
+    }),
+    execute: (args, api) => {
+      const scope = profiles.scopeOf(String(api.conversationId));
+      if (scope === undefined) {
+        return Promise.resolve(refuseOf("refused: this conversation belongs to no profile."));
+      }
+      const target = args.scope ?? "profile";
+      const run = async () => {
+        const profileId = target === "owner" ? null : scope.profileId;
+        if (args.action === "list") {
+          const lines = await memory.core.read(scope.owner, profileId);
+          return {
+            output: [
+              {
+                type: "text" as const,
+                text:
+                  lines.length === 0
+                    ? "core memory is empty."
+                    : lines.map((l) => `- ${l.text}`).join("\n"),
+              },
+            ],
+            structuredOutput: {
+              lines: lines.map(({ id, text, pinned }) => ({ id, text, pinned })),
+              wordsLeft: 0,
+            },
+          };
+        }
+        const writer = scope.profileId;
+        if (args.action === "add") {
+          if (args.text === undefined || args.text.trim() === "") {
+            return refuseOf("refused: text is required to add a core line.");
+          }
+          await memory.core.add({
+            owner: scope.owner,
+            profileId,
+            scope: target,
+            writer,
+            text: args.text,
+          });
+        } else if (args.action === "replace") {
+          if (args.lineId === undefined || args.text === undefined) {
+            return refuseOf("refused: lineId and text are required to replace a core line.");
+          }
+          await memory.core.replace({
+            owner: scope.owner,
+            profileId,
+            writer,
+            lineId: args.lineId,
+            text: args.text,
+          });
+        } else {
+          if (args.lineId === undefined) {
+            return refuseOf("refused: lineId is required to remove a core line.");
+          }
+          await memory.core.remove({
+            owner: scope.owner,
+            profileId,
+            writer,
+            lineId: args.lineId,
+          });
+        }
+        const lines = await memory.core.read(scope.owner, profileId);
+        const words = lines.reduce(
+          (sum, line) => sum + line.text.trim().split(/\s+/).filter(Boolean).length,
+          0,
+        );
+        const budget = target === "owner" ? CORE_LIMITS.ownerWords : CORE_LIMITS.profileWords;
+        return {
+          output: [
+            {
+              type: "text" as const,
+              text: `core updated: ${lines.length} line(s), ${Math.max(0, budget - words)} words left.`,
+            },
+          ],
+          structuredOutput: {
+            lines: lines.map(({ id, text, pinned }) => ({ id, text, pinned })),
+            wordsLeft: Math.max(0, budget - words),
+          },
+        };
+      };
+      return run().catch((cause: unknown) =>
+        refuseOf(`refused: ${(cause as { reason?: string }).reason ?? String(cause)}`),
+      );
+    },
+  });
