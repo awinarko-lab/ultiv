@@ -4,6 +4,7 @@
 import { MemoryStorage } from "@earendil-works/pi-durable";
 import { Session } from "@ultiv/contracts";
 import { buildStack } from "./main.ts";
+import { smokeMcp } from "./smoke-mcp.ts";
 
 // The vault seals under this key for the smoke run only; the vault and the
 // artifact workspace point at throwaway dirs so the run is hermetic.
@@ -17,6 +18,8 @@ const scratchArtifacts = mkdtempSync(join(tmpdir(), "ultiv-smoke-artifacts-"));
 process.env.ARTIFACTS_DIR = scratchArtifacts;
 // Keep the audit trail hermetic: never append to a real var/audit.jsonl.
 process.env.AUDIT_LOG = join(scratchArtifacts, "audit.jsonl");
+// Connector configs land in the scratch dir too.
+process.env.MCP_DIR = join(scratchArtifacts, "mcp");
 
 const stack = await buildStack({ storage: new MemoryStorage(), vault: { dir: scratchVault } });
 await new Promise<void>((resolve, reject) => {
@@ -354,6 +357,9 @@ const memoryWrite = await call("POST", "/api/memory", { text: "smoker prefers br
 expect("owner memory write", memoryWrite.status === 200);
 const memoryRead = await call("GET", "/api/memory", undefined, headers);
 expect("owner memory read", memoryRead.json.length === 1);
+
+// Connectors: added, used and removed on the running stack.
+await smokeMcp(call, headers, expect);
 
 if (failures.length > 0) {
   console.error(`smoke FAILED: ${failures.join(", ")}`);

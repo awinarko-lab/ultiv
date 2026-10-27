@@ -80,7 +80,9 @@ const serverRoute = async (args: RouteArgs, rest: string): Promise<boolean> => {
   if (action === undefined && method === "PATCH") {
     json(200, await mind.mcp.update(owner, id, await readInput(args)));
   } else if (action === undefined && method === "DELETE") {
-    json(200, { ok: await mind.mcp.remove(owner, id) });
+    const ok = await mind.mcp.remove(owner, id);
+    if (ok) json(200, { ok });
+    else json(404, { error: "no such connector" });
   } else if (action === "reconnect" && method === "POST") {
     json(200, await mind.mcp.reconnect(owner, id));
   } else if (action === "connect" && method === "POST") {
