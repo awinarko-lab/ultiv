@@ -64,31 +64,16 @@ describe("Memory seam (offline, MemoryStorage)", () => {
     await handle.close();
   });
 
-  it("migrates a v1 store lazily and mirrors v2 writes back to v1", async () => {
-    process.env.ULTIV_MEMORY_V2 = "off";
+  it("has no v1 migration: v2 reads return empty stores, the projection holds", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const { memory, profiles } = handle.mind;
-    const bot = await profiles.create("harry", { name: "Migrator" });
-    await memory.write({
-      owner: "harry",
-      writer: bot.id,
-      scope: "profile",
-      profileId: bot.id,
-      text: "legacy fact",
-      tags: ["old"],
-    });
-    // First v2 access migrates in place; ids, text and tags survive.
-    process.env.ULTIV_MEMORY_V2 = "on";
-    const facts = await memory.readFacts("harry", bot.id);
-    expect(facts.length).toBe(1);
-    expect(facts[0]?.text).toBe("legacy fact");
-    expect(facts[0]?.importance).toBe(3);
-    expect(facts[0]?.status).toBe("current");
-    expect(facts[0]?.trust).toBe("self");
-    // Idempotent: a second read neither duplicates nor re-stamps.
-    expect((await memory.readFacts("harry", bot.id)).length).toBe(1);
-    // The mirror is gone: v2 writes stay v2-only, but the old REST GET now
-    // projects v2 (newest first).
+    const bot = await profiles.create("harry", { name: "Fresh" });
+    // No migration pass exists anymore: an untouched store reads empty.
+    expect(await memory.readFacts("harry", bot.id)).toEqual([]);
+    expect(await memory.readFacts("harry", null)).toEqual([]);
+    // A profile read without a profile id reads NOTHING (never a
+    // store keyed with an empty id).
+    expect(await memory.read("harry", "profile")).toEqual([]);
     await memory.write({
       owner: "harry",
       writer: bot.id,
@@ -97,8 +82,7 @@ describe("Memory seam (offline, MemoryStorage)", () => {
       text: "fresh fact",
     });
     const projected = await memory.read("harry", "profile", bot.id);
-    expect(projected.map((record) => record.text)).toEqual(["fresh fact", "legacy fact"]);
-    delete process.env.ULTIV_MEMORY_V2;
+    expect(projected.map((record) => record.text)).toEqual(["fresh fact"]);
     await handle.close();
   });
 

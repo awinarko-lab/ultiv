@@ -135,14 +135,15 @@ and tidy suggestions at 390 px (screenshots in `docs/screenshots/`).
 
 ## Migration and rollback
 
-Migration is lazy, per store, idempotent, zero-loss (`memory/migrate.ts`):
-ids, text and tags survive; `at` becomes `createdAt`; defaults importance 3,
-confidence 0.7, status current, trust self (`owner` for the owner store);
-entities link later via tidy backfill; nothing is deduplicated. Every fact
-is verified against its v1 source inside the transaction; a mismatch aborts
-and the store keeps serving v1.
+The v1 → v2 migration is REMOVED (2026-10-28, owner-approved end of the
+soak): every live store had already migrated and verified, and Harry
+confirmed there is nothing left to migrate. Writes are v2-only; the old
+`POST /api/memory/v1/cleanup` sweep is gone with it. The v1
+`ultiv.memory` doc family stays exported only for the rollback surfaces.
 
-- Rollback: `ULTIV_MEMORY_V2=off` brings back the v1 code path unchanged.
+- Rollback: `ULTIV_MEMORY_V2=off` brings back the v1 code path. This is
+  a fallback for the v2 seam, not a full return to v1 — facts written
+  while off land in the v1 docs and do not appear in v2 reads.
 - Mirror: REMOVED 2026-10-28 (owner-approved end of the 14-day soak, commit
   of that date). Writes are v2-only; `POST /api/memory/v1/cleanup` swept the
   mirrored v1 `ultiv.memory` docs (only stores whose migration had verified).

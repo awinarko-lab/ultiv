@@ -7,10 +7,9 @@
  * a sibling's. Cross-thread recall resolves through here, never transcripts.
  *
  * v2 rides behind `ULTIV_MEMORY_V2` (default on): writes land in
- * `ultiv.mem.facts`. The 14-day v1 mirror ended 2026-10-28 (owner-approved):
- * new writes are v2-only and the v1 `ultiv.memory` docs are cleared via
- * `POST /api/memory/v1/cleanup`. The v1 doc family and helpers stay exported
- * for the REST surfaces.
+ * `ultiv.mem.facts`. The v1 mirror and the v1 migration are GONE (the soak
+ * ended 2026-10-28 with nothing left to migrate); the v1 `ultiv.memory`
+ * doc family and helpers stay exported for the rollback surfaces.
  */
 import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
@@ -21,7 +20,6 @@ import type { AuditService } from "../audit/audit.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 import type { DecideService } from "../decide/decide.ts";
 import type { GenerateService } from "../generate/generate.ts";
-import { ensureMigrated } from "./migrate.ts";
 import { writeFactV2, type WriteFactResult } from "./consolidate.ts";
 import { coreService, type CoreService } from "./core.ts";
 import {
@@ -80,9 +78,8 @@ export interface MemoryService {
   /** Remove one profile-scope record — the human's per-item delete. */
   readonly remove: (owner: string, profileId: string, recordId: string) => Promise<void>;
   /**
-   * v2: migrate (lazily, once) and read a store's facts. With
-   * `ULTIV_MEMORY_V2=off` this still migrates — the migration itself rides
-   * the v2 seam's first access — so callers stay on one code path.
+   * v2: read a store's facts. There is no v1 migration anymore (the soak
+   * ended 2026-10-28 with nothing left to migrate) — reads are v2-only.
    */
   readonly readFacts: (owner: string, profileId: string | null) => Promise<readonly MemoryFact[]>;
   /**
@@ -143,12 +140,6 @@ export interface MemoryService {
   readonly purge: (owner: string, profileId: string | null) => Promise<number>;
   /** The owner's unconditional tombstone (REST surface on any store). */
   readonly tombstone: (owner: string, profileId: string | null, factId: string) => Promise<void>;
-  /**
-   * One-time v1 cleanup (owner-approved 2026-10-28): empties the v1
-   * `ultiv.memory` docs for the owner store and every profile whose v2
-   * migration verified. Returns the cleared store count.
-   */
-  readonly cleanupV1: (owner: string) => Promise<number>;
   /** The store's resolved entities. */
   readonly entities: (owner: string, profileId: string | null) => Promise<readonly MemoryEntity[]>;
   /** The entity card: current facts plus the neighbourhood (1–2 hops). */
@@ -208,7 +199,6 @@ export const memoryService = (deps: {
     readonly origin?: string;
     readonly conversation?: string | null;
   }): Promise<MemoryRecord> => {
-    await ensureMigrated(deps, input.owner, input.profileId);
     const key =
       input.profileId === null ? ownerKey(input.owner) : profileKey(input.owner, input.profileId);
     const fact = newFact({
@@ -334,7 +324,12 @@ export const memoryService = (deps: {
     },
     read: (owner, scope, profileId) => {
       if (flags.v2()) {
-        // REST compatibility: the old endpoints project the v2 store.
+        // REST compatibility: the old endpoints project the v2 store. A
+        // profile scope without a profile id reads NOTHING — never an
+        // empty-keyed store.
+        if (scope === "profile" && (profileId === undefined || profileId === "")) {
+          return Promise.resolve([]);
+        }
         return service
           .readFacts(owner, scope === "owner" ? null : (profileId ?? ""))
           .then((facts) =>
@@ -400,7 +395,6 @@ export const memoryService = (deps: {
       await writeStore(key, next);
     },
     readFacts: async (owner, profileId) => {
-      await ensureMigrated(deps, owner, profileId);
       const key = profileId === null ? ownerKey(owner) : profileKey(owner, profileId);
       return run(converse.docs.snapshotKeyed(FactsDoc, key)).then((store) => store?.facts ?? []);
     },
@@ -431,7 +425,6 @@ export const memoryService = (deps: {
     },
     writeV2: async (input) => {
       if (input.scope === "owner") await requireKeeper(input.owner, input.writer);
-      await ensureMigrated(deps, input.owner, input.profileId);
       return writeFactV2(deps, input);
     },
     core: coreService({ converse, profiles }),
@@ -469,25 +462,6 @@ export const memoryService = (deps: {
           );
         }),
       );
-    },
-    cleanupV1: async (owner) => {
-      // Safety: only clear stores whose v2 migration VERIFIED (migratedAt set).
-      const targets: string[] = [ownerKey(owner)];
-      for (const profile of await profiles.list(owner)) {
-        if (profile.archivedAt !== null) continue;
-        const migrated = await run(
-          converse.docs.snapshotKeyed(FactsDoc, profileKey(owner, profile.id)),
-        ).then((store) => store?.migratedAt !== null && store?.migratedAt !== undefined);
-        if (migrated) targets.push(profileKey(owner, profile.id));
-      }
-      let cleared = 0;
-      for (const key of targets) {
-        const records = await readStore(key);
-        if (records.length === 0) continue;
-        await writeStore(key, []);
-        cleared += 1;
-      }
-      return cleared;
     },
   };
   return service;

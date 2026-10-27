@@ -107,7 +107,6 @@ export async function memoryV2Routes(args: RouteArgs): Promise<boolean> {
   const { path, json } = args;
   const method = args.req.method ?? "GET";
   if (
-    !path.startsWith("/api/memory/v1") &&
     !path.startsWith("/api/memory/v2") &&
     !path.startsWith("/api/memory/tidy") &&
     !path.startsWith("/api/memory/purge")
@@ -177,11 +176,6 @@ export async function memoryV2Routes(args: RouteArgs): Promise<boolean> {
         error: null,
       });
       json(200, { purged });
-      return true;
-    }
-    if (path === "/api/memory/v1/cleanup" && method === "POST") {
-      // Owner-approved one-time sweep of the mirrored v1 docs (soak ended).
-      json(200, { cleared: await args.mind.memory.cleanupV1(args.owner) });
       return true;
     }
     const factMatch = path.match(/^\/api\/memory\/v2\/facts\/([^/]+)$/);

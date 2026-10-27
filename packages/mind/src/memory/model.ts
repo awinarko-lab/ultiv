@@ -16,9 +16,9 @@ import type {
 } from "@ultiv/contracts";
 
 /**
- * The v1 store (`ultiv.memory`) — kept for rollback, the REST surfaces and
- * the 14-day mirror. Never cleared by v2 code; removing it is a separate,
- * owner-approved commit after the mirror soak.
+ * The v1 store (`ultiv.memory`) — kept only for the `ULTIV_MEMORY_V2=off`
+ * rollback surfaces. The mirror is gone (2026-10-28) and nothing migrates
+ * into it; removing the doc family is a separate, owner-approved commit.
  */
 export const MemoryDoc = defineDocFamily<{ records: MemoryRecord[] }, { records: MemoryRecord[] }>({
   kind: "ultiv.memory",
