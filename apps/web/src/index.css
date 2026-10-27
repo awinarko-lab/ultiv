@@ -126,6 +126,12 @@
     @apply bg-background text-foreground;
     position: relative;
   }
+  /* The app fills the dynamic viewport and every screen scrolls inside its own
+     container, so the page itself never scrolls (or rubber-bands) on phones. */
+  html,
+  body {
+    @apply h-full overflow-hidden overscroll-none;
+  }
   html {
     @apply font-sans;
   }
