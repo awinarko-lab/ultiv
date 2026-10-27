@@ -15,6 +15,7 @@ import { ChatSkeleton, EmptyChat, StatusRow } from "@/components/chat-states";
 import { Composer } from "@/components/composer";
 import { ChatHeader, type ChatBot, type LinkState } from "@/components/chat-header";
 import { TranscriptItems } from "@/components/transcript-items";
+import { describeTool } from "@/lib/approval-text";
 import { aboveComposer, useChatScroll } from "@/lib/use-chat-scroll";
 
 /**
@@ -30,7 +31,8 @@ function useAnnouncement(
   const lastReply = transcript.findLast((entry) => entry.kind === "output" && !entry.streaming);
   const seen = useRef<number | null | undefined>(undefined);
   if (seen.current === undefined && transcript.length > 0) seen.current = lastReply?.id ?? null;
-  if (pending !== null) return `${who} needs your approval for ${pending.name}.`;
+  if (pending !== null)
+    return `${who} needs your approval to ${describeTool(pending.name).action}.`;
   if (lastReply === undefined || lastReply.kind !== "output" || lastReply.id === seen.current) {
     return "";
   }

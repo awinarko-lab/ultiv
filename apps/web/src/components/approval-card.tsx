@@ -10,14 +10,8 @@ import { ChevronRightIcon, EllipsisIcon, ShieldAlertIcon, ShieldCheckIcon } from
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
+import { describeTool, hintOf } from "@/lib/approval-text";
 import { cn } from "@/lib/utils";
-
-/** Tools that reach outside the conversation (delete/send/pay/publish). */
-const RISKY_TOOL =
-  /delete|remove|purge|drop|send|post|email|tweet|publish|pay|transfer|archive|overwrite/i;
-
-/** Input fields worth quoting in the summary, most telling first. */
-const HINT_KEYS = ["to", "url", "subject", "title", "path", "name", "query", "command", "text"];
 
 export type Decide = (
   callId: string,
@@ -25,27 +19,6 @@ export type Decide = (
   always?: boolean,
   takeover?: boolean,
 ) => Promise<void>;
-
-/** "schedule_set" -> "schedule set"; camelCase too. */
-const humanize = (tool: string): string =>
-  tool
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_.-]+/g, " ")
-    .trim()
-    .toLowerCase();
-
-function hintOf(input: unknown): string | null {
-  if (typeof input !== "object" || input === null) return null;
-  const record = input as Record<string, unknown>;
-  for (const key of HINT_KEYS) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim() !== "") {
-      const flat = value.replace(/\s+/g, " ").trim();
-      return flat.length > 60 ? `${flat.slice(0, 57)}…` : flat;
-    }
-  }
-  return null;
-}
 
 export function ApprovalCard({
   name,
@@ -63,7 +36,7 @@ export function ApprovalCard({
   const [deciding, setDeciding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [details, setDetails] = useState(false);
-  const risky = RISKY_TOOL.test(name);
+  const { action, risky, risk } = describeTool(name);
   const hint = hintOf(input);
   const RiskIcon = risky ? ShieldAlertIcon : ShieldCheckIcon;
 
@@ -81,7 +54,7 @@ export function ApprovalCard({
   const busy = deciding !== null;
   const label = (key: string, text: string): string => (deciding === key ? "Sending…" : text);
   const item =
-    "data-highlighted:bg-muted flex cursor-pointer flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-sm outline-none";
+    "data-highlighted:bg-muted focus-visible:ring-ring/50 focus-visible:ring-3 flex cursor-pointer flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-sm outline-none pointer-coarse:min-h-11";
 
   return (
     <div
@@ -93,7 +66,7 @@ export function ApprovalCard({
       )}
     >
       <p className="text-sm font-medium">
-        {who ?? "Your bot"} wants to {humanize(name)}
+        {who ?? "Your bot"} wants to {action}
         {hint !== null && <span className="text-muted-foreground font-normal">: {hint}</span>}
       </p>
       <p
@@ -103,15 +76,13 @@ export function ApprovalCard({
         )}
       >
         <RiskIcon className="size-3.5 shrink-0" aria-hidden />
-        {risky
-          ? "Higher risk: this reaches outside the chat and may not be undoable."
-          : "Lower risk: nothing leaves the chat without another check."}
+        {risk}
       </p>
       <button
         type="button"
         aria-expanded={details}
         onClick={() => setDetails((open) => !open)}
-        className="text-muted-foreground hover:text-foreground flex w-fit cursor-pointer items-center gap-1 text-xs"
+        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex w-fit cursor-pointer items-center gap-1 rounded-md text-xs outline-none focus-visible:ring-3 pointer-coarse:min-h-11"
       >
         <ChevronRightIcon className={cn("size-3.5 transition-transform", details && "rotate-90")} />
         Details
@@ -146,7 +117,7 @@ export function ApprovalCard({
                 >
                   Always allow
                   <span className="text-muted-foreground text-xs">
-                    Approve now and stop asking about {humanize(name)}.
+                    Approve now and stop asking before it does this again.
                   </span>
                 </Menu.Item>
                 <Menu.Item
