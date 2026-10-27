@@ -1,32 +1,104 @@
 /**
- * The activity view of one background task: progress (its own conversation's
- * projected tail), the files it made, its result, and any approval waiting on
- * it — decide right here. Polls while open (REST has no push); cheap because
- * the endpoint returns a size-capped tail.
+ * A background task's sheet: header (title, status, elapsed, Stop, close),
+ * the brief folded to two lines, the steps as a friendly timeline that
+ * follows the newest step, any approval waiting on it, the result card and
+ * the files it made. Full height on phones so nothing floats over it.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import type { TaskInfo } from "@ultiv/contracts";
+import { ArrowDownIcon, PaperclipIcon } from "lucide-react";
 import { ApprovalCard } from "@/components/approval-card";
-import { Badge } from "@/components/ui/badge";
-import { SectionHeader } from "@/components/ui/section-header";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { api, type ArtifactRow, type TaskActivity } from "@/lib/api";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { BriefRow } from "@/components/task-sheet/brief-row";
+import { ResultCard } from "@/components/task-sheet/result-card";
+import { SheetHeader } from "@/components/task-sheet/sheet-header";
+import { Timeline } from "@/components/task-sheet/timeline";
+import { useFollow } from "@/components/task-sheet/use-follow";
+import { useTaskActivity } from "@/components/task-sheet/use-task-activity";
+import { api, type ArtifactRow } from "@/lib/api";
 import { formatWhen } from "@/lib/format";
+import { timelineOf } from "@/lib/task-steps";
 
-const statusVariant = {
-  running: "default",
-  done: "secondary",
-  failed: "destructive",
-  cancelled: "outline",
-} as const;
+const SHEET =
+  "flex flex-col overflow-hidden p-0 pt-4 sm:p-0 sm:pt-4 h-[calc(100dvh-max(0.75rem,env(safe-area-inset-top)))] max-h-none sm:h-[85dvh]";
 
-const kindLabel: Record<string, string> = {
-  input: "you",
-  output: "bot",
-  thinking: "thinking",
-  note: "note",
-  tool: "tool",
-};
+function Files({ files }: { files: readonly ArtifactRow[] }) {
+  if (files.length === 0) return null;
+  return (
+    <section aria-label="Files from this task" className="flex flex-col gap-1.5">
+      <h3 className="text-muted-foreground text-xs font-medium">Files</h3>
+      {files.map((file) => (
+        <a
+          key={file.id}
+          href={api.artifactUrl(file.id)}
+          target="_blank"
+          rel="noreferrer"
+          className="hover:bg-muted focus-visible:ring-ring/50 flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm outline-none focus-visible:ring-3"
+        >
+          <PaperclipIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{file.name}</span>
+        </a>
+      ))}
+    </section>
+  );
+}
+
+function SheetBody({ task, open }: { task: TaskInfo; open: boolean }) {
+  const { activity, files, error, load, decide } = useTaskActivity(task, open);
+  const running = task.status === "running";
+  const items = useMemo(
+    () =>
+      timelineOf(activity?.steps ?? [], task.prompt, task.status === "done" ? task.result : null),
+    [activity, task.prompt, task.status, task.result],
+  );
+  const lastKey = `${items.length}:${items.at(-1)?.key ?? ""}:${task.status}:${activity?.waiting?.callId ?? ""}`;
+  const follow = useFollow(lastKey);
+  return (
+    <>
+      <SheetHeader task={task} onChanged={() => void load()} />
+      <div
+        ref={follow.ref}
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+      >
+        <BriefRow brief={task.prompt} />
+        {error !== null && (
+          <p role="alert" className="text-destructive text-sm">
+            Couldn't load the latest steps. Retrying…
+          </p>
+        )}
+        {activity === null && error === null ? (
+          <p className="text-muted-foreground text-sm">Loading…</p>
+        ) : (
+          <Timeline items={items} running={running} />
+        )}
+        {activity?.waiting !== null && activity?.waiting !== undefined && (
+          <ApprovalCard
+            name={activity.waiting.name}
+            input={activity.waiting.input}
+            who="This task"
+            onDecide={decide}
+          />
+        )}
+        <ResultCard task={task} />
+        <Files files={files} />
+        <p className="text-muted-foreground text-center text-xs">
+          Started {formatWhen(task.createdAt)}
+          {task.finishedAt !== null && ` · finished ${formatWhen(task.finishedAt)}`}
+        </p>
+      </div>
+      {!follow.atBottom && (
+        <button
+          type="button"
+          onClick={follow.jump}
+          className="bg-background/80 border-border/70 focus-visible:ring-ring/50 animate-in fade-in absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 flex min-h-11 -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border px-4 text-sm font-medium shadow-md outline-none backdrop-blur-xl focus-visible:ring-3 motion-reduce:animate-none"
+        >
+          <ArrowDownIcon aria-hidden className="size-4" />
+          Jump to latest
+        </button>
+      )}
+    </>
+  );
+}
 
 export function TaskActivityDialog({
   task,
@@ -36,114 +108,11 @@ export function TaskActivityDialog({
   children: React.ReactElement;
 }) {
   const [open, setOpen] = useState(false);
-  const [activity, setActivity] = useState<TaskActivity | null>(null);
-  const [files, setFiles] = useState<ArtifactRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async (): Promise<void> => {
-    try {
-      const next = await api.taskActivity(task.id);
-      setActivity(next);
-      setFiles(next.conversationId !== null ? await api.artifactsFor(next.conversationId) : []);
-      setError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }, [task.id]);
-
-  useEffect(() => {
-    if (!open) return;
-    void load();
-    const timer = setInterval(() => void load(), 2_500);
-    return () => clearInterval(timer);
-  }, [open, load]);
-
-  const decide = async (approved: boolean, always?: boolean, takeover?: boolean): Promise<void> => {
-    const conversationId = activity?.conversationId;
-    const callId = activity?.waiting?.callId;
-    if (conversationId === null || conversationId === undefined || callId === undefined) return;
-    // A failure throws into the card, which keeps it visible for a retry.
-    await api.approvalDecide(conversationId, callId, approved, always, takeover);
-    await load();
-  };
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={children} />
-      <DialogContent>
-        <DialogTitle className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate">{task.prompt}</span>
-          <Badge variant={statusVariant[task.status]}>{task.status}</Badge>
-        </DialogTitle>
-        {error !== null && <p className="text-destructive mt-2 text-sm">{error}</p>}
-
-        {activity?.waiting !== null && activity?.waiting !== undefined && (
-          <div className="mt-3">
-            <ApprovalCard
-              name={activity.waiting.name}
-              input={activity.waiting.input}
-              who="This task"
-              onDecide={decide}
-            />
-          </div>
-        )}
-
-        <div className="mt-3 rounded-lg border px-3 py-2">
-          {activity === null ? (
-            <p className="text-muted-foreground text-sm">Loading…</p>
-          ) : activity.steps.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No activity yet.</p>
-          ) : (
-            activity.steps.map((step, index) => (
-              <p
-                key={`${step.at}-${index}`}
-                className="border-muted/40 border-b py-1.5 text-xs last:border-b-0"
-              >
-                <span className="text-muted-foreground mr-2 inline-block w-14 font-semibold">
-                  {kindLabel[step.kind] ?? step.kind}
-                </span>
-                <span className="break-words">{step.text}</span>
-              </p>
-            ))
-          )}
-        </div>
-
-        {(task.status === "done" || task.status === "failed") && (
-          <div className="mt-3 rounded-lg border px-3 py-2 text-sm">
-            <SectionHeader title={task.status === "done" ? "Result" : "Failed"} />
-            <p className="mt-1 break-words whitespace-pre-wrap">
-              {task.status === "done"
-                ? (task.result ?? "Finished without a result text.")
-                : (task.error ?? "Unknown failure.")}
-            </p>
-          </div>
-        )}
-
-        <div className="mt-3">
-          <SectionHeader title="Files from this task" />
-          <div className="mt-2 flex flex-col gap-1.5">
-            {files.length === 0 ? (
-              <p className="text-muted-foreground text-xs">None yet.</p>
-            ) : (
-              files.map((file) => (
-                <a
-                  key={file.id}
-                  href={api.artifactUrl(file.id)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:bg-muted flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs"
-                >
-                  <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                  <Badge variant="outline">{file.mime}</Badge>
-                </a>
-              ))
-            )}
-          </div>
-        </div>
-        <p className="text-muted-foreground mt-2 text-xs">
-          Created {formatWhen(task.createdAt)}
-          {task.finishedAt !== null && ` · finished ${formatWhen(task.finishedAt)}`}
-        </p>
+      <DialogContent showCloseButton={false} className={SHEET}>
+        <SheetBody task={task} open={open} />
       </DialogContent>
     </Dialog>
   );

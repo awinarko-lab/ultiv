@@ -133,7 +133,19 @@ export interface ArtifactRow {
 export interface TaskActivity {
   conversationId: string | null;
   waiting: { callId: string; name: string; input: unknown } | null;
-  steps: { kind: string; at: number; text: string }[];
+  steps: {
+    kind: string;
+    at: number;
+    text: string;
+    /** Newer servers: the tool call's structure (older ones only send `text`). */
+    tool?: {
+      name: string;
+      status: "running" | "done" | "error";
+      input: unknown;
+      output: string | null;
+      durationMs: number | null;
+    };
+  }[];
 }
 
 export const api = {

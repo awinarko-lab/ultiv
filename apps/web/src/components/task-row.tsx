@@ -3,63 +3,11 @@
  * elapsed time and what it is doing now. A running task has its own Stop with
  * a light inline confirm — no dialog for something this small.
  */
-import { useState } from "react";
 import type { TaskInfo } from "@ultiv/contracts";
-import { Button } from "@/components/ui/button";
 import { TaskActivityDialog } from "@/components/task-activity";
 import { TaskStatusIcon } from "@/components/task-status-icon";
-import { api } from "@/lib/api";
+import { StopTask } from "@/components/task-sheet/stop-task";
 import { taskElapsed, taskLatest, taskStatusWord, taskTitle } from "@/lib/task-text";
-
-function StopTask({ id, onStopped }: { id: string; onStopped: () => void }) {
-  const [asking, setAsking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const stop = async (): Promise<void> => {
-    try {
-      await api.cancelTask(id);
-      setAsking(false);
-      onStopped();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  };
-  if (!asking)
-    return (
-      <Button
-        variant="ghost"
-        size="sm"
-        className="shrink-0 pointer-coarse:min-h-11"
-        onClick={() => setAsking(true)}
-      >
-        Stop
-      </Button>
-    );
-  return (
-    <span className="flex shrink-0 items-center gap-1">
-      {error !== null && (
-        <span role="alert" className="text-destructive text-xs">
-          Couldn't stop
-        </span>
-      )}
-      <Button
-        variant="destructive"
-        size="sm"
-        className="pointer-coarse:min-h-11"
-        onClick={() => void stop()}
-      >
-        Stop task
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="pointer-coarse:min-h-11"
-        onClick={() => setAsking(false)}
-      >
-        Keep
-      </Button>
-    </span>
-  );
-}
 
 export function TaskRow({
   task,
