@@ -16,6 +16,8 @@ export function ConfirmDialog({
   typed,
   onConfirm,
   children,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   title: string;
   warning: string;
@@ -23,9 +25,17 @@ export function ConfirmDialog({
   /** When set, the user must type exactly this to enable the button. */
   typed?: string;
   onConfirm: () => Promise<void>;
-  children: React.ReactElement;
+  /** The trigger; omit it and drive `open` instead (e.g. from a menu item). */
+  children?: React.ReactElement | undefined;
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
 }) {
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = controlledOpen ?? ownOpen;
+  const setOpen = (next: boolean): void => {
+    setOwnOpen(next);
+    onOpenChange?.(next);
+  };
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +68,7 @@ export function ConfirmDialog({
         else setOpen(true);
       }}
     >
-      <DialogTrigger render={children} />
+      {children !== undefined && <DialogTrigger render={children} />}
       <DialogContent>
         <DialogTitle>{title}</DialogTitle>
         <p className="text-destructive mt-2 text-sm">{warning}</p>

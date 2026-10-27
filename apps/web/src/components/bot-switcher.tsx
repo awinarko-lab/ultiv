@@ -15,7 +15,7 @@ import {
   UsersIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { NewBotDialog } from "@/components/bots-panel";
+import { NewBotDialog } from "@/components/bot-dialog";
 import { BotAvatar, linkLabel, type LinkState } from "@/components/bot-avatar";
 import { useApp } from "@/lib/app-state";
 

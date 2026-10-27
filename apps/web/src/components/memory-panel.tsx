@@ -29,12 +29,22 @@ export function MemoryPanel({
   profileId,
   name,
   children,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   profileId: string;
   name: string;
-  children: React.ReactElement;
+  /** The trigger; omit it and drive `open` instead (e.g. from a menu item). */
+  children?: React.ReactElement | undefined;
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
 }) {
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = controlledOpen ?? ownOpen;
+  const setOpen = (next: boolean): void => {
+    setOwnOpen(next);
+    onOpenChange?.(next);
+  };
   const [records, setRecords] = useState<MemoryRecord[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactRow[]>([]);
   const [state, setState] = useState<{ key: string; value: string; updatedAt: number }[]>([]);
@@ -85,7 +95,7 @@ export function MemoryPanel({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={children} />
+      {children !== undefined && <DialogTrigger render={children} />}
       <DialogContent>
         <DialogTitle>What {name} remembers</DialogTitle>
         {error !== null && <p className="text-destructive mt-2 text-sm">{error}</p>}
