@@ -64,6 +64,8 @@ export interface Engine {
   readonly deadlineMs: number;
   readonly wakes: WakeQueue;
   readonly timers: Map<string, ReturnType<typeof setTimeout>>;
+  /** Hear a message expire unanswered (the push notifier rides this). */
+  readonly expiredListeners: Set<(entry: MailboxEntry) => void>;
 }
 
 const logged =
@@ -95,6 +97,7 @@ export const makeEngine = (deps: MailboxDeps): Engine => {
       ),
     ),
     timers: new Map(),
+    expiredListeners: new Set(),
   };
 };
 
@@ -326,12 +329,20 @@ export const expire = async (e: Engine, id: string): Promise<void> => {
   }
   await withdrawQueued(e, entry);
   const minutes = Math.max(1, Math.round(e.deadlineMs / 60_000));
-  await finishWithNack(
+  const expired = await finishWithNack(
     e,
     id,
     { status: "expired", error: `no reply within ${minutes} minutes` },
     (done, toName) => expiredText(done, toName, e.deadlineMs),
   );
+  if (expired === undefined) return;
+  for (const fn of e.expiredListeners) {
+    try {
+      fn(expired);
+    } catch (cause) {
+      console.error("mailbox expiry listener failed:", cause);
+    }
+  }
 };
 
 export const armDeadline = (e: Engine, entry: MailboxEntry): void => {

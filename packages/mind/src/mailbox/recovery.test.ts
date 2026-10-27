@@ -122,6 +122,8 @@ it("a message past its deadline expires and NACKs the sender", async () => {
   const handle = await openMind({ storage: new MemoryStorage() });
   const { a, b } = await twoBots(handle);
   const mailbox = mailboxOn(handle, stuck(handle.mind.converse), 50);
+  const heard: string[] = [];
+  mailbox.onExpired((expired) => heard.push(`${expired.owner}:${expired.envelope.id}`));
   const sent = await mailbox.send({
     owner: "harry",
     from: a.id,
@@ -133,6 +135,7 @@ it("a message past its deadline expires and NACKs the sender", async () => {
   await sleep(300);
   const entry = await entryOf(handle, sent.envelope.id);
   expect(entry?.status).toBe("expired");
+  expect(heard).toEqual([`harry:${sent.envelope.id}`]);
   expect(entry?.senderNotified).toBe(true);
   const aText = await mainText(handle, a.id);
   expect(aText).toContain(`[nack from Researcher • re: ${sent.envelope.id}] timed out`);

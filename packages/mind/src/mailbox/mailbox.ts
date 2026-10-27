@@ -96,6 +96,8 @@ export interface MailboxService {
   readonly transcriptOf: (owner: string, room: RoomInfo) => Promise<readonly TranscriptLine[]>;
   /** The conversation a profile tunnels at in a room (their latest send origin, else main). */
   readonly endpointOf: (owner: string, room: RoomInfo, profileId: string) => Promise<string>;
+  /** Hear a message expire unanswered. Returns the unsubscribe. */
+  readonly onExpired: (fn: (entry: MailboxEntry) => void) => () => void;
   /** Remove every entry touching a profile (purge cascade). */
   readonly purgeProfile: (owner: string, profileId: string) => Promise<number>;
   /** Cancel a pending message; the sender is told. A finished one is returned unchanged. */
@@ -254,6 +256,10 @@ export const mailboxService = (deps: MailboxDeps): MailboxService => {
         await writeEntries(converse, () => remaining);
         return entries.length - remaining.length;
       }),
+    onExpired: (fn) => {
+      e.expiredListeners.add(fn);
+      return () => void e.expiredListeners.delete(fn);
+    },
     cancel: (owner, id) => cancelEntry(e, owner, id),
     recover: () => recover(e),
   };

@@ -57,6 +57,11 @@ export interface ApprovalsService {
   readonly pendingFor: (conversationId: string) => readonly ApprovalRequest[];
   /** Every pending approval across conversations — the cross-profile inbox. */
   readonly pendingAll: () => ReadonlyArray<PendingEntry>;
+  /**
+   * Hear every gate that actually waits on the owner (auto-approved calls
+   * never fire). Returns the unsubscribe. The push notifier rides this.
+   */
+  readonly listen: (fn: (conversationId: string, request: ApprovalRequest) => void) => () => void;
   /** Wire the policy hooks (called once profiles exist). */
   readonly setHooks: (hooks: ApprovalsHooks) => void;
 }
@@ -72,6 +77,7 @@ export const makeApprovals = (
   const waiters = new Map<string, Deferred.Deferred<boolean>>();
   const notes = new Map<string, string>();
   let hooks: ApprovalsHooks = {};
+  const listeners = new Set<(conversationId: string, request: ApprovalRequest) => void>();
   const key = (conversationId: string, callId: string): string => `${conversationId}:${callId}`;
   const settle = (k: string, approved: boolean): void => {
     const waiter = waiters.get(k);
@@ -81,6 +87,10 @@ export const makeApprovals = (
     Deferred.doneUnsafe(waiter, Effect.succeed(approved));
   };
   return {
+    listen: (fn) => {
+      listeners.add(fn);
+      return () => void listeners.delete(fn);
+    },
     setHooks: (next) => {
       hooks = next;
     },
@@ -92,6 +102,7 @@ export const makeApprovals = (
         const deferred = yield* Deferred.make<boolean>();
         pending.set(k, { conversationId, request });
         waiters.set(k, deferred);
+        for (const fn of listeners) fn(conversationId, request);
         const exit = yield* Effect.exit(Deferred.await(deferred).pipe(Effect.timeout(timeout)));
         if (Exit.isFailure(exit)) hooks.onExpire?.(conversationId, request);
         settle(k, Exit.isSuccess(exit));

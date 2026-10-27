@@ -26,6 +26,8 @@ describe("Tasks (offline, MemoryStorage)", () => {
   it("spawns, fails offline without a provider, and wakes the spawning conversation", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const parent = await Effect.runPromise(handle.mind.converse.ensure("parent"));
+    const heard: string[] = [];
+    handle.mind.tasks.listen((task) => heard.push(`${task.id}:${task.status}:${task.sessionId}`));
     const spawned = await Effect.runPromise(
       handle.mind.tasks.spawn({
         sessionId: "session-1",
@@ -49,6 +51,7 @@ describe("Tasks (offline, MemoryStorage)", () => {
       (transcript) => transcript.includes(`[task ${spawned.id} failed]`),
     );
     expect(transcript).toContain(`[task ${spawned.id} failed]`);
+    expect(heard).toEqual([`${spawned.id}:failed:session-1`]);
     await handle.close();
   });
 

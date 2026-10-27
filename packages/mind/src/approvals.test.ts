@@ -57,4 +57,23 @@ describe("Approvals", () => {
     await expect(next).resolves.toBe(false);
     expect(approvals.noteFor("conv", "c5")).toBeUndefined();
   });
+
+  it("tells listeners about gates that wait, never about auto-approved ones", async () => {
+    const approvals = makeApprovals();
+    const heard: string[] = [];
+    const stop = approvals.listen((conversationId, request) =>
+      heard.push(`${conversationId}:${request.name}`),
+    );
+    approvals.setHooks({ autoApprove: (conversationId) => conversationId === "auto" });
+    await expect(Effect.runPromise(approvals.request("auto", "c6", REQUEST))).resolves.toBe(true);
+    const pending = Effect.runPromise(approvals.request("conv", "c7", REQUEST));
+    await Promise.resolve();
+    expect(heard).toEqual(["conv:send_message"]);
+    approvals.decide("conv", "c7", true);
+    await pending;
+    stop();
+    void Effect.runPromise(approvals.request("conv", "c8", REQUEST));
+    await Promise.resolve();
+    expect(heard).toHaveLength(1);
+  });
 });

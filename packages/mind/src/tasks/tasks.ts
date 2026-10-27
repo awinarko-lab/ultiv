@@ -79,6 +79,8 @@ export interface TasksService {
   readonly steps: (id: string, count?: number) => Promise<string[]>;
   /** Post a progress line into the parent chat (rate-limited; never wakes the parent). */
   readonly notify: (id: string, text: string) => Effect.Effect<NotifyOutcome, External>;
+  /** Hear each task settle (done or failed). Returns the unsubscribe. */
+  readonly listen: (fn: (task: TaskInfo) => void) => () => void;
   /** The task a conversation belongs to, if it is a task's own conversation. */
   readonly taskOf: (conversationId: string) => Effect.Effect<TaskInfo | undefined, External>;
   /** True when the conversation belongs to a background task: tasks cannot spawn sub-tasks. */
@@ -124,6 +126,8 @@ interface TaskRuntime {
   readonly followers: Map<string, Submission[]>;
   /** Tasks past their last drain: new messages are refused, not lost. */
   readonly closing: Set<string>;
+  /** Hear a task settle (done or failed; never a cancel). */
+  readonly listeners: Set<(task: TaskInfo) => void>;
 }
 
 /** Ensure and bind the task's conversation before any turn reaches it. */
@@ -218,8 +222,22 @@ const runTask = (rt: TaskRuntime, task: TaskInfo, prompt: string): void => {
     }
     rt.followers.delete(task.id);
     rt.closing.delete(task.id);
+    await announce(rt, task.id);
     await wakeParent(converse, task.id);
   })();
+};
+
+/** Tell listeners a task settled; a cancelled or vanished row stays quiet. */
+const announce = async (rt: TaskRuntime, id: string): Promise<void> => {
+  const settled = await Effect.runPromise(findTask(rt.converse, id)).catch(() => undefined);
+  if (settled === undefined || (settled.status !== "done" && settled.status !== "failed")) return;
+  for (const fn of rt.listeners) {
+    try {
+      fn(settled);
+    } catch (cause) {
+      console.error("task listener failed:", cause);
+    }
+  }
 };
 
 /**
@@ -329,6 +347,7 @@ export const tasksService = (converse: ConverseService): TasksService => {
     binder: null,
     followers: new Map(),
     closing: new Set(),
+    listeners: new Set(),
   };
   let attached = false;
   return {
@@ -352,6 +371,10 @@ export const tasksService = (converse: ConverseService): TasksService => {
         return { removed: true, cancelled };
       }),
     notify: (id, text) => notifyOwner(converse, id, text),
+    listen: (fn) => {
+      rt.listeners.add(fn);
+      return () => void rt.listeners.delete(fn);
+    },
     taskOf: (conversationId) => taskOfConversation(converse, conversationId),
     isTaskConversation: (conversationId) =>
       Effect.map(taskOfConversation(converse, conversationId), (task) => task !== undefined),
