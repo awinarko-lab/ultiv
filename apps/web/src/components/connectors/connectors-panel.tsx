@@ -38,7 +38,11 @@ function useConnectors() {
     }
     setVaultItems(usableItems(await api.vault().catch(() => [])));
   }, []);
-  const busy = list?.servers.some((server) => server.state === "connecting") ?? false;
+  // After Connect, poll fast for a while: the sign-in finishes in another tab.
+  const [watchUntil, setWatchUntil] = useState(0);
+  const busy =
+    (list?.servers.some((server) => server.state === "connecting") ?? false) ||
+    watchUntil > Date.now();
   useEffect(() => {
     void load();
     const timer = setInterval(
@@ -49,12 +53,15 @@ function useConnectors() {
     );
     const onFocus = (): void => void load();
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
     return () => {
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
     };
   }, [load, busy]);
-  return { list, loadFailed, vaultItems, load };
+  const watch = useCallback(() => setWatchUntil(Date.now() + 120_000), []);
+  return { list, loadFailed, vaultItems, load, watch };
 }
 
 /** Open the provider's sign-in page in a new tab (opened first, so popups aren't blocked). */
@@ -104,7 +111,7 @@ function CallbackNote({ url }: { url: string }) {
 }
 
 export function ConnectorsPanel({ profiles }: { profiles: ProfileInfo[] }) {
-  const { list, loadFailed, vaultItems, load } = useConnectors();
+  const { list, loadFailed, vaultItems, load, watch } = useConnectors();
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const act = async (run: () => Promise<unknown>): Promise<void> => {
@@ -163,7 +170,10 @@ export function ConnectorsPanel({ profiles }: { profiles: ProfileInfo[] }) {
           profiles={profiles}
           vaultItems={vaultItems}
           act={act}
-          connect={(target) => void act(() => openSignIn(target))}
+          connect={(target) => {
+            watch();
+            void act(() => openSignIn(target));
+          }}
         />
       ))}
       <p className="text-muted-foreground text-xs">

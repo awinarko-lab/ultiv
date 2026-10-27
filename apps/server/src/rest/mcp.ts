@@ -43,8 +43,10 @@ const readInput = async (args: RouteArgs): Promise<McpServerInput> => {
 
 const page = (title: string, text: string): string =>
   `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-  `<title>${title}</title><body style="font:16px system-ui;padding:32px;max-width:28rem;margin:auto;` +
-  `color-scheme:light dark"><h1 style="font-size:20px">${title}</h1><p>${text}</p>` +
+  `<meta name="color-scheme" content="light dark"><title>${title}</title>` +
+  `<body style="font:16px system-ui;padding:32px;max-width:28rem;margin:auto">` +
+  `<h1 style="font-size:20px">${title}</h1><p>${text}</p>` +
+  `<p><a href="/connectors" style="display:inline-block;padding:12px 0">Back to Connectors</a></p>` +
   `<script>setTimeout(()=>{try{window.close()}catch{}},1500)</script></body>`;
 
 const escapeHtml = (text: string): string =>
