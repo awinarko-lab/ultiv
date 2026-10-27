@@ -1,7 +1,7 @@
 /**
  * The REST surface: session registry, model catalog, tasks, artifacts,
  * webhooks (also the `/hooks/:id` ingress), cron jobs, profiles, mailbox,
- * vault, approvals, memory and the audit tail. Plain REST on purpose — CRUD
+ * vault, connectors (MCP), approvals, memory and the audit tail. Plain REST on purpose — CRUD
  * over chord's replicated-object wire desyncs on attach (chord 1.4.0
  * ack-window bug). Owner scoping rides `x-ultiv-user`; routes live in ./rest.
  */
@@ -22,6 +22,7 @@ import { vaultRoutes } from "./rest/vault.ts";
 import { webhookRoutes } from "./rest/webhooks.ts";
 import { sensorRoutes } from "./rest/sensors.ts";
 import { pushRoutes } from "./rest/push.ts";
+import { mcpRoutes } from "./rest/mcp.ts";
 import type { PushService } from "./push/index.ts";
 
 export interface RestDeps {
@@ -169,6 +170,7 @@ async function route(args: RouteArgs): Promise<void> {
   if (await sensorRoutes(args, segment)) return;
   if (await bindingRoutes(args, segment)) return;
   if (await vaultRoutes(args, segment)) return;
+  if (await mcpRoutes(args)) return;
   if (await approvalRoutes(args)) return;
   if (await pushRoutes(args)) return;
   if (path === "/" || path === "/api/health") return json(200, { app: "ultiv", ok: true });
