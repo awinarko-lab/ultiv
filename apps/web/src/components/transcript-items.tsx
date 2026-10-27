@@ -4,6 +4,7 @@
  */
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { formatDivider, formatFull } from "@/lib/format";
 import type { ToolStep, TranscriptEntry } from "@ultiv/contracts";
 import { BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
 import {
@@ -23,10 +24,16 @@ import {
   TraceTitle,
 } from "@/components/ui/trace";
 
+// Messenger bubbles: the owner on the right in the muted surface, the bot on
+// the left in a lighter one (a hairline keeps it visible on white).
 const roleStyles = {
-  user: "self-end max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground",
-  agent: "self-start max-w-full rounded-lg bg-muted px-3 py-2",
+  user: "self-end max-w-[80%] rounded-2xl bg-muted px-4 py-2.5 leading-relaxed whitespace-pre-wrap break-words",
+  agent:
+    "self-start max-w-[80%] min-w-0 rounded-2xl bg-muted/40 px-4 py-2.5 ring-1 ring-border/60 dark:ring-0",
 } as const;
+
+/** A new divider when this much time passed since the previous message. */
+const DIVIDER_GAP_MS = 10 * 60_000;
 
 /** Agent output is markdown; the newest block streams with a caret while working. */
 function Output({ text, streaming }: { text: string; streaming: boolean }) {
@@ -102,21 +109,9 @@ function Tool({ step }: { step: ToolStep }) {
 }
 
 /** Consecutive tool steps render as one Trace so a run reads as a sequence. */
-type Group = { key: string; tools: ToolStep[] } | { key: string; entry: TranscriptEntry };
-
-/** Short timestamp: HH:MM, with the date when the entry isn't from today. */
-const stampOf = (at: number): string => {
-  const date = new Date(at);
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const now = new Date();
-  const sameDay =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
-  return sameDay
-    ? time
-    : `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
-};
+type Group =
+  | { key: string; at: number; tools: ToolStep[] }
+  | { key: string; at: number; entry: TranscriptEntry };
 
 /**
  * Bracketed machinery notes: the header ([relay • topic], [reply from …],
@@ -151,10 +146,10 @@ function groupTranscript(transcript: TranscriptEntry[]): Group[] {
         last.tools.push(entry.step);
         continue;
       }
-      groups.push({ key: String(entry.id), tools: [entry.step] });
+      groups.push({ key: String(entry.id), at: entry.at, tools: [entry.step] });
       continue;
     }
-    groups.push({ key: String(entry.id), entry });
+    groups.push({ key: String(entry.id), at: entry.at, entry });
   }
   return groups;
 }
@@ -163,50 +158,55 @@ function groupTranscript(transcript: TranscriptEntry[]): Group[] {
 export function TranscriptItems({ transcript }: { transcript: TranscriptEntry[] }) {
   return (
     <>
-      {groupTranscript(transcript).map((group) =>
-        "tools" in group ? (
-          <li key={group.key} className="w-full">
-            <Trace>
-              {group.tools.map((step) => (
-                <Tool key={step.callId} step={step} />
-              ))}
-            </Trace>
-          </li>
-        ) : group.entry.kind === "input" ? (
-          <li key={group.key} className={roleStyles.user}>
-            {group.entry.text}
-            <span className="text-muted-foreground ml-2 align-baseline text-[10px]">
-              {stampOf(group.entry.at)}
-            </span>
-          </li>
-        ) : group.entry.kind === "output" ? (
-          <li key={group.key} className={roleStyles.agent}>
-            <Output text={group.entry.text} streaming={group.entry.streaming} />
-            <span className="text-muted-foreground ml-2 align-baseline text-[10px]">
-              {stampOf(group.entry.at)}
-            </span>
-          </li>
-        ) : group.entry.kind === "thinking" ? (
-          <li key={group.key} className="w-full">
-            <Thinking text={group.entry.text} />
-          </li>
-        ) : group.entry.kind === "note" ? (
-          <li
-            key={group.key}
-            className="bg-muted/40 text-muted-foreground w-full rounded-md border px-3 py-2 text-sm"
-          >
-            <span className="text-foreground/70 text-xs font-semibold uppercase">
-              {noteHeader(group.entry.text)}{" "}
-              <span className="font-normal">{stampOf(group.entry.at)}</span>
-            </span>
-            <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {noteBody(group.entry.text)}
-              </ReactMarkdown>
-            </div>
-          </li>
-        ) : null,
-      )}
+      {groupTranscript(transcript).map((group, index, groups) => {
+        const previous = groups[index - 1];
+        const divider =
+          previous === undefined || group.at - previous.at >= DIVIDER_GAP_MS ? (
+            <li
+              key={`divider-${group.key}`}
+              role="separator"
+              className="text-muted-foreground self-center py-1 text-[11px]"
+            >
+              {formatDivider(group.at)}
+            </li>
+          ) : null;
+        return [divider, renderGroup(group)];
+      })}
     </>
   );
+}
+
+function renderGroup(group: Group) {
+  return "tools" in group ? (
+    <li key={group.key} className="w-full">
+      <Trace>
+        {group.tools.map((step) => (
+          <Tool key={step.callId} step={step} />
+        ))}
+      </Trace>
+    </li>
+  ) : group.entry.kind === "input" ? (
+    <li key={group.key} className={roleStyles.user} title={formatFull(group.entry.at)}>
+      {group.entry.text}
+    </li>
+  ) : group.entry.kind === "output" ? (
+    <li key={group.key} className={roleStyles.agent} title={formatFull(group.entry.at)}>
+      <Output text={group.entry.text} streaming={group.entry.streaming} />
+    </li>
+  ) : group.entry.kind === "thinking" ? (
+    <li key={group.key} className="w-full">
+      <Thinking text={group.entry.text} />
+    </li>
+  ) : group.entry.kind === "note" ? (
+    <li
+      key={group.key}
+      className="bg-muted/30 text-muted-foreground w-full rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
+      title={formatFull(group.entry.at)}
+    >
+      <span className="text-foreground/70 text-xs font-medium">{noteHeader(group.entry.text)}</span>
+      <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{noteBody(group.entry.text)}</ReactMarkdown>
+      </div>
+    </li>
+  ) : null;
 }
