@@ -75,6 +75,8 @@ export const TranscriptEntrySchema = Type.Union([
     at: Type.Number(),
     text: Type.String(),
     streaming: Type.Boolean(),
+    /** Cut short by Stop or Redirect now: the partial reply as it stood. */
+    interrupted: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     id: Type.Number(),
@@ -113,6 +115,15 @@ export const WhenBusySchema = Type.Union([Type.Literal("steer"), Type.Literal("f
 
 export type WhenBusy = Static<typeof WhenBusySchema>;
 
+/**
+ * How an owner send treats a busy bot: the queue modes above, or `redirect`
+ * (explicit, never the default) — stop the running turn at the nearest safe
+ * point, keep its partial reply marked interrupted, and answer this instead.
+ */
+export const SendModeSchema = Type.Union([WhenBusySchema, Type.Literal("redirect")]);
+
+export type SendMode = Static<typeof SendModeSchema>;
+
 /** A message waiting for the running turn: placed at its next step (steer) or after it (followUp). */
 export const QueuedInputSchema = Type.Object({
   id: Type.String(),
@@ -136,7 +147,7 @@ export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 11,
+  version: 12,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {
@@ -162,9 +173,10 @@ export const Session = remote("ultiv.session", {
             attachments: Type.Optional(Type.Array(Type.String())),
             /**
              * While the bot works: join the running turn at its next step (steer,
-             * the default) or wait until the turn finishes (followUp).
+             * the default), wait until the turn finishes (followUp), or stop it
+             * and answer this instead (redirect).
              */
-            whenBusy: Type.Optional(WhenBusySchema),
+            whenBusy: Type.Optional(SendModeSchema),
           }),
         ),
         /** Take back a queued message before the turn picks it up. */

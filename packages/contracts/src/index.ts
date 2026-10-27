@@ -13,6 +13,7 @@ export {
   ToolStepSchema,
   TranscriptEntrySchema,
   TranscriptSchema,
+  SendModeSchema,
   WhenBusySchema,
   WithdrawStatusSchema,
 } from "./session.ts";
@@ -25,6 +26,7 @@ export type {
   QueuedInput,
   ToolStep,
   TranscriptEntry,
+  SendMode,
   WhenBusy,
   WithdrawStatus,
 } from "./session.ts";

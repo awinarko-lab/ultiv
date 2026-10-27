@@ -60,62 +60,88 @@ function committedSteps(entries: readonly EntryRecord[], results: Map<string, To
       continue;
     }
     for (const message of (entry.model ?? []) as readonly unknown[]) {
-      const record = message as { role?: string; content?: unknown; timestamp?: unknown };
-      if (record.role === "toolResult" || record.role === "system") continue;
-      const at = typeof record.timestamp === "number" ? record.timestamp : Date.now();
-      const blocks = Array.isArray(record.content)
-        ? (record.content as readonly unknown[])
-        : [{ type: "text", text: textOf(record.content) }];
-      let blockIndex = 0;
-      for (const block of blocks) {
-        const id = entry.id * 100 + blockIndex++;
-        if (record.role === "user") {
-          const text = String((block as { text?: unknown }).text ?? "").trim();
-          // Bracketed inputs are machinery, not things the user typed. The
-          // onboarding seed is dropped outright; relays and room wakes render
-          // as muted notes. The model still sees all of them.
-          if (text !== "" && !text.startsWith("[onboarding]")) {
-            if (/^\[(relay|message from|reply from|nack from|owner|cron )/.test(text)) {
-              out.push({ id, kind: "note", at, text });
-            } else {
-              out.push({ id, kind: "input", at, text });
-            }
-          }
-          break;
-        }
-        const kind = (block as { type?: string }).type;
-        if (kind === "thinking") {
-          const text = String((block as { thinking?: unknown }).thinking ?? "").trim();
-          if (text !== "") out.push({ id, kind: "thinking", at, text });
-        } else if (kind === "toolCall") {
-          const name = String((block as { name?: unknown }).name ?? "tool");
-          if (name === "message") {
-            // The initiator's outgoing message is chat, not plumbing: render
-            // it as a visible note ("✉ → who") instead of a collapsed trace.
-            const args = (block as { arguments?: Record<string, unknown> }).arguments ?? {};
-            const to = String(args.to ?? "unknown");
-            const messageKind = String(args.kind ?? "notify");
-            const topic = args.topic === undefined ? "" : ` • ${String(args.topic)}`;
-            const body = String(args.body ?? "").slice(0, 800);
-            out.push({
-              id,
-              kind: "note",
-              at,
-              text: `✉ → ${to} (${messageKind}${topic})\n\n${body}`,
-            });
-          } else {
-            out.push(
-              toolStep(block, id, at, results.get(String((block as { id?: unknown }).id ?? id))),
-            );
-          }
-        } else if (kind === "text") {
-          const text = String((block as { text?: unknown }).text ?? "").trim();
-          if (text !== "") out.push({ id, kind: "output", at, text, streaming: false });
-        }
-      }
+      messageSteps(message, entry.id, results, out);
     }
   }
   return out;
+}
+
+type MessageRecord = {
+  role?: string;
+  content?: unknown;
+  timestamp?: unknown;
+  stopReason?: unknown;
+};
+
+/** One committed model message -> steps (user input or note, or the assistant's blocks). */
+function messageSteps(
+  message: unknown,
+  entryId: number,
+  results: Map<string, ToolResult>,
+  out: Step[],
+): void {
+  const record = message as MessageRecord;
+  if (record.role === "toolResult" || record.role === "system") return;
+  const at = typeof record.timestamp === "number" ? record.timestamp : Date.now();
+  const blocks = Array.isArray(record.content)
+    ? (record.content as readonly unknown[])
+    : [{ type: "text", text: textOf(record.content) }];
+  if (record.role === "user") {
+    userStep(blocks[0], entryId * 100, at, out);
+    return;
+  }
+  // Stop or Redirect now cut this reply short: pi-durable kept the partial.
+  const interrupted = record.stopReason === "aborted";
+  let blockIndex = 0;
+  for (const block of blocks) {
+    const id = entryId * 100 + blockIndex++;
+    const kind = (block as { type?: string }).type;
+    if (kind === "thinking") {
+      const text = String((block as { thinking?: unknown }).thinking ?? "").trim();
+      if (text !== "") out.push({ id, kind: "thinking", at, text });
+    } else if (kind === "toolCall") {
+      out.push(callStep(block, id, at, results));
+    } else if (kind === "text") {
+      const text = String((block as { text?: unknown }).text ?? "").trim();
+      if (text === "") continue;
+      out.push(
+        interrupted
+          ? { id, kind: "output", at, text, streaming: false, interrupted: true }
+          : { id, kind: "output", at, text, streaming: false },
+      );
+    }
+  }
+}
+
+/**
+ * A user message. Bracketed inputs are machinery, not things the user typed.
+ * The onboarding seed is dropped outright; relays and room wakes render as
+ * muted notes. The model still sees all of them.
+ */
+function userStep(block: unknown, id: number, at: number, out: Step[]): void {
+  const text = String((block as { text?: unknown } | undefined)?.text ?? "").trim();
+  if (text === "" || text.startsWith("[onboarding]")) return;
+  if (/^\[(relay|message from|reply from|nack from|owner|cron )/.test(text)) {
+    out.push({ id, kind: "note", at, text });
+  } else {
+    out.push({ id, kind: "input", at, text });
+  }
+}
+
+/** A tool call: `message` renders as a visible outgoing note, others as trace steps. */
+function callStep(block: unknown, id: number, at: number, results: Map<string, ToolResult>): Step {
+  const name = String((block as { name?: unknown }).name ?? "tool");
+  if (name !== "message") {
+    return toolStep(block, id, at, results.get(String((block as { id?: unknown }).id ?? id)));
+  }
+  // The initiator's outgoing message is chat, not plumbing: render it as a
+  // visible note ("✉ → who") instead of a collapsed trace.
+  const args = (block as { arguments?: Record<string, unknown> }).arguments ?? {};
+  const to = String(args.to ?? "unknown");
+  const messageKind = String(args.kind ?? "notify");
+  const topic = args.topic === undefined ? "" : ` • ${String(args.topic)}`;
+  const body = String(args.body ?? "").slice(0, 800);
+  return { id, kind: "note", at, text: `✉ → ${to} (${messageKind}${topic})\n\n${body}` };
 }
 
 function toolStep(block: unknown, id: number, at: number, result: ToolResult | undefined): Step {

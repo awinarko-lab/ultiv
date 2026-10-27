@@ -18,23 +18,25 @@ import {
   type Conversation,
   type EntryRecord,
   type JsonObject,
+  type LiveState,
   type ConversationId,
   type SessionDocFamilyToken,
   type SessionDocToken,
   type Storage,
   type Submission,
-  type SubmissionId,
   type Tx,
 } from "@earendil-works/pi-durable";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { External } from "@ultiv/core";
 import { harnessDb } from "../config.ts";
+import { asEffect } from "./as-effect.ts";
+import { controlOps } from "./control.ts";
+import { selectionOps } from "./selection.ts";
 import { PiRegistry } from "./pi-registry.ts";
 import {
   kenariAgent,
   kenariCompaction,
   kenariWiring,
-  KENARI_MODELS,
   type KenariWiring,
 } from "../providers/kenari.ts";
 import { MindModels } from "../providers/models.ts";
@@ -81,6 +83,15 @@ export interface ConverseService {
   ) => Effect.Effect<void, External>;
   /** Stop the conversation's current turn: withdraw queued inputs, abort, wait for idle. */
   readonly interrupt: (conversation: Conversation) => Effect.Effect<void, External>;
+  /** The conversation's `pi.live` doc: `run` is present exactly while a turn works. */
+  readonly liveOf: (conversation: Conversation) => Effect.Effect<LiveState | undefined, External>;
+  /**
+   * Abort only the running turn (Redirect now): the partial reply is kept as
+   * interrupted, running tools end with an `aborted` result, queued messages
+   * stay queued. Resolves once the conversation is idle.
+   */
+  readonly abortRun: (conversation: Conversation) => Effect.Effect<"idle" | "aborted", External>;
+
   /** Take back one queued submission before a boundary places it. */
   readonly withdraw: (
     conversation: Conversation,
@@ -144,9 +155,6 @@ const SessionMapDoc = defineDocFamily<
   initial: (seed) => ({ conversationId: seed.conversationId }),
   checkpointWhen: () => true,
 });
-
-const asEffect = <A>(op: string, promise: Promise<A>): Effect.Effect<A, External> =>
-  Effect.tryPromise({ try: () => promise, catch: (cause) => new External({ op, cause }) });
 
 /** Resolve the durable conversation behind an app key, creating and mapping it on first use. */
 const ensureConversation = (
@@ -232,13 +240,6 @@ function textOf(content: unknown): string {
   return JSON.stringify(content);
 }
 
-/** The model id off the resolved agent's model (a pi-ai `Model` or a `ModelRef`). */
-const modelIdOf = (agent: { readonly model?: unknown }): string | null => {
-  const model = agent.model as { readonly modelId?: string; readonly id?: string } | undefined;
-  if (model === undefined || model === null) return null;
-  return model.modelId ?? model.id ?? null;
-};
-
 /** Conversation ids are numeric today; accept any string form losslessly. */
 const conversationIdFrom = (id: string): ConversationId => {
   const numeric = Number(id);
@@ -247,40 +248,13 @@ const conversationIdFrom = (id: string): ConversationId => {
     : id) as unknown as ConversationId;
 };
 
-/** An effort the model does not support (e.g. carried over from another model) snaps to its default. */
-const effortFor = <E extends string | null | undefined>(
-  model: string | null | undefined,
-  effort: E,
-) => {
-  const spec = KENARI_MODELS.find((candidate) => candidate.id === model);
-  return effort !== undefined &&
-    effort !== null &&
-    spec !== undefined &&
-    !(spec.efforts as readonly string[]).includes(effort)
-    ? spec.defaultEffort
-    : effort;
-};
-
 /** Exported for engine-level tests (faux models, MemoryStorage). */
 export const converseService = (harness: Harness, agent: AgentChange): ConverseService => ({
   root: () => asEffect("root conversation", harness.root(BACKGROUND_CONTEXT, { agent })),
   ensure: (key, agentOverride) => ensureConversation(harness, key, agent, agentOverride),
   open: (id) =>
     asEffect("conversation open", harness.conversation(conversationIdFrom(id), BACKGROUND_CONTEXT)),
-  interrupt: (conversation) =>
-    Effect.tryPromise({
-      try: () => conversation.abort(BACKGROUND_CONTEXT),
-      catch: (cause) => new External({ op: "conversation abort", cause }),
-    }),
-  withdraw: (conversation, submissionId) => {
-    // Submission ids are numbers on the wire as strings (as the inbox mirror sends them).
-    const numeric = Number(submissionId);
-    const id = (Number.isSafeInteger(numeric) ? numeric : submissionId) as unknown as SubmissionId;
-    return asEffect(
-      "submission withdraw",
-      harness.abortSubmission(id, BACKGROUND_CONTEXT, conversation.id),
-    );
-  },
+  ...controlOps(harness),
   conversationIdOf: (key) =>
     Effect.map(
       asEffect("session map read", harness.snapshot(SessionMapDoc, key, BACKGROUND_CONTEXT)),
@@ -317,38 +291,7 @@ export const converseService = (harness: Harness, agent: AgentChange): ConverseS
     Effect.flatMap(submitOf(conversation, content, whenBusy), (submission) =>
       settleOf(conversation, submission),
     ),
-  agentOf: (conversation) =>
-    Effect.flatMap(asEffect("agent read", conversation.agent(BACKGROUND_CONTEXT)), (resolved) => {
-      const model = modelIdOf(resolved);
-      // A stored effort may predate the model it now runs on; surface the
-      // model's own default instead of an out-of-list value.
-      const effort = effortFor(
-        model,
-        (resolved.thinkingLevel ?? null) as ModelThinkingLevel | null,
-      );
-      return Effect.succeed({ model, effort });
-    }),
-  configure: (conversation, selection) => {
-    // Effort must be one the TARGET model supports: an effort carried over
-    // from another model (e.g. `off` on an always-reasoning model) degrades
-    // it. Snap out-of-list efforts to the model's own default.
-    const effort =
-      selection.model !== undefined
-        ? effortFor(selection.model, selection.effort)
-        : selection.effort;
-    const change: AgentChange = {
-      ...(selection.model !== undefined
-        ? {
-            model:
-              selection.model === null ? null : { provider: "kenari", modelId: selection.model },
-          }
-        : {}),
-      ...(effort !== undefined ? { thinkingLevel: effort } : {}),
-    };
-    return Effect.asVoid(
-      asEffect("agent configure", conversation.configure(change, BACKGROUND_CONTEXT)),
-    );
-  },
+  ...selectionOps(),
   docs: {
     // The token is family-parametric; the harness call is typed once at this boundary.
     snapshot: <T extends JsonObject>(doc: SessionDocToken<T>) =>

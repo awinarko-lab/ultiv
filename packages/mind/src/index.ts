@@ -11,6 +11,8 @@ export * from "./converse/converse.ts";
 export * from "./converse/pi-registry.ts";
 export * from "./converse/steps.ts";
 export * from "./converse/stop.ts";
+export * from "./converse/redirect.ts";
+
 export * from "./profiles/profiles.ts";
 export * from "./profiles/docs.ts";
 export * from "./profiles/rooms.ts";
