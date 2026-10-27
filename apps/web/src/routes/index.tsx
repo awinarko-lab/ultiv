@@ -1,62 +1,34 @@
 /**
- * Home = ONE chat with the active bot (the main bot by default). The profile
- * switcher sits on top; bot management, rooms, the vault and the session
- * history live behind header dialogs on desktop — and behind a bottom tab bar
- * on phones (pattern 12: large targets, no hover-only controls). Deep links to
- * /sessions/$id still work for any individual session.
+ * Home = ONE chat with the active bot (?bot=<id>; none = the main bot). The
+ * bot switcher is the chat's header pill; the other sections are routes
+ * reached from the tab bar (phones) or the side rail (desktop).
  */
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  BotIcon,
-  HistoryIcon,
-  KeyRoundIcon,
-  MessagesSquareIcon,
-  BellIcon,
-  Trash2Icon,
-} from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
-import { Chat } from "@/components/chat";
-import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useEffect, useState } from "react";
 import { BotsPanel } from "@/components/bots-panel";
+import { Chat } from "@/components/chat";
 import { OnboardingHome } from "@/components/onboarding";
-import { VaultContent, VaultPanel } from "@/components/vault-panel";
-import { RoutinesContent, RoutinesPanel } from "@/components/routines-panel";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { useApp } from "@/lib/app-state";
-import type { useSessions } from "@/lib/use-sessions";
-import { formatWhen } from "@/lib/format";
-
-type MobileTab = "chat" | "bots" | "vault" | "history" | "routines";
 
 export const Route = createFileRoute("/")({
-  // ?bot=<id> opens that bot's main chat; no param = the main bot.
   validateSearch: (search: Record<string, unknown>): { bot?: string } =>
     typeof search.bot === "string" && search.bot !== "" ? { bot: search.bot } : {},
   component: HomePage,
 });
 
+/** The chat column shared by / and /c/$sessionId. */
+export const chatColumn = "mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-3 sm:px-6";
+
 function HomePage() {
-  const { sessions, mainId, epoch, refreshAll } = useApp();
+  const { sessions, mainId, epoch, refreshAll, setLastBot } = useApp();
   const navigate = useNavigate();
-  // The chosen bot (the switcher sets ?bot=); none = follow the main bot.
-  const activeId = Route.useSearch().bot ?? null;
-  const setActiveId = (id: string | null): void => {
-    setPinnedSessionId(null);
-    void navigate({ to: "/", search: id === null || id === mainId ? {} : { bot: id } });
-  };
+  const activeId = Route.useSearch().bot;
+  const profileId = activeId ?? mainId;
   const [chatId, setChatId] = useState<string | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
-  // Phones navigate the panels through the bottom tab bar; desktop ignores it.
-  const [tab, setTab] = useState<MobileTab>("chat");
-  // A history pick pins THAT session into the home chat; null = the active
-  // bot's main chat. Switching bots clears the pin.
-  const [pinnedSessionId, setPinnedSessionId] = useState<string | null>(null);
-  useEffect(() => setPinnedSessionId(null), [activeId]);
 
-  const profileId = activeId ?? mainId;
+  useEffect(() => setLastBot(activeId), [activeId, setLastBot]);
 
   useEffect(() => {
     if (profileId === null) {
@@ -80,324 +52,46 @@ function HomePage() {
     };
   }, [profileId, epoch]);
 
-  const chooseBot = setActiveId;
-  const pinSession = (sessionId: string): void => {
-    setPinnedSessionId(sessionId);
-    setTab("chat");
+  const open = (id: string): void => {
+    void navigate({ to: "/", search: id === mainId ? {} : { bot: id } });
   };
-  const activeChatId = pinnedSessionId ?? chatId;
-  // The bot the visible chat belongs to (a pinned history session may be another bot's).
-  const chatBotId =
-    pinnedSessionId !== null
-      ? sessions.sessions.find((session) => session.id === pinnedSessionId)?.profile
-      : profileId;
-  const chatBot = sessions.profiles.find((profile) => profile.id === chatBotId);
 
-  const botsPanel = (
-    <BotsPanel
-      profiles={sessions.profiles}
-      models={sessions.models}
-      activeId={chatBotId ?? null}
-      mainId={mainId}
-      refresh={refreshAll}
-      onOpenMain={(id) => {
-        setActiveId(id);
-        setTab("chat");
-      }}
-    />
-  );
-
-  return (
-    <div className="flex h-dvh w-full">
-      {/* Desktop: the bots sidebar is persistent (pattern 2's profile sidebar). */}
-      <aside className="hidden w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r p-4 lg:flex">
-        {botsPanel}
-      </aside>
-      {/* Phones: ~12px side gutters. The chat runs to the screen edge and
-          scrolls under the translucent tab bar; --chat-bottom lifts its composer
-          above the bar (and the home indicator). Panels pad themselves. */}
-      <main className="flex min-w-0 flex-1 flex-col gap-3 px-3 [--chat-bottom:calc(4rem+env(safe-area-inset-bottom))] sm:p-6 sm:[--chat-bottom:0px]">
-        {/* The bot switcher lives in the chat's header pill. Desktop keeps the
-            panels here until they get their own pages; phones use the bottom bar. */}
-        <header className="mx-auto hidden w-full max-w-4xl items-center justify-end gap-2 sm:flex">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2">
-              {sessions.profiles.length > 0 && (
-                <Dialog>
-                  <DialogTrigger
-                    render={
-                      <Button variant="outline" size="sm" className="lg:hidden">
-                        <BotIcon /> Bots
-                      </Button>
-                    }
-                  />
-                  <DialogContent>
-                    <DialogTitle className="sr-only">Bots</DialogTitle>
-                    <div className="mt-3">{botsPanel}</div>
-                  </DialogContent>
-                </Dialog>
-              )}
-              <VaultPanel profiles={sessions.profiles} />
-              {sessions.profiles.length > 0 && <RoutinesPanel profiles={sessions.profiles} />}
-              <HistoryDialog
-                sessions={sessions}
-                triggerClassName="xl:hidden"
-                onSelect={pinSession}
+  if (sessions.profiles.length === 0) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))]">
+        <div className={chatColumn}>
+          <OnboardingHome
+            models={sessions.models}
+            custom={
+              <BotsPanel
+                profiles={sessions.profiles}
+                models={sessions.models}
+                activeId={null}
+                mainId={mainId}
+                refresh={refreshAll}
+                onOpenMain={open}
               />
-            </div>
-          </div>
-        </header>
-
-        {/* The chat never unmounts — switching tabs only hides it (chord link stays). */}
-        <div
-          className={
-            tab === "chat"
-              ? "mx-auto flex w-full max-w-4xl min-h-0 flex-1 flex-col"
-              : "mx-auto hidden w-full max-w-4xl min-h-0 flex-1 flex-col sm:flex"
-          }
-        >
-          {sessions.profiles.length === 0 ? (
-            <OnboardingHome
-              models={sessions.models}
-              custom={botsPanel}
-              onCreated={async (id) => {
-                await refreshAll();
-                chooseBot(id);
-              }}
-            />
-          ) : activeChatId !== null ? (
-            <Chat
-              sessionId={activeChatId}
-              models={sessions.models}
-              bot={chatBot}
-              onBack={pinnedSessionId !== null ? () => setPinnedSessionId(null) : undefined}
-            />
-          ) : (
-            <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
-              {chatError !== null ? `Could not open the chat: ${chatError}` : "Opening the chat…"}
-            </div>
-          )}
-        </div>
-
-        {tab === "bots" && sessions.profiles.length > 0 && <div className={panel}>{botsPanel}</div>}
-        {tab === "vault" && (
-          <div className={panel}>
-            <VaultContent profiles={sessions.profiles} />
-          </div>
-        )}
-        {tab === "routines" && (
-          <div className={panel}>
-            <RoutinesContent profiles={sessions.profiles} />
-          </div>
-        )}
-        {tab === "history" && (
-          <div className={panel}>
-            <HistoryList sessions={sessions} onSelect={pinSession} />
-          </div>
-        )}
-
-        <nav
-          aria-label="Sections"
-          className="bg-background/65 border-border/60 fixed inset-x-0 bottom-0 z-40 flex h-[calc(4rem+env(safe-area-inset-bottom))] border-t pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden"
-        >
-          <TabButton
-            icon={MessagesSquareIcon}
-            label="Chat"
-            active={tab === "chat"}
-            onClick={() => setTab("chat")}
-          />
-          <TabButton
-            icon={BotIcon}
-            label="Bots"
-            active={tab === "bots"}
-            onClick={() => setTab("bots")}
-          />
-          <TabButton
-            icon={KeyRoundIcon}
-            label="Vault"
-            active={tab === "vault"}
-            onClick={() => setTab("vault")}
-          />
-          <TabButton
-            icon={BellIcon}
-            label="Routines"
-            active={tab === "routines"}
-            onClick={() => setTab("routines")}
-          />
-          <TabButton
-            icon={HistoryIcon}
-            label="History"
-            active={tab === "history"}
-            onClick={() => setTab("history")}
-          />
-        </nav>
-      </main>
-      {/* Wide desktop: history as a persistent rail instead of a dialog. */}
-      <aside className="hidden w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l p-4 xl:flex">
-        <h2 className="text-muted-foreground text-xs font-semibold uppercase">History</h2>
-        <HistoryList sessions={sessions} onSelect={setPinnedSessionId} />
-      </aside>
-    </div>
-  );
-}
-
-/** A phone panel: its own scroll, clear of the translucent tab bar. */
-const panel =
-  "min-h-0 flex-1 overflow-y-auto pt-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:hidden";
-
-/** One bottom-bar tab: a ~48px tap target with icon + label. */
-function TabButton({
-  icon: Icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: typeof BotIcon;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? "page" : undefined}
-      className={`flex flex-1 cursor-pointer flex-col items-center gap-0.5 py-2.5 text-[11px] ${
-        active ? "text-foreground" : "text-muted-foreground"
-      }`}
-    >
-      <Icon className="size-5" />
-      {label}
-    </button>
-  );
-}
-
-/**
- * The extra-session history rows + New session — shared by the dialog, the
- * mobile tab and the desktop rail. Main chats never appear here (each bot's
- * main chat IS the home screen). Picking a row pins that session into the
- * home chat (no navigation); New session pins the fresh session too.
- */
-function HistoryList({
-  sessions,
-  onSelect,
-}: {
-  sessions: ReturnType<typeof useSessions>;
-  onSelect: (sessionId: string) => void;
-}) {
-  const ordered = sessions.sessions
-    .filter((session) => session.kind !== "main")
-    .sort((a, b) => b.lastMessageAt - a.lastMessageAt);
-
-  const create = async (): Promise<void> => {
-    const created = await sessions.create(null);
-    if (created !== undefined) onSelect(created.id);
-  };
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Disabled buttons swallow hover, so the reason sits on a wrapper. */}
-      <span
-        className="flex flex-col"
-        title={
-          sessions.profiles.length === 0
-            ? "Spawn a bot first — sessions attach to a bot"
-            : sessions.phase !== "live"
-              ? "Waiting for the server"
-              : undefined
-        }
-      >
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={sessions.phase !== "live" || sessions.profiles.length === 0}
-          onClick={() => void create()}
-        >
-          New session
-        </Button>
-      </span>
-      <div className="flex flex-col gap-1">
-        {ordered.length === 0 && (
-          <p className="text-muted-foreground text-sm">
-            No extra sessions yet — each bot's main chat lives on the home screen.
-          </p>
-        )}
-        {ordered.map((session, index) => (
-          <Fragment key={session.id}>
-            {index > 0 && <Separator className="my-1" />}
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                className="min-w-0 flex-1 justify-between"
-                onClick={() => onSelect(session.id)}
-              >
-                <span className="truncate">
-                  {session.title === "" ? "Untitled session" : session.title}
-                </span>
-                <time className="text-muted-foreground shrink-0 pl-2">
-                  {formatWhen(session.lastMessageAt)}
-                </time>
-              </Button>
-              <ConfirmDialog
-                title="Delete session?"
-                warning="The conversation and its transcript are removed. This cannot be undone."
-                onConfirm={async () => {
-                  await sessions.remove(session.id);
-                }}
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0"
-                  aria-label={`Delete ${session.title === "" ? "session" : session.title}`}
-                >
-                  <Trash2Icon />
-                </Button>
-              </ConfirmDialog>
-            </div>
-          </Fragment>
-        ))}
-      </div>
-      <p className="text-muted-foreground flex items-center gap-1 text-xs">
-        <MessagesSquareIcon className="size-3.5" /> Each bot keeps one main chat — it lives on the
-        home screen. Extra sessions live here.
-      </p>
-    </div>
-  );
-}
-
-/** The desktop header entry: history behind a dialog. */
-function HistoryDialog({
-  sessions,
-  triggerClassName,
-  onSelect,
-}: {
-  sessions: ReturnType<typeof useSessions>;
-  triggerClassName?: string;
-  onSelect: (sessionId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm" className={triggerClassName}>
-            <HistoryIcon /> History
-          </Button>
-        }
-      />
-      <DialogContent>
-        <DialogTitle>Session history</DialogTitle>
-        <div className="mt-3 max-h-96 overflow-y-auto">
-          <HistoryList
-            sessions={sessions}
-            onSelect={(sessionId) => {
-              setOpen(false);
-              onSelect(sessionId);
+            }
+            onCreated={async (id) => {
+              await refreshAll();
+              open(id);
             }}
           />
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    );
+  }
+
+  const bot = sessions.profiles.find((profile) => profile.id === profileId);
+  return (
+    <div className={chatColumn}>
+      {chatId !== null ? (
+        <Chat sessionId={chatId} models={sessions.models} bot={bot} />
+      ) : (
+        <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
+          {chatError !== null ? `Couldn't open the chat: ${chatError}` : "Opening the chat…"}
+        </div>
+      )}
+    </div>
   );
 }

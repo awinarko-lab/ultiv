@@ -10,11 +10,47 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BotsRouteImport } from './routes/bots'
+import { Route as HistoryRouteImport } from './routes/history'
+import { Route as RoomsRouteImport } from './routes/rooms'
+import { Route as RoutinesRouteImport } from './routes/routines'
+import { Route as VaultRouteImport } from './routes/vault'
+import { Route as CSessionIdRouteImport } from './routes/c.$sessionId'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BotsRoute = BotsRouteImport.update({
+  id: '/bots',
+  path: '/bots',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoomsRoute = RoomsRouteImport.update({
+  id: '/rooms',
+  path: '/rooms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoutinesRoute = RoutinesRouteImport.update({
+  id: '/routines',
+  path: '/routines',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VaultRoute = VaultRouteImport.update({
+  id: '/vault',
+  path: '/vault',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CSessionIdRoute = CSessionIdRouteImport.update({
+  id: '/c/$sessionId',
+  path: '/c/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
@@ -25,27 +61,76 @@ const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/bots': typeof BotsRoute
+  '/history': typeof HistoryRoute
+  '/rooms': typeof RoomsRoute
+  '/routines': typeof RoutinesRoute
+  '/vault': typeof VaultRoute
+  '/c/$sessionId': typeof CSessionIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/bots': typeof BotsRoute
+  '/history': typeof HistoryRoute
+  '/rooms': typeof RoomsRoute
+  '/routines': typeof RoutinesRoute
+  '/vault': typeof VaultRoute
+  '/c/$sessionId': typeof CSessionIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/bots': typeof BotsRoute
+  '/history': typeof HistoryRoute
+  '/rooms': typeof RoomsRoute
+  '/routines': typeof RoutinesRoute
+  '/vault': typeof VaultRoute
+  '/c/$sessionId': typeof CSessionIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sessions/$sessionId'
+  fullPaths:
+    | '/'
+    | '/bots'
+    | '/history'
+    | '/rooms'
+    | '/routines'
+    | '/vault'
+    | '/c/$sessionId'
+    | '/sessions/$sessionId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/sessions/$sessionId'
-  id: '__root__' | '/' | '/sessions/$sessionId'
+  to:
+    | '/'
+    | '/bots'
+    | '/history'
+    | '/rooms'
+    | '/routines'
+    | '/vault'
+    | '/c/$sessionId'
+    | '/sessions/$sessionId'
+  id:
+    | '__root__'
+    | '/'
+    | '/bots'
+    | '/history'
+    | '/rooms'
+    | '/routines'
+    | '/vault'
+    | '/c/$sessionId'
+    | '/sessions/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BotsRoute: typeof BotsRoute
+  HistoryRoute: typeof HistoryRoute
+  RoomsRoute: typeof RoomsRoute
+  RoutinesRoute: typeof RoutinesRoute
+  VaultRoute: typeof VaultRoute
+  CSessionIdRoute: typeof CSessionIdRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
 }
 
@@ -56,6 +141,48 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bots': {
+      id: '/bots'
+      path: '/bots'
+      fullPath: '/bots'
+      preLoaderRoute: typeof BotsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rooms': {
+      id: '/rooms'
+      path: '/rooms'
+      fullPath: '/rooms'
+      preLoaderRoute: typeof RoomsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/routines': {
+      id: '/routines'
+      path: '/routines'
+      fullPath: '/routines'
+      preLoaderRoute: typeof RoutinesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vault': {
+      id: '/vault'
+      path: '/vault'
+      fullPath: '/vault'
+      preLoaderRoute: typeof VaultRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/c/$sessionId': {
+      id: '/c/$sessionId'
+      path: '/c/$sessionId'
+      fullPath: '/c/$sessionId'
+      preLoaderRoute: typeof CSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sessions/$sessionId': {
@@ -70,6 +197,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BotsRoute: BotsRoute,
+  HistoryRoute: HistoryRoute,
+  RoomsRoute: RoomsRoute,
+  RoutinesRoute: RoutinesRoute,
+  VaultRoute: VaultRoute,
+  CSessionIdRoute: CSessionIdRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
 }
 export const routeTree = rootRouteImport

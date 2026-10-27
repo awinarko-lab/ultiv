@@ -20,7 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
@@ -417,25 +416,4 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Empty({ text }: { text: string }) {
   return <p className="text-muted-foreground text-sm">{text}</p>;
-}
-
-/** The desktop header entry: routines behind a dialog. */
-export function RoutinesPanel({ profiles }: { profiles: ProfileInfo[] }) {
-  return (
-    <Dialog>
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm">
-            <BellIcon /> Routines
-          </Button>
-        }
-      />
-      <DialogContent>
-        <DialogTitle>Routines</DialogTitle>
-        <div className="mt-3 max-h-[70dvh] overflow-y-auto">
-          <RoutinesContent profiles={profiles} />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
 }

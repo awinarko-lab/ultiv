@@ -1,24 +1,16 @@
 /**
- * The rooms popup: bot-to-bot conversations as ONE chat with participant
+ * Bot talks (rooms): bot-to-bot conversations as ONE chat with participant
  * names — the same shape as the owner's own threads. Per-seat internals are
  * invisible here; a supervision "say" posts into a chosen bot's side.
  */
-import { MessagesSquareIcon, SendIcon } from "lucide-react";
+import { ArrowLeftIcon, MessagesSquareIcon, SendIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCallback, useEffect, useState } from "react";
 import type { ProfileInfo, RoomInfo } from "@ultiv/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { api, type RoomDetail } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
 import { formatWhen } from "@/lib/format";
@@ -131,19 +123,22 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
   );
 }
 
-export function RoomsPanel({
+export function RoomsContent({
   profiles,
   botId,
-  reload,
+  roomId,
+  onOpen,
 }: {
   profiles: ProfileInfo[];
-  /** Scope to one bot's rooms (used from inside a session thread). */
-  botId?: string;
-  reload?: () => Promise<void>;
+  /** Only this bot's rooms. */
+  botId?: string | undefined;
+  /** The open room (from the URL), undefined = the list. */
+  roomId?: string | undefined;
+  onOpen: (roomId: string | null) => void;
 }) {
   const [rooms, setRooms] = useState<RoomInfo[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [open, setOpen] = useState<RoomInfo | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -152,6 +147,8 @@ export function RoomsPanel({
     } catch {
       // A failed load is not an empty list: say so and offer a retry.
       setLoadFailed(true);
+    } finally {
+      setLoaded(true);
     }
   }, [botId]);
 
@@ -161,56 +158,53 @@ export function RoomsPanel({
 
   const nameOf = (profileId: string): string =>
     profiles.find((profile) => profile.id === profileId)?.name ?? profileId.slice(0, 8);
+  const open = rooms.find((room) => room.id === roomId);
 
+  if (loadFailed && rooms.length === 0) {
+    return (
+      <p className="text-destructive flex items-center gap-2 text-sm">
+        Couldn't load the conversations.
+        <Button variant="link" size="xs" className="h-auto p-0" onClick={() => void load()}>
+          Retry
+        </Button>
+      </p>
+    );
+  }
+  if (open !== undefined) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Button variant="ghost" size="sm" className="self-start" onClick={() => onOpen(null)}>
+          <ArrowLeftIcon /> All conversations
+        </Button>
+        <RoomView room={open} reload={load} />
+      </div>
+    );
+  }
+  if (!loaded) return <p className="text-muted-foreground text-sm">Loading…</p>;
+  if (rooms.length === 0) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        None yet. Bots start one when they message each other, one per topic.
+      </p>
+    );
+  }
   return (
-    <Dialog>
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm">
-            <MessagesSquareIcon /> Bot chats{rooms.length > 0 ? ` (${rooms.length})` : ""}
-          </Button>
-        }
-      />
-      <DialogContent>
-        <DialogTitle>
-          {botId === undefined ? "Bot-to-bot chats" : `Chats of ${nameOf(botId)}`}
-        </DialogTitle>
-        {loadFailed && rooms.length === 0 ? (
-          <p className="text-destructive mt-2 flex items-center gap-2 text-sm">
-            Couldn't load rooms.
-            <Button variant="link" size="xs" className="h-auto p-0" onClick={() => void load()}>
-              Retry
-            </Button>
-          </p>
-        ) : rooms.length === 0 ? (
-          <p className="text-muted-foreground mt-2 text-sm">
-            No rooms yet — bots open them by messaging each other (each topic is its own thread).
-          </p>
-        ) : open === null ? (
-          <div className="mt-3 flex flex-col gap-1">
-            {rooms.map((room) => (
-              <Button
-                key={room.id}
-                variant="ghost"
-                className="justify-start"
-                onClick={() => setOpen(room)}
-              >
-                {room.participants.map((id) => nameOf(id)).join(" ↔ ")}
-                {room.topic !== "" && <Badge variant="outline">{room.topic}</Badge>}
-                <span className="text-muted-foreground ml-auto text-xs">
-                  {formatWhen(room.lastMessageAt)}
-                </span>
-              </Button>
-            ))}
-          </div>
-        ) : (
-          <>
-            <RoomView room={open} reload={reload ?? load} />
-            <Separator />
-            <DialogClose render={<Button variant="ghost" size="sm" />}>← all rooms</DialogClose>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+    <div className="flex flex-col gap-1">
+      {rooms.map((room) => (
+        <Button
+          key={room.id}
+          variant="ghost"
+          className="h-auto min-h-11 justify-start"
+          onClick={() => onOpen(room.id)}
+        >
+          <MessagesSquareIcon />
+          {room.participants.map((id) => nameOf(id)).join(" ↔ ")}
+          {room.topic !== "" && <Badge variant="outline">{room.topic}</Badge>}
+          <span className="text-muted-foreground ml-auto text-xs">
+            {formatWhen(room.lastMessageAt)}
+          </span>
+        </Button>
+      ))}
+    </div>
   );
 }

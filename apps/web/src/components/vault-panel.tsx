@@ -5,13 +5,12 @@
  * carry metadata only; secret bytes never return to the browser — and after a
  * save the entry fields are cleared, so no value is ever shown twice.
  */
-import { KeyRoundIcon, Trash2Icon } from "lucide-react";
+import { Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ProfileInfo, VaultItemInfo, VaultKind } from "@ultiv/contracts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ApiError, api } from "@/lib/api";
@@ -260,24 +259,5 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
         </p>
       </form>
     </>
-  );
-}
-
-/** The header entry: dialog form factor. */
-export function VaultPanel({ profiles }: { profiles: ProfileInfo[] }) {
-  return (
-    <Dialog>
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm">
-            <KeyRoundIcon /> Vault
-          </Button>
-        }
-      />
-      <DialogContent>
-        <DialogTitle>Vault</DialogTitle>
-        <VaultContent profiles={profiles} />
-      </DialogContent>
-    </Dialog>
   );
 }

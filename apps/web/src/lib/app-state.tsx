@@ -18,6 +18,9 @@ export interface AppState {
   reloadMain: () => Promise<void>;
   /** Re-read the main bot and the session lists (after any bot change). */
   refreshAll: () => Promise<void>;
+  /** The bot last chatted with (undefined = main), so the Chat tab returns to it. */
+  lastBot: string | undefined;
+  setLastBot: (id: string | undefined) => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -51,6 +54,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const attention = useAttention();
   const [mainId, setMainId] = useState<string | null>(null);
   const [epoch, setEpoch] = useState(0);
+  const [lastBot, setLastBot] = useState<string | undefined>(undefined);
 
   const reloadMain = useCallback(async () => {
     try {
@@ -73,7 +77,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [reloadMain, select, selected]);
 
   return (
-    <AppContext.Provider value={{ sessions, mainId, attention, epoch, reloadMain, refreshAll }}>
+    <AppContext.Provider
+      value={{
+        sessions,
+        mainId,
+        attention,
+        epoch,
+        reloadMain,
+        refreshAll,
+        lastBot,
+        setLastBot,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );

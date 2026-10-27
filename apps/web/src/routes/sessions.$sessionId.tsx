@@ -1,63 +1,8 @@
-import { useNavigate, createFileRoute } from "@tanstack/react-router";
-import { Chat } from "@/components/chat";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { RoomsPanel } from "@/components/rooms-panel";
-import { useApp } from "@/lib/app-state";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
+/** Old deep links: /sessions/$id now lives at /c/$id. */
 export const Route = createFileRoute("/sessions/$sessionId")({
-  component: SessionPage,
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: "/c/$sessionId", params: { sessionId: params.sessionId }, replace: true });
+  },
 });
-
-function SessionPage() {
-  const { sessionId } = Route.useParams();
-  const { sessions } = useApp();
-  const navigate = useNavigate();
-
-  const row = sessions.sessions.find((candidate) => candidate.id === sessionId);
-  const isMain = row?.kind === "main";
-  const botId = row?.profile;
-  const bot = sessions.profiles.find((profile) => profile.id === botId);
-
-  // Throws on failure — the confirm dialog stays open and shows the reason.
-  const remove = async (): Promise<void> => {
-    await sessions.remove(sessionId);
-    await navigate({ to: "/" });
-  };
-
-  return (
-    <main className="mx-auto flex h-dvh w-full max-w-5xl flex-col gap-3 px-3 pt-3 [--chat-bottom:env(safe-area-inset-bottom)] sm:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <h1 className="font-heading text-xl font-semibold tracking-tight">
-            {isMain ? "Main chat" : "Session"}
-          </h1>
-          <Badge variant="outline" className="max-w-40 truncate">
-            {sessionId}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-2">
-          {botId !== undefined && <RoomsPanel profiles={sessions.profiles} botId={botId} />}
-          {!isMain && (
-            <ConfirmDialog
-              title="Delete session?"
-              warning="The conversation and its transcript are removed. This cannot be undone."
-              onConfirm={remove}
-            >
-              <Button variant="outline" size="sm">
-                Delete
-              </Button>
-            </ConfirmDialog>
-          )}
-        </div>
-      </header>
-      <Chat
-        sessionId={sessionId}
-        models={sessions.models}
-        bot={bot}
-        onBack={() => void navigate({ to: "/" })}
-      />
-    </main>
-  );
-}

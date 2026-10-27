@@ -6,7 +6,14 @@
  */
 import { Popover } from "@base-ui/react/popover";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckIcon, ChevronDownIcon, PlusIcon, StarIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  PlusIcon,
+  SettingsIcon,
+  StarIcon,
+  UsersIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { NewBotDialog } from "@/components/bots-panel";
 import { BotAvatar, linkLabel, type LinkState } from "@/components/bot-avatar";
@@ -126,6 +133,26 @@ export function BotSwitcher({
                 </span>
                 <span className="text-sm font-medium">New bot</span>
               </button>
+              <Popover.Close
+                className={row}
+                onClick={() =>
+                  void navigate({
+                    to: "/rooms",
+                    search: currentId !== undefined ? { bot: currentId } : {},
+                  })
+                }
+              >
+                <span className="bg-muted inline-flex size-7 items-center justify-center rounded-full">
+                  <UsersIcon className="size-4" />
+                </span>
+                <span className="text-sm font-medium">Bot talks</span>
+              </Popover.Close>
+              <Popover.Close className={row} onClick={() => void navigate({ to: "/bots" })}>
+                <span className="bg-muted inline-flex size-7 items-center justify-center rounded-full">
+                  <SettingsIcon className="size-4" />
+                </span>
+                <span className="text-sm font-medium">Manage bots</span>
+              </Popover.Close>
             </Popover.Popup>
           </Popover.Positioner>
         </Popover.Portal>
