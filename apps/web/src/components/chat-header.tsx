@@ -1,44 +1,17 @@
 /**
  * The slim chat bar: a round back button, the bot as a centred avatar+name
- * pill, and a round "…" that opens the session details (model, effort, spend,
- * connection). Details live in the popover so the messages get the room.
+ * pill that switches bots, and a round "…" that opens the session details
+ * (model, effort, spend, connection). Details live in the popover so the
+ * messages get the room.
  */
 import { Popover } from "@base-ui/react/popover";
 import { ChevronLeftIcon, EllipsisIcon } from "lucide-react";
 import type { ModelInfo, ThinkingLevel, UsageSummary } from "@ultiv/contracts";
+import { linkLabel, type ChatBot, type LinkState } from "@/components/bot-avatar";
+import { BotSwitcher } from "@/components/bot-switcher";
 import { Button } from "@/components/ui/button";
 
-export type LinkState = "connecting" | "live" | "lost";
-
-/** Who the chat is with — names the header, the composer and the empty state. */
-export interface ChatBot {
-  name: string;
-  description: string;
-}
-
-const linkLabel = { connecting: "Connecting…", live: "Connected", lost: "Disconnected" } as const;
-
-const initialsOf = (name: string): string =>
-  name
-    .split(/\s+/)
-    .filter((part) => part !== "")
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("") || "?";
-
-/** A round initials avatar (no images are stored for bots). */
-export function BotAvatar({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg" }) {
-  const box =
-    size === "sm" ? "size-5 text-[9px]" : size === "lg" ? "size-14 text-lg" : "size-7 text-[11px]";
-  return (
-    <span
-      aria-hidden
-      className={`bg-primary text-primary-foreground inline-flex shrink-0 items-center justify-center rounded-full font-semibold ${box}`}
-    >
-      {initialsOf(name)}
-    </span>
-  );
-}
+export { BotAvatar, type ChatBot, type LinkState } from "@/components/bot-avatar";
 
 function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -149,19 +122,7 @@ export function ChatHeader({
         <span />
       )}
       <div className="flex min-w-0 justify-center">
-        <div className="bg-muted/60 flex max-w-full min-w-0 items-center gap-2 rounded-full py-1 pr-3.5 pl-1">
-          <BotAvatar name={name} />
-          <span className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-sm font-medium">{name}</span>
-            {link !== "live" && (
-              <span
-                className={`text-[11px] ${link === "lost" ? "text-destructive" : "text-muted-foreground"}`}
-              >
-                {linkLabel[link]}
-              </span>
-            )}
-          </span>
-        </div>
+        <BotSwitcher name={name} currentId={bot?.id} link={link} />
       </div>
       <Popover.Root>
         <Popover.Trigger

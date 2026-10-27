@@ -4,7 +4,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RoomsPanel } from "@/components/rooms-panel";
-import { useSessions } from "@/lib/use-sessions";
+import { useApp } from "@/lib/app-state";
 
 export const Route = createFileRoute("/sessions/$sessionId")({
   component: SessionPage,
@@ -12,7 +12,7 @@ export const Route = createFileRoute("/sessions/$sessionId")({
 
 function SessionPage() {
   const { sessionId } = Route.useParams();
-  const sessions = useSessions();
+  const { sessions } = useApp();
   const navigate = useNavigate();
 
   const row = sessions.sessions.find((candidate) => candidate.id === sessionId);

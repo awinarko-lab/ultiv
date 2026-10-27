@@ -5,8 +5,7 @@
  * on phones (pattern 12: large targets, no hover-only controls). Deep links to
  * /sessions/$id still work for any individual session.
  */
-import { createFileRoute } from "@tanstack/react-router";
-import { Ping } from "@ultiv/contracts";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   BotIcon,
   HistoryIcon,
@@ -15,34 +14,39 @@ import {
   BellIcon,
   Trash2Icon,
 } from "lucide-react";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Chat } from "@/components/chat";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BotsPanel } from "@/components/bots-panel";
 import { OnboardingHome } from "@/components/onboarding";
 import { VaultContent, VaultPanel } from "@/components/vault-panel";
 import { RoutinesContent, RoutinesPanel } from "@/components/routines-panel";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
-import { notifyError } from "@/lib/notify";
-import { useSessions } from "@/lib/use-sessions";
+import { useApp } from "@/lib/app-state";
+import type { useSessions } from "@/lib/use-sessions";
 import { formatWhen } from "@/lib/format";
 
 type MobileTab = "chat" | "bots" | "vault" | "history" | "routines";
 
 export const Route = createFileRoute("/")({
+  // ?bot=<id> opens that bot's main chat; no param = the main bot.
+  validateSearch: (search: Record<string, unknown>): { bot?: string } =>
+    typeof search.bot === "string" && search.bot !== "" ? { bot: search.bot } : {},
   component: HomePage,
 });
 
 function HomePage() {
-  const sessions = useSessions();
-  const [mainId, setMainId] = useState<string | null>(null);
-  // The chosen bot; null = follow the main bot. Switching re-resolves its main chat.
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [chatEpoch, setChatEpoch] = useState(0);
+  const { sessions, mainId, epoch, refreshAll } = useApp();
+  const navigate = useNavigate();
+  // The chosen bot (the switcher sets ?bot=); none = follow the main bot.
+  const activeId = Route.useSearch().bot ?? null;
+  const setActiveId = (id: string | null): void => {
+    setPinnedSessionId(null);
+    void navigate({ to: "/", search: id === null || id === mainId ? {} : { bot: id } });
+  };
   const [chatId, setChatId] = useState<string | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
   // Phones navigate the panels through the bottom tab bar; desktop ignores it.
@@ -50,21 +54,7 @@ function HomePage() {
   // A history pick pins THAT session into the home chat; null = the active
   // bot's main chat. Switching bots clears the pin.
   const [pinnedSessionId, setPinnedSessionId] = useState<string | null>(null);
-
-  const reloadMain = useCallback(async () => {
-    try {
-      setMainId((await api.main()).profileId);
-    } catch (cause) {
-      setMainId(null);
-      notifyError("Couldn't load the main bot", cause, "main-load");
-    }
-  }, []);
-
-  useEffect(() => {
-    void reloadMain();
-    // Run once on mount: main is a server-side default, not a live dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => setPinnedSessionId(null), [activeId]);
 
   const profileId = activeId ?? mainId;
 
@@ -88,21 +78,9 @@ function HomePage() {
     return () => {
       stale = true;
     };
-  }, [profileId, chatEpoch]);
+  }, [profileId, epoch]);
 
-  const refreshAll = useCallback(async () => {
-    await reloadMain();
-    setChatEpoch((epoch) => epoch + 1);
-    await sessions.select(sessions.selected);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions.selected, reloadMain]);
-
-  const choosable = sessions.profiles.filter((profile) => profile.archivedAt === null);
-
-  const chooseBot = (id: string | null): void => {
-    setPinnedSessionId(null);
-    setActiveId(id);
-  };
+  const chooseBot = setActiveId;
   const pinSession = (sessionId: string): void => {
     setPinnedSessionId(sessionId);
     setTab("chat");
@@ -137,37 +115,11 @@ function HomePage() {
       </aside>
       {/* Phones: ~12px side gutters and room for the tab bar + home indicator. */}
       <main className="flex min-w-0 flex-1 flex-col gap-3 px-3 pt-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-6">
-        <header className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <h1 className="font-heading text-xl font-semibold tracking-tight">ultiv</h1>
-            <Badge variant="secondary">v{Ping.def.version}</Badge>
-          </div>
+        {/* The bot switcher lives in the chat's header pill. Desktop keeps the
+            panels here until they get their own pages; phones use the bottom bar. */}
+        <header className="mx-auto hidden w-full max-w-4xl items-center justify-end gap-2 sm:flex">
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              className="bg-background max-w-44 rounded-md border px-2 py-1.5 text-sm"
-              value={profileId ?? ""}
-              disabled={sessions.phase !== "live" || choosable.length === 0}
-              onChange={(event) => chooseBot(event.target.value === "" ? null : event.target.value)}
-              aria-label="Chat with bot"
-            >
-              {profileId === null && (
-                <option value="">
-                  {sessions.phase !== "live"
-                    ? "Loading…"
-                    : choosable.length === 0
-                      ? "No bots yet"
-                      : "Select a bot…"}
-                </option>
-              )}
-              {choosable.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                  {profile.id === mainId ? " (main)" : ""}
-                </option>
-              ))}
-            </select>
-            {/* Desktop keeps the panels in the header; phones use the bottom bar. */}
-            <div className="hidden items-center gap-2 sm:flex">
+            <div className="flex items-center gap-2">
               {sessions.profiles.length > 0 && (
                 <Dialog>
                   <DialogTrigger

@@ -15,7 +15,7 @@ import {
   StarIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { MemoryPanel } from "@/components/memory-panel";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { pollFailed, pollRecovered } from "@/lib/notify";
+import { useApp } from "@/lib/app-state";
 import type { ModelInfo, ProfileInfo } from "@ultiv/contracts";
 
 interface BotForm {
@@ -46,15 +46,25 @@ function BotDialog({
   models,
   confirm,
   children,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   title: string;
   initial: BotForm;
   models: ModelInfo[];
   confirm: (form: BotForm) => Promise<void>;
-  children: React.ReactElement;
+  /** The trigger; omit it and drive `open` instead. */
+  children?: React.ReactElement;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [form, setForm] = useState<BotForm>(initial);
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = controlledOpen ?? ownOpen;
+  const setOpen = (next: boolean): void => {
+    setOwnOpen(next);
+    onOpenChange?.(next);
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const efforts = useMemo(
@@ -83,7 +93,7 @@ function BotDialog({
         if (next) setError(null);
       }}
     >
-      <DialogTrigger render={children} />
+      {children !== undefined && <DialogTrigger render={children} />}
       <DialogContent>
         <h2 className="text-lg font-semibold">{title}</h2>
         <form
@@ -330,6 +340,42 @@ function BotRow({
   );
 }
 
+/** Create a bot from the form; resolves to its id. */
+const createBot = async (form: BotForm): Promise<string> =>
+  (
+    await api.createProfile({
+      name: form.name.trim(),
+      ...(form.description !== "" ? { description: form.description } : {}),
+      ...(form.persona !== "" ? { persona: form.persona } : {}),
+      ...modelPayload(form),
+    })
+  ).id;
+
+/** "New bot" without a trigger of its own (the bot switcher drives it). */
+export function NewBotDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (id: string) => Promise<void>;
+}) {
+  const { sessions } = useApp();
+  return (
+    <BotDialog
+      title="New bot"
+      initial={emptyForm}
+      models={sessions.models}
+      open={open}
+      onOpenChange={onOpenChange}
+      confirm={async (form) => {
+        await onCreated(await createBot(form));
+      }}
+    />
+  );
+}
+
 function modelPayload(form: BotForm) {
   return form.modelId === ""
     ? { model: null }
@@ -358,28 +404,8 @@ export function BotsPanel({
   onOpenMain: (profileId: string) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
-  // Which bots have a gate waiting on the owner (polled — REST has no push).
-  const [attention, setAttention] = useState<ReadonlySet<string>>(new Set());
-
-  useEffect(() => {
-    let alive = true;
-    const load = async (): Promise<void> => {
-      try {
-        const pending = await api.pendingApprovals();
-        if (alive) setAttention(new Set(pending.map((row) => row.profile)));
-        pollRecovered("approvals-poll");
-      } catch (cause) {
-        // Keep the last known set, but say the "needs you" badges may be stale.
-        pollFailed("approvals-poll", "Approval badges may be out of date", cause);
-      }
-    };
-    void load();
-    const timer = setInterval(() => void load(), 5_000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, []);
+  // Which bots have a gate waiting on the owner (polled app-wide).
+  const { attention } = useApp();
 
   const act = async (run: () => Promise<unknown>): Promise<void> => {
     try {
@@ -408,12 +434,7 @@ export function BotsPanel({
           initial={emptyForm}
           models={models}
           confirm={async (form) => {
-            await api.createProfile({
-              name: form.name.trim(),
-              ...(form.description !== "" ? { description: form.description } : {}),
-              ...(form.persona !== "" ? { persona: form.persona } : {}),
-              ...modelPayload(form),
-            });
+            await createBot(form);
             await refresh();
           }}
         >
