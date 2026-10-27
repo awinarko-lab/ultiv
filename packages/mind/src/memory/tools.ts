@@ -17,6 +17,7 @@ import {
   appearsInOwnerInput,
   checkContent,
   contextOf,
+  coreVerdict,
   looksLikeInstruction,
   policyFor,
   trustFor,
@@ -261,7 +262,7 @@ export const memoryTools = (
 ): readonly Tool[] => [
   writeTool(memory, profiles, guardDeps),
   recallTool(memory, profiles),
-  coreTool(memory, profiles),
+  coreTool(memory, profiles, guardDeps),
   forgetTool(memory, profiles),
   historyTool(memory, profiles),
   relatedTool(memory, profiles),
@@ -275,9 +276,19 @@ const refuseOf = (reason: string) => ({
 /**
  * `memory_core`: add / replace / remove a line in the always-on block. Owner
  * scope is keeper-only; pinned lines are owner-only; the reply carries the
- * words remaining so the model can self-budget.
+ * words remaining so the model can self-budget. Writes ride the guard: only
+ * clean owner-voiced turns may edit core (the block renders in EVERY prompt,
+ * so it is a lasting injection path).
  */
-const coreTool = (memory: MemoryService, profiles: ProfilesService): Tool =>
+const coreTool = (
+  memory: MemoryService,
+  profiles: ProfilesService,
+  guardDeps: {
+    readonly converse: ConverseService;
+    readonly audit?: AuditService;
+    readonly untrustedTool?: (name: string) => boolean;
+  },
+): Tool =>
   defineTool({
     name: "memory_core",
     description:
@@ -318,6 +329,15 @@ const coreTool = (memory: MemoryService, profiles: ProfilesService): Tool =>
       const target = args.scope ?? "profile";
       const run = async () => {
         const profileId = target === "owner" ? null : scope.profileId;
+        if (args.action !== "list") {
+          // Guard: origin, taint and secrets. Without an audit the guard
+          // can't read the turn (tests); the write then keeps tool defaults.
+          if (guardDeps.audit !== undefined) {
+            const context = await contextOf(guardDeps, String(api.conversationId));
+            const verdict = coreVerdict(context, args.text ?? "");
+            if (!verdict.ok) return refuseOf(verdict.reason ?? "refused");
+          }
+        }
         if (args.action === "list") {
           const lines = await memory.core.read(scope.owner, profileId);
           return {

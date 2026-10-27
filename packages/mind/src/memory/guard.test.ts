@@ -3,6 +3,7 @@ import {
   appearsInOwnerInput,
   checkContent,
   contextOf,
+  coreVerdict,
   looksLikeInstruction,
   originOfPrefix,
   policyFor,
@@ -151,6 +152,26 @@ describe("turn context (origin + taint window)", () => {
       "c1",
     );
     expect(context.tainted).toBe(false);
+  });
+});
+
+describe("core-line verdicts", () => {
+  const base = { ownerInput: null };
+  it("allows a clean owner turn with plain text", () => {
+    const verdict = coreVerdict({ ...base, origin: "owner", tainted: false }, "harry prefers tea");
+    expect(verdict.ok).toBe(true);
+  });
+  it("refuses automated origins, tainted turns and secrets", () => {
+    for (const origin of ["webhook", "sensor", "cron", "task", "bot", "unknown"] as const) {
+      expect(
+        coreVerdict({ ...base, origin, tainted: false }, "always greet politely").ok,
+        origin,
+      ).toBe(false);
+    }
+    expect(coreVerdict({ ...base, origin: "owner", tainted: true }, "plain text").ok).toBe(false);
+    expect(
+      coreVerdict({ ...base, origin: "owner", tainted: false }, "key is sk-fakefakefakefake123").ok,
+    ).toBe(false);
   });
 });
 

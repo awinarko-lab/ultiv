@@ -241,3 +241,26 @@ export const kindsFor = (policy: WritePolicy): readonly FactKind[] =>
   policy.allowInstructions
     ? ["fact", "preference", "instruction", "event", "note"]
     : ["fact", "preference", "event", "note"];
+
+/**
+ * The core-line verdict: the always-on block renders in every prompt as the
+ * owner's standing facts, so it is written ONLY from clean owner-voiced
+ * turns — never webhook/sensor/cron/bot turns, never tainted turns, never
+ * secret-bearing text. Same verdict shape as `checkContent`.
+ */
+export const coreVerdict = (context: WriteContext, text: string): ContentVerdict => {
+  if (context.origin !== "owner") {
+    return {
+      ok: false,
+      reason: `refused: core memory is written from the owner's own turns only (this turn: ${context.origin}).`,
+    };
+  }
+  if (context.tainted) {
+    return {
+      ok: false,
+      reason:
+        "refused: this turn touched outside content; core memory is written on a clean owner turn.",
+    };
+  }
+  return checkContent(text);
+};
