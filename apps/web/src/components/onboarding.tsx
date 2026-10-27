@@ -27,7 +27,7 @@ const TEMPLATES: Template[] = [
       "You are a concise, proactive assistant. When a request is ambiguous you ask one clarifying question, then act. You keep answers short unless depth is asked for, and you say so plainly when you are unsure.",
     bullets: [
       "Chats, plans, and drafts",
-      "Uses vaulted credentials only with your approval",
+      "Sees vault names and masked hints only; looks up contacts, can't use logins yet",
       "Remembers what matters across chats",
     ],
   },
