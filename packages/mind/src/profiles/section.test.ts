@@ -89,6 +89,7 @@ describe("assembled prompt: key rules and budget", () => {
   });
 
   // Budgets: measured size (rules 380, baseline 518, sample persona 619) plus ~10%.
+  // The mid-task owner-message rule (+33 words: rules 413) fits inside them.
   // Raising them is a decision: the rules ship on every turn of every bot.
   it("stays within its word budget", async () => {
     expect(words(OPERATING_RULES)).toBeLessThanOrEqual(420);
