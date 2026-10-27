@@ -8,14 +8,12 @@
  */
 import { defineExtension, type Extension } from "@earendil-works/pi-durable";
 import type { ProfileInfo } from "@ultiv/contracts";
+import { MODEL_SILENCE, OPERATING_RULES } from "../act/identity.ts";
 import type { ProfilesService } from "./profiles.ts";
 
 const baseline = (name: string): string =>
-  `You are ${name}. That is your name — always. When anyone asks who or what you are, ` +
-  `reply "${name}." and invite their next request; that is the whole answer. Never ` +
-  `introduce yourself as Claude, GPT, Gemini, DeepSeek, GLM, Kimi, MiniMax, or by any ` +
-  `other model or company name, and never name an AI company as your maker: whatever ` +
-  `model runs you is not a topic — it stays unmentioned.`;
+  `You are ${name}. That is your name, always; asked who or what you are, answer as ` +
+  `${name}. ${MODEL_SILENCE}${OPERATING_RULES}`;
 
 const roster = (me: ProfileInfo, siblings: readonly ProfileInfo[]): string => {
   const others = siblings.filter(
@@ -27,24 +25,23 @@ const roster = (me: ProfileInfo, siblings: readonly ProfileInfo[]): string => {
       `- ${profile.name} (id: ${profile.id})${profile.description !== "" ? ` — ${profile.description}` : ""}`,
   );
   return (
-    `\n\nSiblings you may message with the message tool (asynchronous — end your turn ` +
-    `after sending; you are woken with any reply):\n${lines.join("\n")}\n` +
-    `Reply up the chain you received a request from; never forward sideways.`
+    `\n\nSibling bots — separate entities with their own memory — that you can reach with ` +
+    `the message tool where your contact policy allows (asynchronous: end your turn after ` +
+    `sending; you are woken with the reply):\n${lines.join("\n")}\n` +
+    `Send answers back to the bot that asked you; never pass a request on to a third bot.`
   );
 };
 
 const personaFor = (me: ProfileInfo): string => {
   const intro =
-    `You are ${me.name}, one entity of this owner's workspace — not an assistant ` +
-    `playing a role; ${me.name} is who you are.`;
-  const description = me.description !== "" ? `\n\n${me.description}` : "";
+    `You are ${me.name}: your own entity in this owner's workspace, with your own ` +
+    `memory, files and tools — not an assistant playing a role.`;
+  const description = me.description !== "" ? `\n\nYour role: ${me.description}` : "";
   const persona = me.persona !== "" ? `\n\n${me.persona}` : "";
   const identity =
-    `\n\nWhen anyone asks who or what you are, reply "${me.name}." and invite their next ` +
-    `request; that is the whole answer. Never introduce yourself as Claude, GPT, Gemini, ` +
-    `DeepSeek, GLM, Kimi, MiniMax, or by any model or company name: whatever model runs ` +
-    `you is not a topic.`;
-  return `${intro}${description}${persona}${identity}`;
+    `\n\nAsked who or what you are, answer as ${me.name} (plus your role in a sentence, ` +
+    `if useful). ${MODEL_SILENCE}`;
+  return `${intro}${description}${persona}${identity}${OPERATING_RULES}`;
 };
 
 /** The identity extension: profile persona + roster, or the substrate baseline. */
