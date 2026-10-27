@@ -11,6 +11,7 @@ import type { MemoryFact, MemoryProposal } from "@ultiv/contracts";
 import { Effect } from "effect";
 import {
   FactsDoc,
+  ProfilesDoc,
   ProposalsDoc,
   listRoutineEvents,
   normalize,
@@ -170,11 +171,11 @@ export const tidyStore = async (
     deps.mind.converse.docs.commit<number>(async (tx) => {
       const store = await tx.doc(ProposalsDoc, key, { proposals: [] });
       const now = Date.now();
-      // Expire proposals past 30 days; rejected fingerprints never come back.
+      // Expire proposals past 30 days. REJECTED ones stay in the store: their
+      // fingerprints keep the detector from proposing the same thing again
+      // next run (the REST read filters them from display).
       const existing = store.proposals.filter(
-        (proposal) =>
-          !(proposal.status === "open" && now - proposal.at > TTL_MS) &&
-          proposal.status !== "rejected",
+        (proposal) => !(proposal.status === "open" && now - proposal.at > TTL_MS),
       );
       const known = new Set(store.proposals.map((proposal) => proposal.fingerprint));
       const fresh = detected.filter((proposal) => !known.has(proposal.fingerprint));
@@ -223,7 +224,18 @@ const lastTidyAt = async (mind: MindService): Promise<number> => {
   return last?.at ?? 0;
 };
 
-export const runTidy = async (deps: TidyDeps): Promise<{ proposals: number }> => {
+/** Every owner label that has at least one profile row (the tidy's cron path). */
+export const ownersWithProfiles = async (mind: MindService): Promise<string[]> => {
+  const rows = await run(mind.converse.docs.snapshot(ProfilesDoc)).then(
+    (doc) => doc?.profiles ?? [],
+  );
+  return [...new Set(rows.map((row) => row.owner).filter((owner) => owner !== ""))];
+};
+
+export const runTidy = async (
+  deps: TidyDeps,
+  owner: string,
+): Promise<{ proposals: number; owner: string }> => {
   const { mind } = deps;
   await recordRoutineFire(mind.converse, {
     routineId: TIDY_ROUTINE_ID,
@@ -231,30 +243,38 @@ export const runTidy = async (deps: TidyDeps): Promise<{ proposals: number }> =>
     reason: "memory tidy",
   });
   let total = 0;
-  const stores: { owner: string; profileId: string | null }[] = [];
-  for (const profile of await mind.profiles.list("default")) {
-    if (profile.archivedAt === null) stores.push({ owner: "default", profileId: profile.id });
+  // The OWNER STORE is tidied too — profile stores alone were not enough.
+  const stores: { owner: string; profileId: string | null }[] = [{ owner, profileId: null }];
+  for (const profile of await mind.profiles.list(owner)) {
+    if (profile.archivedAt === null) stores.push({ owner, profileId: profile.id });
   }
   for (const store of stores) {
     total += (await tidyStore(deps, store.owner, store.profileId)).created;
     await applyBackfill(deps, store.owner, store.profileId);
   }
   if (total > 0) {
-    await deps.notify?.("default", `Memory tidy: ${total} suggestions`);
+    await deps.notify?.(owner, `Memory tidy: ${total} suggestions`);
   }
-  return { proposals: total };
+  return { proposals: total, owner };
 };
 
 /** Arm the croner timer; catch up on boot when the last run is 8+ days old. */
 export const startMemoryTidy = (deps: TidyDeps): { readonly stop: () => void } => {
+  const tidyAll = async (): Promise<void> => {
+    for (const owner of await ownersWithProfiles(deps.mind)) {
+      await runTidy(deps, owner).catch((cause) =>
+        console.error(`memory tidy failed (${owner}):`, cause),
+      );
+    }
+  };
   void (async () => {
     const last = await lastTidyAt(deps.mind).catch(() => 0);
     if (Date.now() - last > CATCH_UP_DAYS * 24 * 3_600_000) {
-      await runTidy(deps).catch((cause) => console.error("memory tidy catch-up failed:", cause));
+      await tidyAll().catch((cause) => console.error("memory tidy catch-up failed:", cause));
     }
   })();
   const timer = new Cron(tidyCron(), { timezone: "Asia/Jakarta" }, () => {
-    void runTidy(deps).catch((cause) => console.error("memory tidy failed:", cause));
+    void tidyAll().catch((cause) => console.error("memory tidy failed:", cause));
   });
   return { stop: () => timer.stop() };
 };

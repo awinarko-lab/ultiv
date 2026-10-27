@@ -122,22 +122,25 @@ export async function memoryV2Routes(args: RouteArgs): Promise<boolean> {
     }
     if (path === "/api/memory/tidy/run" && method === "POST") {
       const push = args.push;
-      const result = await runTidy({
-        mind: args.mind,
-        ...(push !== undefined
-          ? {
-              notify: (owner, text) =>
-                push.notifier
-                  .notify(owner, {
-                    title: text,
-                    body: "Open the Memory panel to review.",
-                    url: "/bots",
-                    tag: "memory-tidy",
-                  })
-                  .then(() => undefined),
-            }
-          : {}),
-      });
+      const result = await runTidy(
+        {
+          mind: args.mind,
+          ...(push !== undefined
+            ? {
+                notify: (owner, text) =>
+                  push.notifier
+                    .notify(owner, {
+                      title: text,
+                      body: "Open the Memory panel to review.",
+                      url: "/bots",
+                      tag: "memory-tidy",
+                    })
+                    .then(() => undefined),
+              }
+            : {}),
+        },
+        args.owner,
+      );
       json(200, result);
       return true;
     }
