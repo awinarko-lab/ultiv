@@ -97,7 +97,9 @@ describe("Profiles (offline, MemoryStorage)", () => {
     expect(old?.kind).toBe("session");
     await handle.close();
   });
+});
 
+describe("Profiles: rooms, removal, tool allowlists (offline, MemoryStorage)", () => {
   it("rooms are contextual: one per pair+topic, and never sessions", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const { profiles, rooms } = handle.mind;
