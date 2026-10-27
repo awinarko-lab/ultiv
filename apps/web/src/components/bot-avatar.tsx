@@ -24,7 +24,7 @@ const initialsOf = (name: string): string =>
     .join("") || "?";
 
 const sizes = {
-  sm: "size-5 text-[0.5625rem]",
+  sm: "size-6 text-xs",
   md: "size-7 text-xs",
   lg: "size-14 text-lg",
 } as const;

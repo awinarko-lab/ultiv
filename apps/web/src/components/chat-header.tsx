@@ -113,10 +113,10 @@ export function ChatHeader({
   const name = bot?.name !== undefined && bot.name !== "" ? bot.name : "Chat";
   // Floating chips: translucent + blurred so the transcript shows through.
   const round =
-    "bg-background/60 hover:bg-muted/80 border-border/60 rounded-full border shadow-sm backdrop-blur-md";
+    "bg-background/60 hover:bg-muted/80 border-border/60 rounded-full border shadow-sm backdrop-blur-md pointer-coarse:size-11";
   return (
     // Only the chips take taps; the rest of the row lets the transcript scroll.
-    <header className="pointer-events-none grid grid-cols-[2.5rem_1fr_2.5rem] items-center gap-2 [&_button]:pointer-events-auto">
+    <header className="pointer-events-none grid grid-cols-[2.5rem_1fr_2.5rem] items-center pointer-coarse:grid-cols-[2.75rem_1fr_2.75rem] gap-2 [&_button]:pointer-events-auto">
       {onBack !== undefined ? (
         <Button variant="ghost" size="icon-lg" className={round} aria-label="Back" onClick={onBack}>
           <ChevronLeftIcon />

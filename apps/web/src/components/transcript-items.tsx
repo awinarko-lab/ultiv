@@ -3,7 +3,9 @@
  * machinery notes, grouped so consecutive tool steps read as one sequence.
  */
 import { memo } from "react";
+import { useApp } from "@/lib/app-state";
 import { formatDivider, formatFull } from "@/lib/format";
+import { readNote } from "@/lib/note-text";
 import type { ToolStep, TranscriptEntry } from "@ultiv/contracts";
 import { BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
 import { LazyMarkdown } from "@/components/lazy-markdown";
@@ -129,13 +131,15 @@ const Tool = memo(function Tool({ step }: { step: ToolStep }) {
   );
 });
 
-/** A machinery note: small caption + markdown body. */
+/** A machinery note: small caption + markdown body, in owner-facing words. */
 const Note = memo(function Note({ text }: { text: string }) {
+  const { sessions } = useApp();
+  const note = readNote(text, (id) => sessions.profiles.find((bot) => bot.id === id)?.name);
   return (
     <>
-      <span className="text-foreground/70 text-xs font-medium">{noteHeader(text)}</span>
-      <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
-        <LazyMarkdown text={noteBody(text)} />
+      <span className="text-foreground/70 text-xs font-medium">{note.header}</span>
+      <div className="break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
+        <LazyMarkdown text={note.body} />
       </div>
     </>
   );
@@ -145,30 +149,6 @@ const Note = memo(function Note({ text }: { text: string }) {
 type Group =
   | { key: string; at: number; tools: ToolStep[] }
   | { key: string; at: number; entry: TranscriptEntry };
-
-/**
- * Bracketed machinery notes: the header ([relay • topic], [reply from …],
- * "✉ → peer (kind)") renders as a small caption, the rest as the body.
- */
-const noteParts = (text: string): { header: string; body: string } => {
-  const firstBreak = text.indexOf("\n");
-  if (text.startsWith("[") || text.startsWith("✉")) {
-    const headerEnd = text.indexOf("]");
-    if (text.startsWith("✉")) {
-      const header = firstBreak > 0 ? text.slice(0, firstBreak) : text;
-      return { header, body: firstBreak > 0 ? text.slice(firstBreak + 1).trim() : "" };
-    }
-    if (headerEnd > 0) {
-      return { header: text.slice(1, headerEnd), body: text.slice(headerEnd + 1).trim() };
-    }
-  }
-  return { header: "note", body: text };
-};
-const noteHeader = (text: string): string => noteParts(text).header;
-const noteBody = (text: string): string => {
-  const { header, body } = noteParts(text);
-  return body === "" ? header : body;
-};
 
 function groupTranscript(transcript: TranscriptEntry[]): Group[] {
   const groups: Group[] = [];

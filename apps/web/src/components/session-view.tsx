@@ -95,6 +95,7 @@ export function SessionView({
   onDecide,
   onConfigure,
   onInterrupt,
+  tasks,
 }: {
   bot?: ChatBot | undefined;
   /** Shown as the header's round back button when set. */
@@ -112,6 +113,8 @@ export function SessionView({
   onDecide: Decide;
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => Promise<void>;
   onInterrupt: () => Promise<void>;
+  /** Background tasks, floated above the composer. */
+  tasks?: React.ReactNode;
 }) {
   const busy = phase === "working";
   const { draft, setDraft, sending, sendFailed, run } = useSend(onInput, busy);
@@ -167,7 +170,7 @@ export function SessionView({
           </ul>
         </ScrollArea>
       </div>
-      <div className="from-background/80 pointer-events-none absolute inset-x-0 top-0 z-10 h-14 bg-linear-to-b to-transparent" />
+      <div className="from-background via-background/70 pointer-events-none absolute inset-x-0 top-0 z-10 h-[calc(max(0.5rem,env(safe-area-inset-top))+4rem)] bg-linear-to-b to-transparent" />
       <div className="absolute inset-x-0 top-0 z-10 pt-[max(0.5rem,env(safe-area-inset-top))]">
         <ChatHeader
           bot={bot}
@@ -190,6 +193,7 @@ export function SessionView({
         className="pointer-events-none absolute inset-x-0 z-10 flex flex-col gap-2 pb-3 *:pointer-events-auto"
         style={{ bottom: "var(--chat-bottom, env(safe-area-inset-bottom))" }}
       >
+        {tasks}
         {lastError !== null && <p className={floatingError}>{lastError}</p>}
         {controlError !== null && (
           <p className={floatingError}>Couldn't apply that: {controlError}</p>

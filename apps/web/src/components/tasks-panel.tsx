@@ -15,6 +15,13 @@ const statusVariant = {
   cancelled: "outline",
 } as const;
 
+const statusLabel = {
+  running: "Running",
+  done: "Done",
+  failed: "Failed",
+  cancelled: "Stopped",
+} as const;
+
 /**
  * Background tasks of THIS conversation, polled — REST has no push. The panel
  * stays hidden until the session's conversation id is known, so nothing from
@@ -65,27 +72,25 @@ export function TasksPanel({ conversationId }: { conversationId: string | null }
   if (conversationId === null || tasks.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <SectionHeader title="Background tasks" />
-      {error !== null && <p className="text-destructive text-xs">{error}</p>}
-      <ul className="flex flex-col gap-1">
+    <div className="bg-background/70 border-border/60 flex flex-col gap-1 rounded-[14px] border p-2 shadow-sm backdrop-blur-md">
+      <SectionHeader title={`Background tasks (${tasks.length})`} className="px-1" />
+      {error !== null && <p className="text-destructive px-1 text-xs">{error}</p>}
+      {/* Capped so a long task list never pushes the composer off screen. */}
+      <ul className="flex max-h-32 flex-col overflow-y-auto">
         {tasks.map((task) => (
-          <li
-            key={task.id}
-            className="flex items-center gap-2 rounded-lg border bg-card/50 px-2.5 py-1.5 text-xs"
-          >
-            <Badge variant={statusVariant[task.status]}>{task.status}</Badge>
+          <li key={task.id} className="flex items-center gap-2 px-1 py-0.5 text-sm">
+            <Badge variant={statusVariant[task.status]}>{statusLabel[task.status]}</Badge>
             <TaskActivityDialog task={task}>
               <button
                 type="button"
-                className="text-muted-foreground hover:text-foreground min-w-0 flex-1 cursor-pointer truncate text-left"
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 min-w-0 flex-1 cursor-pointer truncate rounded-md text-left outline-none focus-visible:ring-3 pointer-coarse:min-h-11"
                 title={task.prompt}
               >
                 {task.prompt.slice(0, 90)}
               </button>
             </TaskActivityDialog>
             {task.status === "running" ? (
-              <Button variant="outline" size="xs" onClick={() => void remove(task.id)}>
+              <Button variant="outline" size="sm" onClick={() => void remove(task.id)}>
                 Stop
               </Button>
             ) : (
@@ -97,7 +102,7 @@ export function TasksPanel({ conversationId }: { conversationId: string | null }
                   void refresh();
                 }}
               >
-                <Button variant="ghost" size="xs">
+                <Button variant="ghost" size="sm">
                   Delete
                 </Button>
               </ConfirmDialog>

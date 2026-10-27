@@ -51,7 +51,7 @@ export function BotSwitcher({
       <Popover.Root open={open} onOpenChange={setOpen}>
         <Popover.Trigger
           aria-label={`${name}: switch bot`}
-          className="bg-background/60 supports-backdrop-filter:bg-background/40 hover:bg-muted/80 border-border/60 relative flex max-w-full min-w-0 cursor-pointer items-center gap-2 rounded-full border py-1 pr-2.5 pl-1 shadow-sm backdrop-blur-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="bg-background/60 supports-backdrop-filter:bg-background/40 hover:bg-muted/80 border-border/60 relative flex max-w-full min-w-0 cursor-pointer pointer-coarse:min-h-11 items-center gap-2 rounded-full border py-1 pr-2.5 pl-1 shadow-sm backdrop-blur-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <BotAvatar name={name} />
           <span className="flex min-w-0 flex-col text-left leading-tight">

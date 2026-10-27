@@ -22,9 +22,9 @@ export function Chat({
 }) {
   const session = useSession(sessionId);
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <TasksPanel conversationId={session.conversationId} />
+    <div className="flex min-h-0 flex-1 flex-col">
       <SessionView
+        tasks={<TasksPanel conversationId={session.conversationId} />}
         bot={bot}
         onBack={onBack}
         link={session.link}
