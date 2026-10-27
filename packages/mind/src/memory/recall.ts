@@ -141,7 +141,10 @@ export const recall = (input: RecallInput): RecallResult => {
   const visible = input.facts.filter(
     (fact) =>
       fact.status !== "forgotten" &&
-      !(fact.kind === "instruction" && fact.scope !== "owner") &&
+      // Instructions surface by TRUST, not scope: the owner's own standing
+      // instructions (owner or self trust) rank in; derived/untrusted
+      // instruction-shaped text from outside content never does.
+      !(fact.kind === "instruction" && (fact.trust === "derived" || fact.trust === "untrusted")) &&
       (wantHistory || !isHistory(fact)),
   );
   const pool = wantHistory ? [...visible, ...(input.archive ?? [])] : visible;
@@ -150,7 +153,7 @@ export const recall = (input: RecallInput): RecallResult => {
     const top = [...visible]
       .filter((fact) => !isHistory(fact))
       .sort((a, b) => prior(b, now) - prior(a, now))
-      .slice(0, LIMIT_DEFAULT);
+      .slice(0, limit);
     return render({ core, facts: top, now, budget });
   }
 
