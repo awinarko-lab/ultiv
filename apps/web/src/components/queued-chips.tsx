@@ -5,8 +5,8 @@
  */
 import type { QueuedInput } from "@ultiv/contracts";
 import { XIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { queueLabel } from "@/lib/queue-text";
+import { Button } from "./ui/button.tsx";
+import { queueLabel } from "../lib/queue-text.ts";
 
 export function QueuedChips({
   queued,
