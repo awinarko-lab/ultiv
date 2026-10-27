@@ -7,21 +7,11 @@ import type {
   TranscriptEntry,
   UsageSummary,
 } from "@ultiv/contracts";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupTextarea,
-} from "@/components/ui/input-group";
-import { ArrowUpIcon, CircleStopIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ApprovalCard, type Decide } from "@/components/approval-card";
+import { Composer } from "@/components/composer";
 import { ChatHeader, type ChatBot, type LinkState } from "@/components/chat-header";
 import { TranscriptItems } from "@/components/transcript-items";
-
-const coarsePointer = (): boolean =>
-  typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 
 export function SessionView({
   bot,
@@ -109,11 +99,6 @@ export function SessionView({
     });
   };
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
-    void run();
-  };
-
   return (
     // Frameless: the chat is the page, not a card on it. Transcript scrolls;
     // the composer stays pinned at the bottom of the available height.
@@ -148,65 +133,17 @@ export function SessionView({
           <p className="w-full text-sm text-destructive">Couldn't apply that: {controlError}</p>
         )}
         {pending !== null && <ApprovalCard pending={pending} onDecide={onDecide} />}
-        <form className="flex w-full flex-col gap-2" onSubmit={submit}>
-          <InputGroup>
-            <InputGroupTextarea
-              placeholder={
-                link !== "live"
-                  ? "Waiting for link…"
-                  : bot !== undefined && bot.name !== ""
-                    ? `Message ${bot.name}…`
-                    : "Message…"
-              }
-              value={draft}
-              disabled={link !== "live"}
-              rows={2}
-              className="max-h-[40dvh] min-h-16 resize-none overflow-y-auto"
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                // Touch keyboards have no Shift+Enter: there Enter is a newline
-                // and the arrow button sends. Desktop keeps Enter-to-send.
-                if (event.key === "Enter" && !event.shiftKey && !coarsePointer()) {
-                  event.preventDefault();
-                  void run();
-                }
-              }}
-            />
-            <InputGroupAddon align="block-end">
-              {busy && (
-                <InputGroupButton
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  className="text-destructive"
-                  onClick={() => control(onInterrupt)}
-                  disabled={link !== "live"}
-                >
-                  <CircleStopIcon /> Stop
-                </InputGroupButton>
-              )}
-              <InputGroupButton
-                type="submit"
-                size="icon-xs"
-                variant="default"
-                className="ml-auto"
-                aria-label="Send"
-                title="Send"
-                disabled={link !== "live" || busy || sending}
-              >
-                <ArrowUpIcon />
-              </InputGroupButton>
-            </InputGroupAddon>
-          </InputGroup>
-          {sendFailed && (
-            <p className="text-destructive flex items-center gap-2 text-sm" role="alert">
-              Not sent.
-              <Button type="submit" variant="link" size="xs" className="h-auto p-0">
-                Retry
-              </Button>
-            </p>
-          )}
-        </form>
+        <Composer
+          botName={bot?.name}
+          live={link === "live"}
+          busy={busy}
+          sending={sending}
+          sendFailed={sendFailed}
+          draft={draft}
+          onDraft={setDraft}
+          onSend={() => void run()}
+          onStop={() => control(onInterrupt)}
+        />
       </footer>
     </section>
   );
