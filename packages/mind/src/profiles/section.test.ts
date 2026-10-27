@@ -100,3 +100,20 @@ describe("assembled prompt: key rules and budget", () => {
     expect(words(await persona())).toBeLessThanOrEqual(680);
   });
 });
+
+describe("sibling roster", () => {
+  it("stays compact with 30 bots and points to bots_list", async () => {
+    const long = "Handles an extremely detailed and long-winded area of responsibility ".repeat(8);
+    const siblings = Array.from({ length: 30 }, (_, index) =>
+      profile("Asia/Jakarta", { id: `b${index}`, name: `Bot${index}`, description: long }),
+    );
+    const text = await render(profile("Asia/Jakarta"), siblings);
+    const rosterText = text.slice(text.indexOf("Sibling bots"));
+    expect(rosterText.length).toBeLessThan(2800);
+    expect(rosterText).toContain("bots_list");
+    expect(rosterText).toContain("…and 10 more");
+    for (const line of rosterText.split("\n").filter((row) => row.startsWith("- Bot"))) {
+      expect(line.length).toBeLessThanOrEqual(110);
+    }
+  });
+});

@@ -3,7 +3,7 @@
  * services, the late pi-registry installs, the approval policy and the
  * describe() truth. Each profile runs as its own entity over these.
  */
-import { defineExtension } from "@earendil-works/pi-durable";
+import { defineExtension, type ToolRegistration } from "@earendil-works/pi-durable";
 import { FIRST_USE_APPROVAL, type ScopeHolder } from "@ultiv/ext";
 import { isMcpFirstUse } from "./mcp/access.ts";
 import { isNeverAutoApproved } from "./mcp/manage.ts";
@@ -50,6 +50,8 @@ interface Faculties {
   readonly state: KvService;
   readonly sensors: SensorsService;
   readonly history: HistoryService;
+  /** bots_list / bot_info: read-only sibling discovery, in the allowlist universe. */
+  readonly botTools: readonly ToolRegistration[];
 }
 
 /** Late installs are legal: the harness reconsiders its tools as the registry changes. */
@@ -62,6 +64,7 @@ export const installFaculties = (
   piRegistry.install(act.extension());
   piRegistry.install(codemodeExtension());
   piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
+  piRegistry.install(defineExtension({ name: "ultius.mind.bots", tools: [...f.botTools] }));
   piRegistry.install(
     defineExtension({
       name: "ultius.mind.tasks",

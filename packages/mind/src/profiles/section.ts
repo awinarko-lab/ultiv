@@ -11,26 +11,38 @@
 import { defineExtension, type Extension } from "@earendil-works/pi-durable";
 import type { ProfileInfo } from "@ultiv/contracts";
 import { MODEL_SILENCE, OPERATING_RULES, VOICE } from "../act/identity.ts";
+import { roleOf } from "./bots.ts";
 import type { ProfilesService } from "./profiles.ts";
 
 const baseline = (name: string): string =>
   `You are ${name}. That is your name, always; asked who or what you are, answer as ` +
   `${name}. ${MODEL_SILENCE}${VOICE}${OPERATING_RULES}`;
 
-const roster = (me: ProfileInfo, siblings: readonly ProfileInfo[]): string => {
+/** Siblings named in the prompt; the rest are one bots_list call away. */
+export const ROSTER_MAX = 20;
+
+/**
+ * One compact line per sibling (name, id, a role clause of at most 80 chars),
+ * so the prompt stays small however many bots the owner has; details live
+ * behind bots_list / bot_info.
+ */
+export const roster = (me: ProfileInfo, siblings: readonly ProfileInfo[]): string => {
   const others = siblings.filter(
     (candidate) => candidate.id !== me.id && candidate.archivedAt === null,
   );
   if (others.length === 0) return "";
-  const lines = others.map(
-    (profile) =>
-      `- ${profile.name} (id: ${profile.id})${profile.description !== "" ? ` — ${profile.description}` : ""}`,
-  );
+  const lines = others.slice(0, ROSTER_MAX).map((profile) => {
+    const role = roleOf(profile);
+    return `- ${profile.name} (id: ${profile.id})${role !== "" ? ` — ${role}` : ""}`;
+  });
+  const more =
+    others.length > ROSTER_MAX ? `\n- …and ${others.length - ROSTER_MAX} more (bots_list)` : "";
   return (
-    `\n\nSibling bots — separate entities with their own memory — that you can reach with ` +
-    `the message tool where your contact policy allows (asynchronous: end your turn after ` +
-    `sending; you are woken with the reply):\n${lines.join("\n")}\n` +
-    `Send answers back to the bot that asked you; never pass a request on to a third bot.`
+    `\n\nSibling bots — separate entities with their own private memory:\n${lines.join("\n")}${more}\n` +
+    `Call bots_list or bot_info for roles, tool groups and whether you may message one. ` +
+    `Message them with the message tool where your contact policy allows (asynchronous: ` +
+    `end your turn after sending; you are woken with the reply). Send answers back to the ` +
+    `bot that asked you; never pass a request on to a third bot.`
   );
 };
 

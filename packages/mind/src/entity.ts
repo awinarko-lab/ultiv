@@ -12,7 +12,7 @@
  */
 import { Context, Effect, Layer } from "effect";
 import { ConfigError } from "effect/Config";
-import { type Storage } from "@earendil-works/pi-durable";
+import { type Storage, type ToolRegistration } from "@earendil-works/pi-durable";
 import { openRuntime, Duplicate, External, Unavailable, type Runtime } from "@ultiv/core";
 import {
   artifactsPlugin,
@@ -48,6 +48,7 @@ import { Converse, converseLayer, type ConverseService } from "./converse/conver
 import { PiRegistry, piRegistryLayer } from "./converse/pi-registry.ts";
 import { Tasks, tasksLayer, type TasksService } from "./tasks/tasks.ts";
 import { profilesService, type ProfilesService } from "./profiles/profiles.ts";
+import { botsTools, taskActivity } from "./profiles/bots-tools.ts";
 import { roomsService, type RoomsService } from "./profiles/rooms.ts";
 import { mailboxService, type MailboxService } from "./mailbox/mailbox.ts";
 import { type MemoryService } from "./memory/memory.ts";
@@ -196,13 +197,19 @@ const mindLayerRaw = (
       // section (persona + roster, or the substrate baseline) reaches every
       // conversation through a late registry install.
       let mcpRef: McpRuntime | undefined;
+      let botTools: readonly ToolRegistration[] = [];
       const profiles = profilesService({
         converse,
         generate,
-        tools: () => [...(act.extension().tools ?? []), ...(mcpRef?.wiring.allowlistTools() ?? [])],
+        tools: () => [
+          ...(act.extension().tools ?? []),
+          ...botTools,
+          ...(mcpRef?.wiring.allowlistTools() ?? []),
+        ],
         implied: (allowlist) => mcpRef?.wiring.implied(allowlist) ?? [],
       });
       const profilesRef: ProfilesService = profiles;
+      botTools = botsTools({ profiles, audit, activity: taskActivity(tasks) });
       const rooms = roomsService({ converse });
       const mailbox = mailboxService({
         converse,
@@ -220,7 +227,15 @@ const mindLayerRaw = (
       // Everything rides one pi-durable registry; late installs are legal —
       // the harness reconsiders its tools as the registry changes.
       const piRegistry = yield* PiRegistry;
-      installFaculties(piRegistry, { act, tasks, profiles, rooms, mailbox, ...routines });
+      installFaculties(piRegistry, {
+        act,
+        tasks,
+        profiles,
+        rooms,
+        mailbox,
+        botTools,
+        ...routines,
+      });
       // Connectors install after everything else so their names never shadow ours.
       const mcp = startMcp(
         piRegistry,
