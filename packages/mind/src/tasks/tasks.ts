@@ -19,10 +19,12 @@ import { External } from "@ultiv/core";
 import type { TaskInfo, TaskList } from "@ultiv/contracts";
 import { Converse, type ConverseService } from "../converse/converse.ts";
 import { findTask, readTasks, taskConversationKey, updateTask, writeTasks } from "./store.ts";
+import { notifyOwner, type NotifyOutcome } from "./notify.ts";
 import { recentSteps } from "./steps.ts";
 import { owed, wakeParent } from "./wake.ts";
 
 export { TasksDoc, taskConversationKey, titleOf } from "./store.ts";
+export { TASK_UPDATE_KIND, NOTIFY_CHARS, NOTIFY_INTERVAL_MS } from "./notify.ts";
 
 /** The bot a task runs as. */
 export type TaskBot = NonNullable<TaskInfo["bot"]>;
@@ -69,6 +71,10 @@ export interface TasksService {
   readonly message: (id: string, text: string) => Effect.Effect<"sent" | "not_running", External>;
   /** A task's last few steps as plain lines, oldest first ([] when none). */
   readonly steps: (id: string, count?: number) => Promise<string[]>;
+  /** Post a progress line into the parent chat (rate-limited; never wakes the parent). */
+  readonly notify: (id: string, text: string) => Effect.Effect<NotifyOutcome, External>;
+  /** The task a conversation belongs to, if it is a task's own conversation. */
+  readonly taskOf: (conversationId: string) => Effect.Effect<TaskInfo | undefined, External>;
   /** True when the conversation belongs to a background task: tasks cannot spawn sub-tasks. */
   readonly isTaskConversation: (conversationId: string) => Effect.Effect<boolean, External>;
   /**
@@ -98,7 +104,8 @@ const RESUME_NOTE =
 /** Framing the task sees once, above its brief (the row keeps the raw prompt). */
 export const TASK_BRIEF =
   "[task brief] You are a background task your bot started; your final reply is the result " +
-  "it receives. A [from parent] line is a new instruction from it — follow it.";
+  "it receives. A [from parent] line is a new instruction from it — follow it. For long " +
+  "work, post a one-line milestone to your owner with notify_owner (rarely; never the result).";
 
 /** The wake prefix a parent bot's task_message arrives under, in the task's chat. */
 export const FROM_PARENT = "[from parent]";
@@ -293,6 +300,19 @@ const resumeRunning = async (rt: TaskRuntime): Promise<void> => {
   }
 };
 
+const taskOfConversation = (
+  converse: ConverseService,
+  conversationId: string,
+): Effect.Effect<TaskInfo | undefined, External> =>
+  Effect.flatMap(readTasks(converse), (tasks) =>
+    Effect.map(
+      Effect.forEach(tasks, (task) => converse.conversationIdOf(taskConversationKey(task.id)), {
+        concurrency: "unbounded",
+      }),
+      (ids) => tasks[ids.findIndex((id) => id !== undefined && String(id) === conversationId)],
+    ),
+  );
+
 export const tasksService = (converse: ConverseService): TasksService => {
   const rt: TaskRuntime = {
     converse,
@@ -321,15 +341,10 @@ export const tasksService = (converse: ConverseService): TasksService => {
         );
         return { removed: true, cancelled };
       }),
+    notify: (id, text) => notifyOwner(converse, id, text),
+    taskOf: (conversationId) => taskOfConversation(converse, conversationId),
     isTaskConversation: (conversationId) =>
-      Effect.flatMap(readTasks(converse), (tasks) =>
-        Effect.map(
-          Effect.forEach(tasks, (task) => converse.conversationIdOf(taskConversationKey(task.id)), {
-            concurrency: "unbounded",
-          }),
-          (ids) => ids.some((id) => id === conversationId),
-        ),
-      ),
+      Effect.map(taskOfConversation(converse, conversationId), (task) => task !== undefined),
     attach: async (binder) => {
       rt.binder = binder;
       if (attached) return;

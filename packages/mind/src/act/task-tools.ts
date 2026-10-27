@@ -1,6 +1,6 @@
 /**
  * The Tasks faculty as native tools of the agent loop (`task_spawn`,
- * `task_status`, `task_cancel`, `task_list`, `task_message`): the entity can hand background
+ * `task_status`, `task_cancel`, `task_list`, `task_message`, `notify_owner`): the entity can hand background
  * work to itself — research, batch jobs, follow-ups — without holding a turn
  * open. Spawning work is internal compute, not a side effect on the world:
  * ungated, like the decision tools. A task runs AS the spawning bot, and a
@@ -17,7 +17,7 @@ import {
   type TasksService,
 } from "../tasks/tasks.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
-import { messageTool, tasksVisibleTo, textReply } from "./task-live.ts";
+import { messageTool, notifyTool, tasksVisibleTo, textReply } from "./task-live.ts";
 
 const SpawnParams = Type.Object({
   prompt: Type.String({
@@ -157,6 +157,7 @@ export const taskTools = (tasks: TasksService, profiles: ProfilesService): reado
   cancelTool(tasks),
   listTool(tasks, profiles),
   messageTool(tasks, profiles),
+  notifyTool(tasks),
 ];
 
 /** The mind's background-task faculty as an installable plugin. */

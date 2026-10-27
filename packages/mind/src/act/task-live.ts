@@ -72,6 +72,35 @@ export const messageTool = (tasks: TasksService, profiles: ProfilesService): Too
     },
   });
 
+const NotifyParams = Type.Object({
+  text: Type.String({ description: "One short progress line for your owner (≤280 chars)." }),
+});
+
+/** notify_owner: only inside a task; the line shows in the owner's chat, the parent sleeps on. */
+export const notifyTool = (tasks: TasksService): Tool =>
+  defineTool({
+    name: "notify_owner",
+    description:
+      "Inside a background task: post one short progress line (a milestone or a blocker) " +
+      "straight to your owner's chat. It does not wake your bot; the final result still " +
+      "arrives as your reply. At most once every 2 minutes, ≤280 characters.",
+    parameters: NotifyParams,
+    structuredOutputSchema: Type.Object({ posted: Type.Boolean() }),
+    execute: async (args, api) => {
+      const task = await Effect.runPromise(tasks.taskOf(String(api.conversationId)));
+      if (task === undefined) {
+        return textReply("not posted: notify_owner works only inside a background task.", true);
+      }
+      const outcome = await Effect.runPromise(tasks.notify(task.id, args.text));
+      if (outcome.status === "too_soon") {
+        const seconds = Math.ceil(outcome.waitMs / 1000);
+        return textReply(`not posted: one update per 2 minutes; next in ${seconds}s.`, true);
+      }
+      if (outcome.status === "not_running") return textReply("not posted: task is over.", true);
+      return { ...textReply("posted to your owner."), structuredOutput: { posted: true } };
+    },
+  });
+
 /** "14:05" in the bot's zone (server zone when it has none). */
 const clock = (at: number, zone: string | undefined): string => {
   try {

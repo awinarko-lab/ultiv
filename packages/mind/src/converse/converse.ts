@@ -70,6 +70,15 @@ export interface ConverseService {
     /** Idempotency key: a repeat with the same id returns the first submission. */
     requestId?: string,
   ) => Effect.Effect<Submission, External>;
+  /**
+   * Append a passive app entry (never a model input, never wakes a turn):
+   * lands at once, even mid-run. The kind must not start with `pi.`.
+   */
+  readonly write: (
+    conversation: Conversation,
+    kind: string,
+    data: JsonObject,
+  ) => Effect.Effect<void, External>;
   /** Stop the conversation's current turn: withdraw queued inputs, abort, wait for idle. */
   readonly interrupt: (conversation: Conversation) => Effect.Effect<void, External>;
   /** Take back one queued submission before a boundary places it. */
@@ -297,6 +306,13 @@ export const converseService = (harness: Harness, agent: AgentChange): ConverseS
   submit: (conversation, content, whenBusy, requestId) =>
     submitOf(conversation, content, whenBusy, requestId),
   settle: (conversation, submission) => settleOf(conversation, submission),
+  write: (conversation, kind, data) =>
+    Effect.asVoid(
+      asEffect(
+        "write",
+        conversation.submit({ type: "write", entry: { kind, data } }, BACKGROUND_CONTEXT),
+      ),
+    ),
   turn: (conversation, content, whenBusy) =>
     Effect.flatMap(submitOf(conversation, content, whenBusy), (submission) =>
       settleOf(conversation, submission),

@@ -6,6 +6,7 @@
  */
 import type { EntryRecord, LiveState } from "@earendil-works/pi-durable";
 import type { TranscriptEntry } from "@ultiv/contracts";
+import { TASK_UPDATE_KIND } from "../tasks/notify.ts";
 
 export type Step = TranscriptEntry;
 
@@ -50,6 +51,14 @@ function toolResultsOf(entries: readonly EntryRecord[]): Map<string, ToolResult>
 function committedSteps(entries: readonly EntryRecord[], results: Map<string, ToolResult>): Step[] {
   const out: Step[] = [];
   for (const entry of entries) {
+    if (entry.kind === TASK_UPDATE_KIND) {
+      // A task's progress line (notify_owner): passive, shown as a note.
+      const data = (entry.data ?? {}) as { taskId?: unknown; text?: unknown; at?: unknown };
+      const at = typeof data.at === "number" ? data.at : Date.now();
+      const text = `[task ${String(data.taskId)} update] ${String(data.text ?? "")}`;
+      out.push({ id: entry.id * 100, kind: "note", at, text });
+      continue;
+    }
     for (const message of (entry.model ?? []) as readonly unknown[]) {
       const record = message as { role?: string; content?: unknown; timestamp?: unknown };
       if (record.role === "toolResult" || record.role === "system") continue;
