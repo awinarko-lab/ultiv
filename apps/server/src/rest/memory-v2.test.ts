@@ -103,3 +103,33 @@ describe("POST /api/memory/purge", () => {
     await handle.close();
   });
 });
+
+describe("DELETE /api/memory/v2/facts/:id (tombstone)", () => {
+  it("tombstones a fact — hidden from reads, restorable by the mind seam", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const { mind } = handle;
+    const bot = await mind.profiles.create("harry", { name: "Tombstoned" });
+    const fact = await mind.memory.writeV2({
+      owner: "harry",
+      profileId: bot.id,
+      scope: "profile",
+      writer: bot.id,
+      text: "a fact to tombstone",
+    });
+    const route = routeArgs(mind, {
+      path: `/api/memory/v2/facts/${fact.id}`,
+      method: "DELETE",
+      profile: bot.id,
+    });
+    expect(await memoryV2Routes(route.args)).toBe(true);
+    expect(route.status()).toBe(200);
+    // Hidden from the REST projection…
+    const projected = await mind.memory.read("harry", "profile", bot.id);
+    expect(projected.map((record) => record.id)).not.toContain(fact.id);
+    // …and restorable: the tombstone keeps its text until Purge.
+    await mind.memory.restore("harry", bot.id, fact.id);
+    const restored = await mind.memory.read("harry", "profile", bot.id);
+    expect(restored.map((record) => record.id)).toContain(fact.id);
+    await handle.close();
+  });
+});

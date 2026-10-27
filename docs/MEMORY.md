@@ -53,7 +53,7 @@ Embeddings are off (`MEMORY_EMBEDDINGS`); if ever on, prefer local Ollama.
 ## Writes
 
 Pipeline: **guard → extract → resolve entities → decide → apply** (one
-`docs.commit` transaction that re-reads inside the lock) → v1 mirror.
+`docs.commit` transaction that re-reads inside the lock).
 
 - **Guard** (`memory/guard.ts`): origin from the last admitted input's
   bracket prefix (`[cron …]`, `[webhook …]`, `[sensor …]`, `[message from …]`,
@@ -151,9 +151,9 @@ confirmed there is nothing left to migrate. Writes are v2-only; the old
 
 ## Flags
 
-| Flag                | Default     | Effect                                     |
-| ------------------- | ----------- | ------------------------------------------ |
-| `ULTIV_MEMORY_V2`   | on          | `off` = full v1 rollback                   |
-| `MEMORY_EXTRACT`    | on          | `off` = deterministic extraction only      |
-| `MEMORY_EMBEDDINGS` | off         | embeddings; prefer local Ollama if ever on |
-| `MEMORY_TIDY_CRON`  | `0 9 * * 0` | tidy schedule (croner, Asia/Jakarta)       |
+| Flag                | Default     | Effect                                        |
+| ------------------- | ----------- | --------------------------------------------- |
+| `ULTIV_MEMORY_V2`   | on          | `off` = v1-seam fallback, NOT a full rollback |
+| `MEMORY_EXTRACT`    | on          | `off` = deterministic extraction only         |
+| `MEMORY_EMBEDDINGS` | off         | embeddings; prefer local Ollama if ever on    |
+| `MEMORY_TIDY_CRON`  | `0 9 * * 0` | tidy schedule (croner, Asia/Jakarta)          |

@@ -101,8 +101,8 @@ describe("content checks", () => {
     expect(checkContent("password=hunter2scrambled").ok).toBe(false);
   });
   it("lets plain facts through", () => {
-    expect(checkContent("harry prefers tea over coffee")).ok;
-    expect(checkContent("the cat's vet visit is on Friday")).ok;
+    expect(checkContent("harry prefers tea over coffee").ok).toBe(true);
+    expect(checkContent("the cat's vet visit is on Friday").ok).toBe(true);
   });
 });
 

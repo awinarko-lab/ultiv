@@ -32,7 +32,6 @@ import {
 } from "./forget.ts";
 import { entitiesOf, relatedEntity, type EntityCard } from "./graph.ts";
 import {
-  ArchiveDoc,
   CoreDoc,
   EpisodesDoc,
   FactsDoc,
