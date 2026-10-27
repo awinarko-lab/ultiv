@@ -6,7 +6,7 @@ import type {
   ThinkingLevel,
   TranscriptEntry,
   UsageSummary,
-  WhenBusy,
+  SendMode,
 } from "@ultiv/contracts";
 import { openSession, type SessionRef } from "./chord.ts";
 
@@ -24,8 +24,8 @@ export function useSession(sessionId: string): {
   conversationId: string | null;
   /** Messages waiting for the running turn, oldest first. */
   queued: QueuedInput[];
-  /** Send; while the bot works, `whenBusy` picks steer (default) or followUp. */
-  input: (text: string, whenBusy?: WhenBusy) => Promise<void>;
+  /** Send; while the bot works, `whenBusy` picks steer (default), followUp, or redirect. */
+  input: (text: string, whenBusy?: SendMode) => Promise<void>;
   /** Take back a queued message. */
   withdraw: (id: string) => Promise<void>;
   decide: (
@@ -107,7 +107,7 @@ export function useSession(sessionId: string): {
   }, [ref]);
 
   const input = useCallback(
-    async (text: string, whenBusy?: WhenBusy): Promise<void> => {
+    async (text: string, whenBusy?: SendMode): Promise<void> => {
       await linked().input({ text, ...(whenBusy !== undefined ? { whenBusy } : {}) });
     },
     [linked],

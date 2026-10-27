@@ -1,12 +1,14 @@
 /**
  * The composer's round send arrow. While the bot works a send joins the
  * running turn at its next step; long-press (touch) or right-click opens a
- * small menu that can hold the message until the turn finishes instead.
+ * small menu that can hold the message until the turn finishes, or Redirect
+ * now: stop the reply at a safe point and answer this message instead.
  */
 import { useRef, useState } from "react";
 import { Popover } from "@base-ui/react/popover";
-import type { WhenBusy } from "@ultiv/contracts";
+import type { SendMode } from "@ultiv/contracts";
 import { ArrowUpIcon } from "lucide-react";
+import { SEND_CHOICES } from "@/lib/send-mode";
 import { Button } from "./ui/button.tsx";
 
 const LONG_PRESS_MS = 500;
@@ -23,7 +25,7 @@ export function SendButton({
 }: {
   busy: boolean;
   enabled: boolean;
-  onSend: (whenBusy?: WhenBusy) => void;
+  onSend: (mode?: SendMode) => void;
 }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -32,9 +34,9 @@ export function SendButton({
   const [open, setOpen] = useState(false);
   const menu = busy && enabled;
   const cancelPress = () => clearTimeout(timer.current);
-  const pick = (whenBusy: WhenBusy) => {
+  const pick = (mode: SendMode) => {
     setOpen(false);
-    onSend(whenBusy);
+    onSend(mode);
   };
   return (
     <Popover.Root open={open && menu} onOpenChange={setOpen}>
@@ -47,7 +49,7 @@ export function SendButton({
         aria-haspopup={menu ? "menu" : undefined}
         title={
           busy
-            ? "Send: joins at the next step. Alt+Enter or long-press: send after it finishes"
+            ? "Send: joins at the next step. Long-press or right-click for more (send after, redirect now)"
             : "Send"
         }
         disabled={!enabled}
@@ -80,21 +82,18 @@ export function SendButton({
       </Button>
       <Popover.Portal>
         <Popover.Positioner anchor={anchor} side="top" align="end" sideOffset={8} className="z-50">
-          <Popover.Popup className="bg-popover text-popover-foreground flex w-64 max-w-[calc(100vw-1.5rem)] flex-col rounded-xl border p-1 shadow-lg outline-none">
-            <Button
-              variant="ghost"
-              className="h-auto justify-start py-2.5 text-left whitespace-normal"
-              onClick={() => pick("steer")}
-            >
-              Send now, at the next step
-            </Button>
-            <Button
-              variant="ghost"
-              className="h-auto justify-start py-2.5 text-left whitespace-normal"
-              onClick={() => pick("followUp")}
-            >
-              Send after it finishes
-            </Button>
+          <Popover.Popup className="bg-popover text-popover-foreground flex w-72 max-w-[calc(100vw-1.5rem)] flex-col rounded-xl border p-1 shadow-lg outline-none">
+            {SEND_CHOICES.map((choice) => (
+              <Button
+                key={choice.mode}
+                variant="ghost"
+                className={`h-auto min-h-11 flex-col items-start justify-center gap-0 py-2 text-left whitespace-normal ${choice.mode === "redirect" ? "text-destructive" : ""}`}
+                onClick={() => pick(choice.mode)}
+              >
+                <span>{choice.label}</span>
+                <span className="text-muted-foreground text-xs font-normal">{choice.hint}</span>
+              </Button>
+            ))}
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

@@ -9,7 +9,7 @@ import { readNote } from "@/lib/note-text";
 import { parseSystem } from "@/lib/system-text";
 import { SystemCard } from "@/components/system/system-card";
 import type { TaskInfo, ToolStep, TranscriptEntry } from "@ultiv/contracts";
-import { BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
+import { BrainIcon, CircleAlertIcon, CircleSlashIcon, WrenchIcon } from "lucide-react";
 import { LazyMarkdown } from "@/components/lazy-markdown";
 import {
   CodeBlock,
@@ -43,22 +43,41 @@ const DIVIDER_GAP_MS = 10 * 60_000;
 /**
  * Bot output is markdown; the newest block streams with a caret (still under
  * reduced motion). Finished messages get a copy action under the bubble.
+ * A reply cut short by Stop or Redirect now keeps its text, marked "Interrupted".
  * Memoised: only the message whose text changes re-renders while streaming.
  */
-const Output = memo(function Output({ text, streaming }: { text: string; streaming: boolean }) {
+const Output = memo(function Output({
+  text,
+  streaming,
+  interrupted,
+}: {
+  text: string;
+  streaming: boolean;
+  interrupted: boolean;
+}) {
+  // Cut while thinking: nothing was said, so only the marker shows.
+  const empty = text === "" && !streaming;
   return (
     <>
-      <div className={roleStyles.agent}>
-        <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1.5 [&_hr]:my-3 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_h1]:mt-3 [&_h2]:mt-3 [&_h3]:mt-2 [&_pre]:my-2">
-          <LazyMarkdown text={text} />
-          {streaming && (
-            <span aria-hidden className="motion-safe:animate-pulse">
-              ▍
-            </span>
-          )}
+      {!empty && (
+        <div className={roleStyles.agent}>
+          <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1.5 [&_hr]:my-3 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_h1]:mt-3 [&_h2]:mt-3 [&_h3]:mt-2 [&_pre]:my-2">
+            <LazyMarkdown text={text} />
+            {streaming && (
+              <span aria-hidden className="motion-safe:animate-pulse">
+                ▍
+              </span>
+            )}
+          </div>
         </div>
-      </div>
-      {!streaming && (
+      )}
+      {interrupted && (
+        <span className="text-muted-foreground flex items-center gap-1 px-1 text-xs">
+          <CircleSlashIcon className="size-3" aria-hidden />
+          {empty ? "Interrupted before replying" : "Interrupted"}
+        </span>
+      )}
+      {!streaming && !empty && (
         <div className="opacity-0 transition-opacity group-focus-within/msg:opacity-100 group-hover/msg:opacity-100 pointer-coarse:opacity-100">
           <CodeBlockCopyButton
             value={text}
@@ -237,7 +256,11 @@ function renderGroup(group: Group, last: boolean, tasks: readonly TaskInfo[]) {
       className="group/msg flex max-w-[80%] min-w-0 flex-col items-start gap-0.5 self-start"
       title={formatFull(group.entry.at)}
     >
-      <Output text={group.entry.text} streaming={group.entry.streaming} />
+      <Output
+        text={group.entry.text}
+        streaming={group.entry.streaming}
+        interrupted={group.entry.interrupted === true}
+      />
     </li>
   ) : group.entry.kind === "thinking" ? (
     <li key={group.key} className="w-full">

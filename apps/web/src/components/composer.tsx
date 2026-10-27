@@ -3,13 +3,16 @@
  * and a round send arrow on the right (Stop joins it while the bot works).
  * Desktop: Enter sends, Shift+Enter is a newline. Touch: Enter is a newline.
  * While the bot works a send steers the running turn; Alt+Enter (or the send
- * button's long-press menu) holds it until the turn finishes.
+ * button's long-press menu) holds it until the turn finishes. With a draft
+ * mid-turn a "Redirect now" pill shows above the box (also Ctrl/Cmd+Shift+Enter
+ * and the menu): it stops the reply at a safe point and answers the draft.
  */
 import { Popover } from "@base-ui/react/popover";
-import type { WhenBusy } from "@ultiv/contracts";
-import { PlusIcon, SquareIcon } from "lucide-react";
+import type { SendMode } from "@ultiv/contracts";
+import { CornerUpRightIcon, PlusIcon, SquareIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { canSend, SendButton } from "@/components/send-button";
+import { canRedirect, keySendMode } from "@/lib/send-mode";
 
 /** Starter prompts: the "+" menu and the empty chat both offer them. */
 export const SUGGESTIONS = [
@@ -40,7 +43,7 @@ export function Composer({
   sendFailed: boolean;
   draft: string;
   onDraft: (text: string) => void;
-  onSend: (whenBusy?: WhenBusy) => void;
+  onSend: (mode?: SendMode) => void;
   onStop: () => void;
 }) {
   const round = "shrink-0 rounded-full";
@@ -57,6 +60,9 @@ export function Composer({
         onSend();
       }}
     >
+      {canRedirect(busy, live, sending, draft) && (
+        <RedirectPill onRedirect={() => onSend("redirect")} />
+      )}
       {/* Translucent and blurred: the transcript scrolls underneath it. */}
       <div className="bg-background/65 border-border/70 focus-within:ring-ring/40 flex items-end gap-1.5 rounded-[1.75rem] border p-1.5 shadow-lg shadow-black/5 backdrop-blur-xl focus-within:ring-2">
         <Popover.Root>
@@ -104,10 +110,11 @@ export function Composer({
           className="placeholder:text-muted-foreground field-sizing-content max-h-[40dvh] min-h-10 min-w-0 pointer-coarse:min-h-11 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-2.5 text-base leading-snug outline-none disabled:opacity-60 md:text-sm"
           onChange={(event) => onDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !coarsePointer()) {
-              event.preventDefault();
-              onSend(event.altKey ? "followUp" : undefined);
-            }
+            if (event.key !== "Enter" || coarsePointer()) return;
+            const mode = keySendMode(event, busy);
+            if (event.shiftKey && mode !== "redirect") return;
+            event.preventDefault();
+            onSend(mode);
           }}
         />
         {busy && (
@@ -138,5 +145,23 @@ export function Composer({
         </p>
       )}
     </form>
+  );
+}
+
+/** The obvious touch target for Redirect now (44px tall), right-aligned above the box. */
+function RedirectPill({ onRedirect }: { onRedirect: () => void }) {
+  return (
+    <div className="flex justify-end">
+      <Button
+        type="button"
+        variant="outline"
+        className="bg-background/70 h-11 gap-1.5 rounded-full px-4 shadow-sm backdrop-blur-md"
+        title="Stop this reply at a safe point and answer your message instead (Ctrl/Cmd+Shift+Enter)"
+        onClick={onRedirect}
+      >
+        <CornerUpRightIcon />
+        Redirect now
+      </Button>
+    </div>
   );
 }
