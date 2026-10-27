@@ -50,7 +50,11 @@ function NavLink({ item, className }: { item: NavItem; className: string }) {
       to={item.to}
       search={item.to === "/" && lastBot !== undefined ? { bot: lastBot } : {}}
       aria-current={current ? "page" : undefined}
-      className={cn(className, current ? "text-foreground" : "text-muted-foreground")}
+      className={cn(
+        "focus-visible:ring-ring/50 outline-none focus-visible:ring-3",
+        className,
+        current ? "text-foreground" : "text-muted-foreground",
+      )}
     >
       <Icon className="size-5 shrink-0" />
       {item.label}

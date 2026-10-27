@@ -8,7 +8,6 @@ import { DownloadIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { MemoryRecord } from "@ultiv/contracts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Badge } from "@/components/ui/badge";
 import { DevDetails } from "@/components/ui/dev-details";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -24,6 +23,18 @@ const formatBytes = (n: number): string =>
     : n >= 1024
       ? `${(n / 1024).toFixed(1)} KB`
       : `${n} B`;
+
+/** "text/markdown" -> "Markdown"; unknown types show their subtype. */
+const KINDS: Record<string, string> = {
+  "text/markdown": "Markdown",
+  "text/plain": "Text",
+  "text/html": "Web page",
+  "text/csv": "Spreadsheet (CSV)",
+  "application/json": "JSON",
+  "application/pdf": "PDF",
+};
+const fileKind = (mime: string): string =>
+  KINDS[mime] ?? (mime.startsWith("image/") ? "Image" : (mime.split("/")[1] ?? mime).toUpperCase());
 
 export function MemoryPanel({
   profileId,
@@ -168,7 +179,9 @@ export function MemoryPanel({
               >
                 <div className="min-w-0 flex-1">
                   <code className="text-xs">{row.key}</code>
-                  <p className="text-muted-foreground truncate text-xs">{row.value}</p>
+                  <p className="text-muted-foreground truncate text-xs" title={row.value}>
+                    {row.value}
+                  </p>
                   <p className="text-muted-foreground text-xs">{formatWhen(row.updatedAt)}</p>
                 </div>
                 <ConfirmDialog
@@ -201,15 +214,20 @@ export function MemoryPanel({
                 key={artifact.id}
                 className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm"
               >
-                <span className="min-w-0 flex-1 truncate">{artifact.name}</span>
-                <Badge variant="outline">{artifact.mime}</Badge>
-                <span className="text-muted-foreground text-xs">{formatBytes(artifact.bytes)}</span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate" title={artifact.name}>
+                    {artifact.name}
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    {fileKind(artifact.mime)} · {formatBytes(artifact.bytes)}
+                  </span>
+                </span>
                 <a
                   href={api.artifactUrl(artifact.id)}
                   target="_blank"
                   rel="noreferrer"
                   aria-label={`Download ${artifact.name}`}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 inline-flex size-8 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-3 pointer-coarse:size-11"
                 >
                   <DownloadIcon className="size-4" />
                 </a>

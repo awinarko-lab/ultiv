@@ -17,7 +17,7 @@ export function DevDetails({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="hover:text-foreground flex cursor-pointer items-center gap-1"
+        className="hover:text-foreground focus-visible:ring-ring/50 flex cursor-pointer items-center gap-1 rounded-md outline-none focus-visible:ring-3 pointer-coarse:min-h-11"
       >
         <ChevronRightIcon className={cn("size-3.5 transition-transform", open && "rotate-90")} />
         Details
