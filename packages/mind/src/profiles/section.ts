@@ -3,8 +3,11 @@
  * prompt, per conversation. Conversations that belong to a profile get that
  * entity's declared identity, persona, and sibling roster; unmapped
  * conversations (the reserved root, task threads without a parent, probes)
- * get the substrate's baseline identity. Sections re-render per request, so
- * editing a profile's persona takes effect on its existing chats too.
+ * get the substrate's baseline identity. Sections re-render per request from
+ * the profile copy each conversation was registered with: an edit reaches the
+ * bot's main chat from its next turn (update.ts); other chats keep their copy
+ * until the server restarts. A changed section is appended as a system update,
+ * so the cached prompt prefix and history stay valid.
  */
 import { defineExtension, type Extension } from "@earendil-works/pi-durable";
 import type { ProfileInfo } from "@ultiv/contracts";

@@ -11,7 +11,6 @@ import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { Effect } from "effect";
 import { InvalidInput, NotFound } from "@ultiv/core";
 import type { ProfileCreate, ProfileInfo, SessionInfo } from "@ultiv/contracts";
-import { KENARI_MODELS } from "../providers/kenari.ts";
 import { TasksDoc, taskConversationKey } from "../tasks/tasks.ts";
 import type { ConverseService } from "../converse/converse.ts";
 import type { GenerateService } from "../generate/generate.ts";
@@ -28,9 +27,9 @@ import {
   readSessions,
   scopedKey,
   titleFor,
-  validTimezone,
 } from "./docs.ts";
 import type { ConversationScope } from "./docs.ts";
+import { PROFILE_LIMITS, mainConversationOf, patchedProfile, validatePatch } from "./update.ts";
 
 export {
   MAIN_PREFIX,
@@ -272,23 +271,14 @@ export const profilesService = (deps: {
         rows.find((p) => p.owner === owner && p.id === id),
       ),
     create: (owner, input) => {
-      if (input.timezone !== undefined && !validTimezone(input.timezone)) {
-        throw new InvalidInput({ reason: `unknown timezone: ${input.timezone}` });
-      }
-      // `model: null` means "workspace default" — only a concrete id validates.
-      if (
-        input.model !== undefined &&
-        input.model !== null &&
-        !KENARI_MODELS.some((m) => m.id === input.model?.id)
-      ) {
-        throw new InvalidInput({ reason: `unknown model: ${input.model?.id}` });
-      }
+      // Same checks as update; `model: null` means "workspace default".
+      validatePatch(input);
       const profile: ProfileInfo = {
         id: randomUUID(),
         owner,
-        name: input.name.trim().slice(0, 80),
-        description: (input.description ?? "").slice(0, 500),
-        persona: (input.persona ?? "").slice(0, 8_000),
+        name: input.name.trim().slice(0, PROFILE_LIMITS.name),
+        description: (input.description ?? "").slice(0, PROFILE_LIMITS.description),
+        persona: (input.persona ?? "").slice(0, PROFILE_LIMITS.persona),
         timezone: input.timezone ?? defaultTimezone(),
         model: input.model ?? null,
         toolAllowlist: input.toolAllowlist ?? null,
@@ -310,36 +300,19 @@ export const profilesService = (deps: {
       });
     },
     update: async (owner, id, patch) => {
-      if (patch.timezone !== undefined && !validTimezone(patch.timezone)) {
-        throw new InvalidInput({ reason: `unknown timezone: ${patch.timezone}` });
-      }
-      // `model: null` clears the override back to the workspace default.
-      if (
-        patch.model !== undefined &&
-        patch.model !== null &&
-        !KENARI_MODELS.some((m) => m.id === patch.model?.id)
-      ) {
-        throw new InvalidInput({ reason: `unknown model: ${patch.model?.id}` });
-      }
+      validatePatch(patch);
       const rows = await run(readProfiles(converse));
       const current = rows.find((p) => p.owner === owner && p.id === id);
       if (current === undefined) throw new NotFound({ what: `profile ${id}` });
-      const next: ProfileInfo = {
-        ...current,
-        name: patch.name !== undefined ? patch.name.trim().slice(0, 80) : current.name,
-        description: patch.description !== undefined ? patch.description : current.description,
-        persona: patch.persona !== undefined ? patch.persona : current.persona,
-        timezone: patch.timezone ?? current.timezone,
-        model: patch.model !== undefined ? patch.model : current.model,
-        toolAllowlist:
-          patch.toolAllowlist !== undefined ? patch.toolAllowlist : current.toolAllowlist,
-        policies: patch.policies !== undefined ? patch.policies : current.policies,
-      };
+      const next = patchedProfile(current, patch);
       await run(
         commitProfiles(converse, (profiles) =>
           profiles.map((row) => (row.id === id && row.owner === owner ? next : row)),
         ),
       );
+      // Only the main chat picks the edit up from its next turn (see update.ts).
+      const main = await mainConversationOf(converse, keyOfRowImpl, owner, id);
+      if (main !== undefined) profileByConversation.set(main, next);
       return next;
     },
     setArchived: (owner, id, archived) =>
