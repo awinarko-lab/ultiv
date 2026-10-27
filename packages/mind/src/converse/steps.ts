@@ -92,6 +92,7 @@ function messageSteps(
   }
   // Stop or Redirect now cut this reply short: pi-durable kept the partial.
   const interrupted = record.stopReason === "aborted";
+  const before = out.length;
   let blockIndex = 0;
   for (const block of blocks) {
     const id = entryId * 100 + blockIndex++;
@@ -110,6 +111,17 @@ function messageSteps(
           : { id, kind: "output", at, text, streaming: false },
       );
     }
+  }
+  // Cut while still thinking: an empty marker keeps the interruption visible.
+  if (interrupted && !out.slice(before).some((step) => step.kind === "output")) {
+    out.push({
+      id: entryId * 100 + 99,
+      kind: "output",
+      at,
+      text: "",
+      streaming: false,
+      interrupted: true,
+    });
   }
 }
 

@@ -42,6 +42,28 @@ describe("projectTranscript", () => {
     });
   });
 
+  it("marks an aborted reply interrupted, even one cut while thinking", () => {
+    const aborted = (content: unknown[]) => ({
+      role: "assistant",
+      content,
+      stopReason: "aborted",
+      timestamp: 300,
+    });
+    const steps = projectTranscript(
+      [
+        entry(1, [aborted([{ type: "text", text: "half an essay" }])]),
+        entry(2, [aborted([{ type: "thinking", thinking: "hmm" }])]),
+      ],
+      undefined,
+      false,
+    );
+    expect(steps).toMatchObject([
+      { kind: "output", text: "half an essay", interrupted: true },
+      { kind: "thinking" },
+      { kind: "output", text: "", interrupted: true },
+    ]);
+  });
+
   it("streams the live partial with negative ids and skips settled prefixes", () => {
     const live = {
       generation: { message: { content: [{ type: "text", text: "hel" }], timestamp: 300 } },
