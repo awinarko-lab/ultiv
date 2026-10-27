@@ -7,6 +7,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { artifactsDir } from "@ultiv/ext";
+import { taskConversationKey } from "@ultiv/mind";
 import type { ProfileCreate } from "@ultiv/contracts";
 import { removeCronJobsForSessions } from "../cron.ts";
 import { removeWebhooksForSessions } from "../webhooks.ts";
@@ -225,6 +226,14 @@ async function applyModelPreference(
     if (row.profile !== profile.id) continue;
     const key = await mind.profiles.keyOfRow(row);
     const cid = await Effect.runPromise(mind.converse.conversationIdOf(key));
+    if (cid !== undefined) await configure(cid);
+  }
+  // Its background tasks run as the bot too: running and later turns follow.
+  for (const task of await Effect.runPromise(mind.tasks.list())) {
+    if (task.bot?.owner !== profile.owner || task.bot.profileId !== profile.id) continue;
+    const cid = await Effect.runPromise(
+      mind.converse.conversationIdOf(taskConversationKey(task.id)),
+    );
     if (cid !== undefined) await configure(cid);
   }
 }

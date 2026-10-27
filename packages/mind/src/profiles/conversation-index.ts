@@ -87,18 +87,20 @@ export const conversationIndex = (
         if (profile !== undefined) profiles.set(String(cid), profile);
       }
     }
-    // Task conversations inherit the parent session's profile.
+    // Task conversations run as their bot: the one stored on the row, else
+    // the spawning conversation's (indexed above, or an earlier task's).
     for (const task of tasks?.tasks ?? []) {
       const cid = await run(converse.conversationIdOf(taskConversationKey(task.id)));
-      const parent = rows.find((row) => row.id === task.sessionId);
-      if (cid !== undefined && parent !== undefined) {
-        scopes.set(String(cid), {
-          owner: parent.owner,
-          profileId: parent.profile,
-          kind: "session",
-          participants: null,
-        });
-      }
+      if (cid === undefined) continue;
+      const parent = task.conversationId === null ? undefined : scopes.get(task.conversationId);
+      const owner = task.bot?.owner ?? parent?.owner;
+      const profileId = task.bot?.profileId ?? parent?.profileId;
+      const profile = stored.find(
+        (candidate) => candidate.owner === owner && candidate.id === profileId,
+      );
+      if (owner === undefined || profileId === undefined || profile === undefined) continue;
+      scopes.set(String(cid), { owner, profileId, kind: "task", participants: null });
+      profiles.set(String(cid), profile);
     }
   };
 

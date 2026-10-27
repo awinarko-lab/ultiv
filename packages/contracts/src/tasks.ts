@@ -10,6 +10,11 @@ export const TaskStatusSchema = Type.Union([
 
 export type TaskStatus = Static<typeof TaskStatusSchema>;
 
+/** One progress line a running task posted for its owner. */
+export const TaskUpdateSchema = Type.Object({ at: Type.Number(), text: Type.String() });
+
+export type TaskUpdate = Static<typeof TaskUpdateSchema>;
+
 export const TaskInfoSchema = Type.Object({
   id: Type.String(),
   /** The app session the task belongs to (registry scoping; may be empty). */
@@ -26,6 +31,12 @@ export const TaskInfoSchema = Type.Object({
   finishedAt: Type.Union([Type.Number(), Type.Null()]),
   /** false = the spawning conversation has not been told the outcome yet (re-sent on boot). */
   notified: Type.Optional(Type.Boolean()),
+  /** A short title the bot chose (≤40 chars); absent on older rows — fall back to the prompt. */
+  title: Type.Optional(Type.String()),
+  /** The bot the task runs as, kept on the row so the link survives a restart. */
+  bot: Type.Optional(Type.Object({ owner: Type.String(), profileId: Type.String() })),
+  /** Progress updates the task posted for the owner (notify_owner), oldest first. */
+  updates: Type.Optional(Type.Array(TaskUpdateSchema)),
 });
 
 export type TaskInfo = Static<typeof TaskInfoSchema>;

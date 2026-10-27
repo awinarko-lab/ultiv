@@ -201,6 +201,8 @@ const mindLayerRaw = (
       });
       // Messages a crash interrupted are redelivered (idempotently) on boot.
       void mailbox.recover().catch((cause) => console.error("mailbox recovery failed:", cause));
+      // Tasks run as their bot: bind (and resume) only once the index exists.
+      void tasks.attach(profiles.bindTask);
       const memory = memoryService({ converse, profiles });
       const history = historyService({ converse, profiles });
       const schedules = schedulesService({

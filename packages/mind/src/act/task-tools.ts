@@ -1,17 +1,17 @@
 /**
  * The Tasks faculty as native tools of the agent loop (`task_spawn`,
- * `task_status`, `task_list`): the entity can hand background work to itself —
- * research, batch jobs, follow-ups — without holding a turn open. Spawning
- * work is internal compute, not a side effect on the world: ungated, like the
- * decision tools. Results are read back explicitly.
+ * `task_status`, `task_cancel`, `task_list`): the entity can hand background
+ * work to itself — research, batch jobs, follow-ups — without holding a turn
+ * open. Spawning work is internal compute, not a side effect on the world:
+ * ungated, like the decision tools. A task runs AS the spawning bot, and a
+ * bot sees only its own tasks.
  */
 import { Effect } from "effect";
 import { Type } from "typebox";
-import { External } from "@ultiv/core";
+import type { TaskInfo } from "@ultiv/contracts";
 import { definePlugin, toolCapability, type Plugin, type Tool } from "@ultiv/ext";
 import { defineTool } from "@ultiv/ext";
-import type { TasksService } from "../tasks/tasks.ts";
-import { taskConversationKey } from "../tasks/tasks.ts";
+import { titleOf, type TasksService } from "../tasks/tasks.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 
 const SpawnParams = Type.Object({
@@ -20,6 +20,12 @@ const SpawnParams = Type.Object({
       "The full, self-contained instruction for the background task: the goal, the steps " +
       "and what to report back.",
   }),
+  title: Type.Optional(
+    Type.String({
+      description:
+        "A short title your owner sees in the task list, ≤40 chars (e.g. 'Flight prices').",
+    }),
+  ),
   sessionId: Type.Optional(
     Type.String({ description: "App session to file the task under; optional." }),
   ),
@@ -27,30 +33,36 @@ const SpawnParams = Type.Object({
 
 const StatusParams = Type.Object({ id: Type.String({ description: "The task id." }) });
 
-/** One tool reply, the two shapes the status tool produces. */
-type StatusReply =
-  | { output: { type: "text"; text: string }[]; isError: true }
-  | {
-      output: { type: "text"; text: string }[];
-      structuredOutput: {
-        status: string;
-        result: string | null;
-        error: string | null;
-      };
-    };
-
-/** One tool reply, the two shapes the spawn tool produces. */
-type SpawnReply =
-  | { output: { type: "text"; text: string }[]; isError: true }
-  | {
-      output: { type: "text"; text: string }[];
-      structuredOutput: { id: string; status: string };
-    };
-
 /** Agent-spawned tasks are filed under their own owner label. */
 const AGENT_OWNER = "agent";
 
-const spawnTool = (tasks: TasksService, profiles: ProfilesService): Tool =>
+/** A plain text tool reply. */
+export const textReply = (text: string, isError = false) =>
+  isError
+    ? { output: [{ type: "text" as const, text }], isError: true as const }
+    : { output: [{ type: "text" as const, text }] };
+
+/** The tasks a calling conversation may see: its bot's, else the ones it spawned. */
+export const tasksVisibleTo = (
+  profiles: ProfilesService,
+  conversationId: string,
+  list: readonly TaskInfo[],
+): TaskInfo[] => {
+  const scope = profiles.scopeOf(conversationId);
+  return list.filter(
+    (task) =>
+      task.conversationId === conversationId ||
+      (scope !== undefined &&
+        task.bot?.owner === scope.owner &&
+        task.bot.profileId === scope.profileId),
+  );
+};
+
+const REFUSE_NESTED =
+  "refused: you are already running AS a background task — tasks cannot spawn sub-tasks (it " +
+  "compounds cost). Do the work yourself in this conversation, or finish and let the parent decide.";
+
+const spawnTool = (tasks: TasksService): Tool =>
   defineTool({
     name: "task_spawn",
     description:
@@ -62,57 +74,26 @@ const spawnTool = (tasks: TasksService, profiles: ProfilesService): Tool =>
       "NOT poll task_status in a loop.",
     parameters: SpawnParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), status: Type.String() }),
-    execute: (args, api) => {
-      const spawningConversation = String(api.conversationId);
-      return Effect.runPromise(
-        Effect.flatMap(
-          tasks.isTaskConversation(spawningConversation),
-          (isTask): Effect.Effect<SpawnReply, External> => {
-            if (isTask) {
-              return Effect.succeed({
-                output: [
-                  {
-                    type: "text",
-                    text:
-                      "refused: you are already running AS a background task — tasks cannot spawn " +
-                      "sub-tasks (it compounds cost). Do the work yourself in this conversation, or " +
-                      "finish and let the parent decide.",
-                  },
-                ],
-                isError: true,
-              });
-            }
-            return Effect.map(
-              Effect.flatMap(
-                tasks.spawn({
-                  sessionId: args.sessionId ?? "",
-                  owner: AGENT_OWNER,
-                  conversationId: spawningConversation,
-                  prompt: args.prompt,
-                }),
-                (spawned) =>
-                  // The task runs AS the spawning bot: messaging, artifacts
-                  // and memory scope flow through the spawner's profile.
-                  Effect.promise(() =>
-                    profiles.adoptTaskConversation(
-                      taskConversationKey(spawned.id),
-                      spawningConversation,
-                    ),
-                  ).pipe(Effect.as(spawned)),
-              ),
-              (task) => ({
-                output: [
-                  {
-                    type: "text",
-                    text: `task ${task.id} running. End your turn now; you will be woken with the result.`,
-                  },
-                ],
-                structuredOutput: { id: task.id, status: task.status },
-              }),
-            );
-          },
-        ),
+    execute: async (args, api) => {
+      const spawning = String(api.conversationId);
+      if (await Effect.runPromise(tasks.isTaskConversation(spawning))) {
+        return textReply(REFUSE_NESTED, true);
+      }
+      const task = await Effect.runPromise(
+        tasks.spawn({
+          sessionId: args.sessionId ?? "",
+          owner: AGENT_OWNER,
+          conversationId: spawning,
+          prompt: args.prompt,
+          ...(args.title !== undefined ? { title: args.title } : {}),
+        }),
       );
+      return {
+        ...textReply(
+          `task ${task.id} running. End your turn now; you will be woken with the result.`,
+        ),
+        structuredOutput: { id: task.id, status: task.status },
+      };
     },
   });
 
@@ -128,34 +109,12 @@ const statusTool = (tasks: TasksService): Tool =>
       result: Type.Union([Type.String(), Type.Null()]),
       error: Type.Union([Type.String(), Type.Null()]),
     }),
-    execute: (args) =>
-      Effect.runPromise(
-        Effect.flatMap(tasks.get(args.id), (task): Effect.Effect<StatusReply> => {
-          if (task === undefined) {
-            return Effect.succeed({
-              output: [{ type: "text" as const, text: `unknown task: ${args.id}` }],
-              isError: true,
-            });
-          }
-          return Effect.succeed({
-            output: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  status: task.status,
-                  result: task.result,
-                  error: task.error,
-                }),
-              },
-            ],
-            structuredOutput: {
-              status: task.status,
-              result: task.result,
-              error: task.error,
-            },
-          });
-        }),
-      ),
+    execute: async (args) => {
+      const task = await Effect.runPromise(tasks.get(args.id));
+      if (task === undefined) return textReply(`unknown task: ${args.id}`, true);
+      const status = { status: task.status, result: task.result, error: task.error };
+      return { ...textReply(JSON.stringify(status)), structuredOutput: status };
+    },
   });
 
 const cancelTool = (tasks: TasksService): Tool =>
@@ -166,68 +125,46 @@ const cancelTool = (tasks: TasksService): Tool =>
       "cancelled. The user can also stop tasks from the app.",
     parameters: StatusParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), cancelled: Type.Boolean() }),
-    execute: (args) =>
-      Effect.runPromise(
-        Effect.map(tasks.cancel(args.id), (cancelled) => ({
-          output: [
-            {
-              type: "text" as const,
-              text: cancelled ? `task ${args.id} cancelled` : `task ${args.id} was not running`,
-            },
-          ],
-          structuredOutput: { id: args.id, cancelled },
-        })),
-      ),
+    execute: async (args) => {
+      const cancelled = await Effect.runPromise(tasks.cancel(args.id));
+      return {
+        ...textReply(cancelled ? `task ${args.id} cancelled` : `task ${args.id} was not running`),
+        structuredOutput: { id: args.id, cancelled },
+      };
+    },
   });
 
-const listTool = (tasks: TasksService): Tool =>
+const listTool = (tasks: TasksService, profiles: ProfilesService): Tool =>
   defineTool({
     name: "task_list",
-    description: "List recent background tasks with their ids, prompts and statuses.",
+    description: "List your recent background tasks with their ids, titles and statuses.",
     parameters: Type.Object({}),
     structuredOutputSchema: Type.Array(
-      Type.Object({ id: Type.String(), prompt: Type.String(), status: Type.String() }),
+      Type.Object({ id: Type.String(), title: Type.String(), status: Type.String() }),
     ),
-    execute: () =>
-      Effect.runPromise(
-        Effect.map(tasks.list(), (list) => {
-          const recent = list.slice(-20).reverse();
-          return {
-            output: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  recent.map((task) => ({
-                    id: task.id,
-                    prompt: task.prompt,
-                    status: task.status,
-                  })),
-                ),
-              },
-            ],
-            structuredOutput: recent.map((task) => ({
-              id: task.id,
-              prompt: task.prompt,
-              status: task.status,
-            })),
-          };
-        }),
-      ),
+    execute: async (_args, api) => {
+      const all = await Effect.runPromise(tasks.list());
+      const recent = tasksVisibleTo(profiles, String(api.conversationId), all)
+        .slice(-20)
+        .reverse()
+        .map((task) => ({ id: task.id, title: titleOf(task), status: task.status }));
+      return { ...textReply(JSON.stringify(recent)), structuredOutput: recent };
+    },
   });
 
 /** The task tools in registry order. */
 export const taskTools = (tasks: TasksService, profiles: ProfilesService): readonly Tool[] => [
-  spawnTool(tasks, profiles),
+  spawnTool(tasks),
   statusTool(tasks),
   cancelTool(tasks),
-  listTool(tasks),
+  listTool(tasks, profiles),
 ];
 
 /** The mind's background-task faculty as an installable plugin. */
 export const taskPlugin = (tasks: TasksService, profiles: ProfilesService): Plugin =>
   definePlugin({
     id: "ultiv.mind.tasks",
-    version: "1.1.0",
+    version: "1.2.0",
     description: "The mind's background tasks: spawn, track and read back its own sub-agent work.",
     capabilities: taskTools(tasks, profiles).map(toolCapability),
   });

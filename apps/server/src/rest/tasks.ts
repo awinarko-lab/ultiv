@@ -55,6 +55,8 @@ export async function taskRoutes(
             ),
           )) ?? null)
         : null;
+    // The task runs AS the bot whose session spawned it (spawn binds it before
+    // the first turn) — unscoped only when no session context was given.
     const task = await Effect.runPromise(
       mind.tasks.spawn({
         sessionId: body.sessionId ?? "",
@@ -63,14 +65,6 @@ export async function taskRoutes(
         prompt: body.prompt,
       }),
     );
-    // The task runs AS the bot whose session spawned it (messaging, artifacts,
-    // memory scope) — unscoped only when no session context was given.
-    if (spawnerConversationId !== null) {
-      await mind.profiles.adoptTaskConversation(
-        taskConversationKey(task.id),
-        spawnerConversationId,
-      );
-    }
     json(200, task);
     return true;
   }

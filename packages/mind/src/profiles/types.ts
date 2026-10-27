@@ -54,8 +54,16 @@ export interface ProfilesService {
       readonly participants: readonly string[] | null;
     },
   ) => Promise<void>;
-  /** Bind a task conversation to its spawner's bot scope (kind "task"). */
-  readonly adoptTaskConversation: (key: string, spawnerConversationId: string) => Promise<void>;
+  /**
+   * Bind a task conversation to its bot (kind "task"): the bot stored on the
+   * task row, else the spawning conversation's bot. Creates the conversation
+   * with the bot's agent when new. Null when neither resolves to a bot.
+   */
+  readonly bindTask: (
+    key: string,
+    parentConversationId: string | null,
+    stored: { readonly owner: string; readonly profileId: string } | null,
+  ) => Promise<{ owner: string; profileId: string } | null>;
   /** The owner's main bot — the default surface; exactly one at a time. Null on a fresh workspace. */
   readonly mainOf: (owner: string) => Promise<string | null>;
   readonly setMain: (owner: string, profileId: string) => Promise<void>;

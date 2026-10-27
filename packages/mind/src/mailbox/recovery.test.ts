@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import type { MailboxEntry, TaskInfo } from "@ultiv/contracts";
 import type { ConverseService } from "../converse/converse.ts";
 import { openMind } from "../entity.ts";
-import { TasksDoc, resumeRunning } from "../tasks/tasks.ts";
+import { TasksDoc, tasksService } from "../tasks/tasks.ts";
 import { MailboxDoc, mailboxService } from "./mailbox.ts";
 
 // Collapse the wake-coalescing window (read when a service is built).
@@ -186,8 +186,8 @@ it("a task that finished before a crash still wakes its parent on boot", async (
       draft.tasks = [task];
     }),
   );
-  // What the tasks layer runs on boot.
-  await Effect.runPromise(resumeRunning(converse));
+  // What the entity runs on boot once the profiles index exists.
+  await tasksService(converse).attach(async () => null);
   await sleep(150);
   const text = await mainText(first, a.id);
   expect(text).toContain("[task t-crashed finished]");

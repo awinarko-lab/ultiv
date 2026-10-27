@@ -98,7 +98,7 @@ export const keyOps = (
   ctx: ProfilesContext,
 ): Pick<
   ProfilesService,
-  "rowOf" | "keyOfRow" | "keyForSession" | "adoptConversation" | "adoptTaskConversation"
+  "rowOf" | "keyOfRow" | "keyForSession" | "adoptConversation" | "bindTask"
 > => {
   const { converse, index } = ctx;
   return {
@@ -122,16 +122,30 @@ export const keyOps = (
       });
     },
     /**
-     * Bind a background task's conversation to its SPAWNER's bot scope: the
-     * task runs AS that bot (identity section, messaging, artifacts, memory).
-     * No-op when the spawner is itself unscoped.
+     * Bind a background task's conversation to its bot: the task runs AS that
+     * bot (model, tools, identity, messaging, artifacts, memory, approvals).
+     * The row's stored bot wins (it survives a restart); else the spawner's.
      */
-    adoptTaskConversation: async (key, spawnerConversationId) => {
-      const scope = index.scopes.get(String(spawnerConversationId));
-      if (scope === undefined) return;
-      const profile = await ctx.self().get(scope.owner, scope.profileId);
-      if (profile === undefined) return;
-      await index.ensureConversationFor(key, profile, { ...scope, kind: "task" });
+    bindTask: async (key, parentConversationId, stored) => {
+      await index.ensure();
+      const parent =
+        parentConversationId === null ? undefined : index.scopes.get(parentConversationId);
+      const owner = stored?.owner ?? parent?.owner;
+      const profileId = stored?.profileId ?? parent?.profileId;
+      if (owner === undefined || profileId === undefined) return null;
+      const profile = await ctx.self().get(owner, profileId);
+      if (profile === undefined) return null;
+      const participants =
+        parent !== undefined && parent.owner === owner && parent.profileId === profileId
+          ? parent.participants
+          : null;
+      await index.ensureConversationFor(key, profile, {
+        owner,
+        profileId,
+        kind: "task",
+        participants,
+      });
+      return { owner, profileId };
     },
   };
 };

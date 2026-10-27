@@ -220,7 +220,7 @@ it("task conversations inherit the spawner's bot scope and can message", async (
   const main = await profiles.ensureMain("harry", a.id);
   const mainChat = await Effect.runPromise(converse.ensure(await profiles.keyOfRow(main)));
 
-  // Spawn as the tool does: create the task, then adopt its conversation.
+  // Spawn as the tool does: the task is bound to the spawner's bot up front.
   const task = await Effect.runPromise(
     tasks.spawn({
       sessionId: "",
@@ -229,7 +229,7 @@ it("task conversations inherit the spawner's bot scope and can message", async (
       prompt: "send a message on behalf of One",
     }),
   );
-  await profiles.adoptTaskConversation(taskConversationKey(task.id), String(mainChat.id));
+  expect(task.bot).toEqual({ owner: "harry", profileId: a.id });
   const taskChat = await Effect.runPromise(converse.ensure(taskConversationKey(task.id)));
   expect(profiles.scopeOf(String(taskChat.id))?.profileId).toBe(a.id);
   expect(profiles.scopeOf(String(taskChat.id))?.kind).toBe("task");
