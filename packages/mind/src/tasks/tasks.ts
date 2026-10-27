@@ -54,8 +54,14 @@ export interface TasksService {
   }) => Effect.Effect<TaskInfo, External>;
   readonly get: (id: string) => Effect.Effect<TaskInfo | undefined, External>;
   readonly list: () => Effect.Effect<TaskList, External>;
-  /** Stop a running task: abort its conversation, mark cancelled, wake the parent. */
-  readonly cancel: (id: string) => Effect.Effect<boolean, External>;
+  /**
+   * Stop a running task: abort its conversation, mark cancelled, wake the
+   * parent once — or, with `quiet` (the owner stopped the whole chat), never.
+   */
+  readonly cancel: (
+    id: string,
+    options?: { readonly quiet?: boolean },
+  ) => Effect.Effect<boolean, External>;
   /**
    * Remove a task from the registry entirely; a still-running task is
    * cancelled first (and its parent woken). The durable transcript stays.
@@ -220,7 +226,11 @@ const runTask = (rt: TaskRuntime, task: TaskInfo, prompt: string): void => {
  * Stop a running task: abort its conversation, mark cancelled, wake the
  * parent. Idempotent — only a running task is cancelled.
  */
-const cancelTask = (converse: ConverseService, id: string): Effect.Effect<boolean, External> =>
+const cancelTask = (
+  converse: ConverseService,
+  id: string,
+  quiet = false,
+): Effect.Effect<boolean, External> =>
   Effect.gen(function* () {
     const task = yield* findTask(converse, id);
     if (task === undefined || task.status !== "running") return false;
@@ -235,7 +245,7 @@ const cancelTask = (converse: ConverseService, id: string): Effect.Effect<boolea
             status: "cancelled",
             error: "cancelled by the user",
             finishedAt: Date.now(),
-            ...owed(current),
+            ...(quiet ? { notified: true } : owed(current)),
           }
         : current,
     );
@@ -325,7 +335,7 @@ export const tasksService = (converse: ConverseService): TasksService => {
     spawn: spawnTask(rt),
     get: (id) => findTask(converse, id),
     list: () => readTasks(converse),
-    cancel: (id) => cancelTask(converse, id),
+    cancel: (id, options) => cancelTask(converse, id, options?.quiet === true),
     message: messageTask(rt),
     steps: (id, count) => recentSteps(converse, id, count),
     remove: (id) =>

@@ -137,3 +137,18 @@ export function sameQueue(a: readonly QueuedInput[], b: readonly QueuedInput[]):
     a.length === b.length && a.every((item, i) => item.id === b[i]?.id && item.mode === b[i]?.mode)
   );
 }
+
+/**
+ * The chat's Stop, extended to its background tasks: every task this chat
+ * spawned that is still running is cancelled quietly (no wake — the owner
+ * just stopped this chat). Returns how many were stopped.
+ */
+export async function stopChatTasks(mind: MindService, conversationId: string): Promise<number> {
+  const tasks = await Effect.runPromise(mind.tasks.list());
+  let stopped = 0;
+  for (const task of tasks) {
+    if (task.status !== "running" || task.conversationId !== conversationId) continue;
+    if (await Effect.runPromise(mind.tasks.cancel(task.id, { quiet: true }))) stopped += 1;
+  }
+  return stopped;
+}

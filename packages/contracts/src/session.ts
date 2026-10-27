@@ -172,8 +172,15 @@ export const Session = remote("ultiv.session", {
           Type.Object({ id: Type.String() }),
           Type.Object({ status: WithdrawStatusSchema }),
         ),
-        /** Stop the running turn: withdraw queued inputs, abort, go idle. */
-        interrupt: method(Type.Object({}), Type.Object({ ok: Type.Boolean() })),
+        /**
+         * Stop the running turn: withdraw queued inputs, abort, go idle. With
+         * `tasks`, also stop this chat's running background tasks (quietly:
+         * the bot is not woken to report them).
+         */
+        interrupt: method(
+          Type.Object({ tasks: Type.Optional(Type.Boolean()) }),
+          Type.Object({ ok: Type.Boolean(), cancelledTasks: Type.Optional(Type.Number()) }),
+        ),
         approve: method(
           Type.Object({
             callId: Type.String(),

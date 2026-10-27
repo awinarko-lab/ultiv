@@ -25,6 +25,7 @@ import {
   safeChange,
   sameQueue,
   settle,
+  stopChatTasks,
   type SessionCells,
 } from "./session-turns.ts";
 
@@ -145,14 +146,16 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
           safeChange(cells.effort, ctx, () => effort);
           return { ok: true };
         },
-        interrupt: async (_input, ctx) => {
+        interrupt: async (input, ctx) => {
           // Withdraw the queue, abort the turn, deny every waiting approval card.
           await stopTurn(mind.converse, mind.approvals, await conversation);
+          const cancelledTasks =
+            input.tasks === true ? await stopChatTasks(mind, await conversationId) : 0;
           safeChange(cells.pending, ctx, () => null);
           safeChange(cells.queued, ctx, () => []);
           safeChange(cells.phase, ctx, () => "idle");
           safeChange(cells.lastError, ctx, () => null);
-          return { ok: true };
+          return { ok: true, cancelledTasks };
         },
         approve: async ({ callId, approved, always, takeover }, ctx) => {
           const id = await conversationId;

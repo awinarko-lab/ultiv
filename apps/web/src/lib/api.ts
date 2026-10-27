@@ -212,6 +212,8 @@ export const api = {
   pendingApprovals: (): Promise<PendingApprovalRow[]> =>
     getJson<PendingApprovalRow[]>("/api/approvals"),
   removeTask: (id: string): Promise<boolean> => drop(`/api/tasks/${encodeURIComponent(id)}`),
+  cancelTask: (id: string): Promise<{ cancelled: boolean }> =>
+    send<{ cancelled: boolean }>(`/api/tasks/${encodeURIComponent(id)}/cancel`, "POST"),
   // Routines: schedules, webhooks, sensors and their shared receipt log.
   cron: (): Promise<CronJobInfo[]> => getJson<CronJobInfo[]>("/api/cron"),
   removeCron: (id: string): Promise<{ ok: boolean }> =>

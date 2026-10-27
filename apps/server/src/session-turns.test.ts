@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ConversationView } from "@earendil-works/pi-durable";
-import { InFlight, queuedOf, sameQueue } from "./session-turns.ts";
+import { Effect } from "effect";
+import { InFlight, queuedOf, sameQueue, stopChatTasks } from "./session-turns.ts";
 
 const viewWith = (items: unknown[]): ConversationView =>
   ({ entries: [], docs: { "pi.inbox": { items } } }) as unknown as ConversationView;
@@ -43,5 +44,36 @@ describe("InFlight", () => {
     expect(inFlight.finish()).toBe(true);
     // Never negative: a stray finish still reads idle.
     expect(inFlight.finish()).toBe(true);
+  });
+});
+
+describe("stopChatTasks", () => {
+  it("quietly cancels only this chat's running tasks", async () => {
+    const row = (id: string, conversationId: string, status: string) => ({
+      id,
+      conversationId,
+      status,
+    });
+    const calls: [string, unknown][] = [];
+    const mind = {
+      tasks: {
+        list: () =>
+          Effect.succeed([
+            row("a", "chat-1", "running"),
+            row("b", "chat-1", "done"),
+            row("c", "chat-2", "running"),
+            row("d", "chat-1", "running"),
+          ]),
+        cancel: (id: string, options: unknown) => {
+          calls.push([id, options]);
+          return Effect.succeed(true);
+        },
+      },
+    } as never;
+    expect(await stopChatTasks(mind, "chat-1")).toBe(2);
+    expect(calls).toEqual([
+      ["a", { quiet: true }],
+      ["d", { quiet: true }],
+    ]);
   });
 });

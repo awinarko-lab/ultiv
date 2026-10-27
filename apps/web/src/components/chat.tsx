@@ -6,7 +6,10 @@
 import type { ChatBot } from "@/components/chat-header";
 import { SessionView } from "@/components/session-view";
 import { TasksPanel } from "@/components/tasks-panel";
+import { StopDialog } from "@/components/stop-dialog";
 import { useSession } from "@/lib/use-session";
+import { useTasks } from "@/lib/use-tasks";
+import { useState } from "react";
 import type { ModelInfo } from "@ultiv/contracts";
 
 export function Chat({
@@ -21,6 +24,13 @@ export function Chat({
   onBack?: (() => void) | undefined;
 }) {
   const session = useSession(sessionId);
+  const chatTasks = useTasks(session.conversationId);
+  const [askStop, setAskStop] = useState(false);
+  // Stop asks first only when this chat has background tasks running.
+  const requestStop = async (): Promise<void> => {
+    if (chatTasks.running.length === 0) await session.interrupt();
+    else setAskStop(true);
+  };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <SessionView
@@ -41,7 +51,16 @@ export function Chat({
         onWithdraw={session.withdraw}
         onDecide={session.decide}
         onConfigure={session.configure}
-        onInterrupt={session.interrupt}
+        onInterrupt={requestStop}
+      />
+      <StopDialog
+        open={askStop}
+        running={chatTasks.running.length}
+        onOpenChange={setAskStop}
+        onStop={async (tasks) => {
+          await session.interrupt(tasks);
+          if (tasks) await chatTasks.refresh();
+        }}
       />
     </div>
   );

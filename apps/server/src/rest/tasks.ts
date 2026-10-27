@@ -126,6 +126,18 @@ export async function taskRoutes(
     json(200, { conversationId, waiting, steps });
     return true;
   }
+  // Stop one running task (the pill's Stop): the row stays, marked cancelled,
+  // and the bot is told once.
+  const cancel = path.match(/^\/api\/tasks\/([^/]+)\/cancel$/);
+  if (cancel !== null && method === "POST") {
+    const task = await Effect.runPromise(mind.tasks.get(cancel[1] ?? ""));
+    if (task === undefined) {
+      json(404, { error: "unknown task" });
+      return true;
+    }
+    json(200, { cancelled: await Effect.runPromise(mind.tasks.cancel(task.id)) });
+    return true;
+  }
   if (path.startsWith("/api/tasks/") && method === "GET") {
     const task = await Effect.runPromise(mind.tasks.get(segment("/api/tasks/")));
     if (task === undefined) json(404, { error: "unknown task" });

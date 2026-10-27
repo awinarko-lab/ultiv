@@ -134,4 +134,37 @@ describe("Tasks (offline, MemoryStorage)", () => {
     expect(await Effect.runPromise(handle.mind.tasks.get("stoppable"))).toBeUndefined();
     await handle.close();
   });
+
+  it("a cancel wakes the parent exactly once; a quiet cancel never does", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const parent = await Effect.runPromise(handle.mind.converse.ensure("parent"));
+    const row = (id: string) => ({
+      id,
+      sessionId: "s",
+      owner: "guest",
+      conversationId: String(parent.id),
+      prompt: "long research",
+      status: "running" as const,
+      result: null,
+      error: null,
+      createdAt: Date.now(),
+      finishedAt: null,
+    });
+    await Effect.runPromise(
+      handle.mind.converse.docs.commit(async (tx) => {
+        (await tx.doc(TasksDoc)).tasks = [row("loud"), row("quiet")];
+      }),
+    );
+    expect(await Effect.runPromise(handle.mind.tasks.cancel("loud"))).toBe(true);
+    expect(await Effect.runPromise(handle.mind.tasks.cancel("loud"))).toBe(false);
+    expect(await Effect.runPromise(handle.mind.tasks.cancel("quiet", { quiet: true }))).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const transcript = await transcriptOf(handle, String(parent.id));
+    expect(transcript.split("[task loud cancelled]").length - 1).toBe(1);
+    expect(transcript).not.toContain("[task quiet cancelled]");
+    const quiet = await Effect.runPromise(handle.mind.tasks.get("quiet"));
+    expect(quiet?.status).toBe("cancelled");
+    expect(quiet?.notified).toBe(true);
+    await handle.close();
+  });
 });

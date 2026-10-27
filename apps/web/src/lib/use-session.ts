@@ -35,7 +35,8 @@ export function useSession(sessionId: string): {
     takeover?: boolean,
   ) => Promise<void>;
   configure: (model: string | null, effort: ThinkingLevel | null) => Promise<void>;
-  interrupt: () => Promise<void>;
+  /** Stop the reply; with `tasks`, also this chat's running background tasks. */
+  interrupt: (tasks?: boolean) => Promise<void>;
 } {
   const [link, setLink] = useState<LinkPhase>("connecting");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -143,9 +144,12 @@ export function useSession(sessionId: string): {
     [linked],
   );
 
-  const interrupt = useCallback(async (): Promise<void> => {
-    await linked().interrupt({});
-  }, [linked]);
+  const interrupt = useCallback(
+    async (tasks?: boolean): Promise<void> => {
+      await linked().interrupt(tasks === true ? { tasks: true } : {});
+    },
+    [linked],
+  );
 
   return {
     link,
