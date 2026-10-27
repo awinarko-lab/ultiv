@@ -18,6 +18,7 @@ function SessionPage() {
   const row = sessions.sessions.find((candidate) => candidate.id === sessionId);
   const isMain = row?.kind === "main";
   const botId = row?.profile;
+  const bot = sessions.profiles.find((profile) => profile.id === botId);
 
   // Throws on failure — the confirm dialog stays open and shows the reason.
   const remove = async (): Promise<void> => {
@@ -49,7 +50,7 @@ function SessionPage() {
           )}
         </div>
       </header>
-      <Chat sessionId={sessionId} models={sessions.models} />
+      <Chat sessionId={sessionId} models={sessions.models} bot={bot} />
       <Link
         className="w-fit text-sm text-muted-foreground underline-offset-4 hover:underline"
         to="/"

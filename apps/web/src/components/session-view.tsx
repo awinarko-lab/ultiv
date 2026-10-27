@@ -48,11 +48,13 @@ function SessionMeta({
 }) {
   const selected = models.find((candidate) => candidate.id === model);
   const efforts = selected?.efforts ?? (["off", "low", "high", "max"] as const);
+  // min-w-0 + truncation: on phones the selects render at 16px (index.css) and
+  // long model labels must shrink rather than push the card wider.
   const select =
-    "rounded-md border bg-transparent px-2 py-1 text-xs text-muted-foreground outline-none";
+    "min-w-0 max-w-full truncate rounded-md border bg-transparent px-2 py-1 text-xs text-muted-foreground outline-none";
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <select
           aria-label="Model"
           className={select}
@@ -98,7 +100,17 @@ function SessionMeta({
   );
 }
 
+/** The link label, shown only when the chat is not connected. */
+const linkLabel = { connecting: "connecting…", live: "live", lost: "disconnected" } as const;
+
+/** Who the chat is with — names the composer and the empty state. */
+export interface ChatBot {
+  name: string;
+  description: string;
+}
+
 export function SessionView({
+  bot,
   link,
   transcript,
   phase,
@@ -113,6 +125,7 @@ export function SessionView({
   onConfigure,
   onInterrupt,
 }: {
+  bot?: ChatBot | undefined;
   link: "connecting" | "live" | "lost";
   transcript: TranscriptEntry[];
   phase: Phase;
@@ -166,17 +179,18 @@ export function SessionView({
   return (
     <Card className="flex min-h-0 flex-1 flex-col">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Transcript</CardTitle>
-          <Badge variant={link === "live" ? "secondary" : "outline"}>{link}</Badge>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {link !== "live" && (
+            <Badge variant={link === "lost" ? "destructive" : "outline"}>{linkLabel[link]}</Badge>
+          )}
+          <SessionMeta
+            usage={usage}
+            model={model}
+            effort={effort}
+            models={models}
+            onConfigure={onConfigure}
+          />
         </div>
-        <SessionMeta
-          usage={usage}
-          model={model}
-          effort={effort}
-          models={models}
-          onConfigure={onConfigure}
-        />
       </CardHeader>
       <CardContent className="min-h-0 flex-1">
         <div ref={transcriptRef} className="h-full min-h-0">
@@ -251,7 +265,13 @@ export function SessionView({
         <form className="flex w-full flex-col gap-2" onSubmit={submit}>
           <InputGroup>
             <InputGroupTextarea
-              placeholder={link === "live" ? "Give the agent a task…" : "Waiting for link…"}
+              placeholder={
+                link !== "live"
+                  ? "Waiting for link…"
+                  : bot !== undefined && bot.name !== ""
+                    ? `Message ${bot.name}…`
+                    : "Message…"
+              }
               value={draft}
               disabled={link !== "live"}
               rows={2}
@@ -279,12 +299,14 @@ export function SessionView({
               )}
               <InputGroupButton
                 type="submit"
-                size="xs"
+                size="icon-xs"
                 variant="default"
                 className="ml-auto"
+                aria-label="Send"
+                title="Send"
                 disabled={link !== "live" || busy}
               >
-                Run <ArrowUpIcon />
+                <ArrowUpIcon />
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>

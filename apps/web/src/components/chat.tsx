@@ -3,17 +3,26 @@
  * background tasks, and the full SessionView. Shared by the home screen (the
  * active bot's main chat) and the /sessions/$id page.
  */
-import { SessionView } from "@/components/session-view";
+import { SessionView, type ChatBot } from "@/components/session-view";
 import { TasksPanel } from "@/components/tasks-panel";
 import { useSession } from "@/lib/use-session";
 import type { ModelInfo } from "@ultiv/contracts";
 
-export function Chat({ sessionId, models }: { sessionId: string; models: ModelInfo[] }) {
+export function Chat({
+  sessionId,
+  models,
+  bot,
+}: {
+  sessionId: string;
+  models: ModelInfo[];
+  bot?: ChatBot | undefined;
+}) {
   const session = useSession(sessionId);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <TasksPanel conversationId={session.conversationId} />
       <SessionView
+        bot={bot}
         link={session.link}
         transcript={session.transcript}
         phase={session.phase}

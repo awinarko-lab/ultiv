@@ -108,6 +108,12 @@ function HomePage() {
   const activeBotName =
     choosable.find((profile) => profile.id === profileId)?.name ?? "the active bot";
   const activeChatId = pinnedSessionId ?? chatId;
+  // The bot the visible chat belongs to (a pinned history session may be another bot's).
+  const chatBotId =
+    pinnedSessionId !== null
+      ? sessions.sessions.find((session) => session.id === pinnedSessionId)?.profile
+      : profileId;
+  const chatBot = sessions.profiles.find((profile) => profile.id === chatBotId);
 
   const botsPanel = (
     <BotsPanel
@@ -215,7 +221,7 @@ function HomePage() {
               }}
             />
           ) : activeChatId !== null ? (
-            <Chat sessionId={activeChatId} models={sessions.models} />
+            <Chat sessionId={activeChatId} models={sessions.models} bot={chatBot} />
           ) : (
             <Card className="flex flex-1 items-center justify-center">
               <CardContent className="text-muted-foreground text-sm">
