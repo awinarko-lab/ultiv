@@ -11,6 +11,7 @@ import type { CronScheduler } from "./cron.ts";
 import { ownerOf, principalFromRequest } from "./identity.ts";
 import { errorOf, queryOr, type RouteArgs } from "./rest/types.ts";
 import { approvalRoutes } from "./rest/approvals.ts";
+import { secretRoutes } from "./rest/secrets.ts";
 import { artifactRoutes } from "./rest/artifacts.ts";
 import { cronRoutes } from "./rest/cron.ts";
 import { mailboxRoutes } from "./rest/mailbox.ts";
@@ -172,6 +173,7 @@ async function route(args: RouteArgs): Promise<void> {
   if (await vaultRoutes(args, segment)) return;
   if (await mcpRoutes(args)) return;
   if (await approvalRoutes(args)) return;
+  if (await secretRoutes(args)) return;
   if (await pushRoutes(args)) return;
   if (path === "/" || path === "/api/health") return json(200, { app: "ultiv", ok: true });
   json(404, { error: `no route: ${method} ${path}` });

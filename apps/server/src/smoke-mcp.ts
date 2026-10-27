@@ -59,6 +59,17 @@ export const smokeMcp = async (
     expect("mcp remove", removed.status === 200);
     const after = await call("GET", "/api/mcp/servers", undefined, headers);
     expect("mcp removed live", after.json.servers.length === 0);
+    // Secure input: nothing waits, so values are refused without an echo.
+    const stray = await call(
+      "POST",
+      "/api/secrets/nope",
+      { values: { secret: "abcdefgh" } },
+      headers,
+    );
+    expect(
+      "secure input refuses a request nobody made",
+      stray.status === 404 && !JSON.stringify(stray.json).includes("abcdefgh"),
+    );
   } finally {
     await fake.close();
   }
