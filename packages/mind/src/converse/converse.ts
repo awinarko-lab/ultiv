@@ -216,7 +216,8 @@ const modelIdOf = (agent: { readonly model?: unknown }): string | null => {
   return model.modelId ?? model.id ?? null;
 };
 
-const converseService = (harness: Harness, agent: AgentChange): ConverseService => ({
+/** Exported for engine-level tests (faux models, MemoryStorage). */
+export const converseService = (harness: Harness, agent: AgentChange): ConverseService => ({
   root: () => asEffect("root conversation", harness.root(BACKGROUND_CONTEXT, { agent })),
   ensure: (key, agentOverride) => ensureConversation(harness, key, agent, agentOverride),
   open: (id) => {
