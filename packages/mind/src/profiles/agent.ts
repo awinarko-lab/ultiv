@@ -6,13 +6,19 @@ import type { ProfileInfo } from "@ultiv/contracts";
 export const agentForProfile = (
   profile: ProfileInfo,
   tools: () => readonly { readonly name: string }[],
+  /** Names an allowlist implies (allowlisting a connector tool implies `connector_load`). */
+  implied: (allowlist: readonly string[]) => readonly string[] = () => [],
 ): AgentChange => {
-  const allowed =
+  const names =
     profile.toolAllowlist === null
+      ? null
+      : [...profile.toolAllowlist, ...implied(profile.toolAllowlist)];
+  const allowed =
+    names === null
       ? undefined
-      : (tools().filter((tool) =>
-          profile.toolAllowlist?.includes(tool.name),
-        ) as unknown as NonNullable<AgentChange["tools"]>);
+      : (tools().filter((tool) => names.includes(tool.name)) as unknown as NonNullable<
+          AgentChange["tools"]
+        >);
   return {
     ...(profile.model !== null
       ? {

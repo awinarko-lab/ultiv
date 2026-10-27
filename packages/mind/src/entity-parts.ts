@@ -5,6 +5,7 @@
  */
 import { defineExtension } from "@earendil-works/pi-durable";
 import { FIRST_USE_APPROVAL, type ScopeHolder } from "@ultiv/ext";
+import { isMcpFirstUse } from "./mcp/access.ts";
 import type { ApprovalsService } from "./approvals.ts";
 import type { actService } from "./act/act.ts";
 import { codemodeExtension } from "./act/codemode.ts";
@@ -126,9 +127,11 @@ export const wirePolicies = (
   });
   // Per-profile approval policy (auto-approve lists, timeout escalation).
   approvals.setHooks({
-    // A credential's first use on a host is always asked, whatever the list says.
+    // A credential's first use on a host, and a connector's first use, are
+    // always asked, whatever the list says.
     autoApprove: (conversationId, request) =>
       request.name !== FIRST_USE_APPROVAL &&
+      !isMcpFirstUse(request.name) &&
       profiles.profileOf(conversationId)?.policies.autoApprove.includes(request.name) === true,
     onExpire: (conversationId, request) => {
       audit.record({

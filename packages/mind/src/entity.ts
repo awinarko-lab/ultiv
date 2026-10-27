@@ -32,6 +32,7 @@ import {
   vaultPlugin,
   makeBindingStore,
   type BindingStore,
+  type McpManager,
   type Plugin,
   type VaultStore,
 } from "@ultiv/ext";
@@ -64,6 +65,7 @@ import {
 } from "./generate/generate.ts";
 import { Decide, decideLayer, type DecideService } from "./decide/decide.ts";
 import { MindModels, modelsLayer } from "./providers/models.ts";
+import { startMcp, type McpOptions, type McpRuntime } from "./mcp/index.ts";
 
 export interface MindDescription {
   readonly entity: string;
@@ -111,6 +113,8 @@ export interface MindService {
   readonly bindings: BindingStore | null;
   /** The append-only trail of the mind's acts. */
   readonly audit: AuditService;
+  /** MCP connectors: owner-owned servers, added and removed live. */
+  readonly mcp: McpManager;
   readonly describe: () => MindDescription;
 }
 
@@ -136,6 +140,8 @@ export interface MindOptions {
   };
   /** Schedule-registry wiring: `onChanged` re-arms the server's cron scheduler. */
   readonly schedules?: { readonly onChanged?: () => Promise<void> };
+  /** MCP connector options (config dir, timeouts, boot). */
+  readonly mcp?: McpOptions;
 }
 
 /** Everything that can fail while booting the mind. */
@@ -145,7 +151,9 @@ export type MindError = External | ConfigError | Unavailable | Duplicate;
 interface MindWiring {
   readonly holder: ScopeHolder;
   readonly vaultStore: VaultStore | null;
+  readonly vaultRoot: string | null;
   readonly bindings: BindingStore | null;
+  readonly mcp?: McpOptions;
   /** Materializes mailbox envelope artifact grants (server copies files). */
   readonly grantArtifacts?: (
     owner: string,
@@ -184,10 +192,12 @@ const mindLayerRaw = (
       // session registry and the conversation→profile index; its identity
       // section (persona + roster, or the substrate baseline) reaches every
       // conversation through a late registry install.
+      let mcpRef: McpRuntime | undefined;
       const profiles = profilesService({
         converse,
         generate,
-        tools: () => act.extension().tools ?? [],
+        tools: () => [...(act.extension().tools ?? []), ...(mcpRef?.wiring.allowlistTools() ?? [])],
+        implied: (allowlist) => mcpRef?.wiring.implied(allowlist) ?? [],
       });
       const profilesRef: ProfilesService = profiles;
       const rooms = roomsService({ converse });
@@ -203,25 +213,20 @@ const mindLayerRaw = (
       // Tasks run as their bot: bind (and resume) only once the index exists.
       void tasks.attach(profiles.bindTask);
       const routines = routineServices(converse, profiles, wiring.onSchedulesChanged);
-      const { memory, history, schedules, receipts, webhooks, state, sensors } = routines;
       wirePolicies(wiring.holder, approvals, audit, profiles);
       // Everything rides one pi-durable registry; late installs are legal —
       // the harness reconsiders its tools as the registry changes.
       const piRegistry = yield* PiRegistry;
-      installFaculties(piRegistry, {
-        act,
-        tasks,
-        profiles,
-        rooms,
-        mailbox,
-        memory,
-        schedules,
-        receipts,
-        webhooks,
-        state,
-        sensors,
-        history,
-      });
+      installFaculties(piRegistry, { act, tasks, profiles, rooms, mailbox, ...routines });
+      // Connectors install after everything else so their names never shadow ours.
+      const mcp = startMcp(
+        piRegistry,
+        { approvals, audit, profiles },
+        { store: wiring.vaultStore, root: wiring.vaultRoot },
+        wiring.mcp,
+      );
+      mcpRef = mcp;
+      yield* Effect.addFinalizer(() => Effect.promise(mcp.close));
       return {
         converse,
         decide,
@@ -232,13 +237,8 @@ const mindLayerRaw = (
         profiles,
         rooms,
         mailbox,
-        memory,
-        schedules,
-        receipts,
-        webhooks,
-        state,
-        sensors,
-        history,
+        ...routines,
+        mcp: mcp.manager,
         vault: wiring.vaultStore,
         bindings: wiring.bindings,
         audit,
@@ -270,7 +270,9 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
   const wiring: MindWiring = {
     holder,
     vaultStore,
+    vaultRoot,
     bindings,
+    ...(options.mcp !== undefined ? { mcp: options.mcp } : {}),
     ...(options.mailbox?.grantArtifacts !== undefined
       ? { grantArtifacts: options.mailbox.grantArtifacts }
       : {}),

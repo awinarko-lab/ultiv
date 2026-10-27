@@ -36,8 +36,11 @@ export const profilesService = (deps: {
   readonly generate: GenerateService;
   /** The act's tool registrations, for per-profile allowlists. */
   readonly tools: () => readonly { readonly name: string }[];
+  /** Names an allowlist implies (connector helpers). */
+  readonly implied?: (allowlist: readonly string[]) => readonly string[];
 }): ProfilesService => {
-  const agentFor: ProfilesService["agentFor"] = (profile) => agentForProfile(profile, deps.tools);
+  const agentFor: ProfilesService["agentFor"] = (profile) =>
+    agentForProfile(profile, deps.tools, deps.implied);
   const index = conversationIndex(deps.converse, agentFor);
   const ctx: ProfilesContext = {
     converse: deps.converse,
