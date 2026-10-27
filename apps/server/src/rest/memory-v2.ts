@@ -109,7 +109,8 @@ export async function memoryV2Routes(args: RouteArgs): Promise<boolean> {
   if (
     !path.startsWith("/api/memory/v1") &&
     !path.startsWith("/api/memory/v2") &&
-    !path.startsWith("/api/memory/tidy")
+    !path.startsWith("/api/memory/tidy") &&
+    !path.startsWith("/api/memory/purge")
   ) {
     return false;
   }
