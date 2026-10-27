@@ -66,6 +66,7 @@ import {
 import { Decide, decideLayer, type DecideService } from "./decide/decide.ts";
 import { MindModels, modelsLayer } from "./providers/models.ts";
 import { startMcp, type McpOptions, type McpRuntime } from "./mcp/index.ts";
+import type { SecretRequestsService } from "./secrets/index.ts";
 
 export interface MindDescription {
   readonly entity: string;
@@ -115,6 +116,8 @@ export interface MindService {
   readonly audit: AuditService;
   /** MCP connectors: owner-owned servers, added and removed live. */
   readonly mcp: McpManager;
+  /** Secure inputs: browser-typed keys go to the vault, never the model. */
+  readonly secrets: SecretRequestsService;
   readonly describe: () => MindDescription;
 }
 
@@ -222,7 +225,7 @@ const mindLayerRaw = (
       const mcp = startMcp(
         piRegistry,
         { approvals, audit, profiles },
-        { store: wiring.vaultStore, root: wiring.vaultRoot },
+        { store: wiring.vaultStore, root: wiring.vaultRoot, bindings: wiring.bindings },
         wiring.mcp,
       );
       mcpRef = mcp;
@@ -239,6 +242,7 @@ const mindLayerRaw = (
         mailbox,
         ...routines,
         mcp: mcp.manager,
+        secrets: mcp.secrets,
         vault: wiring.vaultStore,
         bindings: wiring.bindings,
         audit,

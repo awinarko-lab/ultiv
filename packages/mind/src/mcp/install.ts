@@ -10,15 +10,22 @@ import {
   type Registry,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
-import type { McpServerView } from "@ultiv/ext";
-import type { McpMindDeps } from "./access.ts";
+import type { BindingStore, McpServerView } from "@ultiv/ext";
+import { secretTools } from "../secrets/tool.ts";
 import {
   CONNECTOR_LOAD,
   CONNECTOR_RESOURCES,
   connectorTools,
   connectorsSection,
 } from "./connector-tools.ts";
+import type { ManageDeps } from "./manage-run.ts";
+import { manageTools } from "./manage-tools.ts";
 import { serverTools } from "./tools.ts";
+
+/** What the wiring needs: connector deps plus the vault for keys. */
+export interface WireDeps extends ManageDeps {
+  readonly bindings: BindingStore | null;
+}
 
 export const MCP_EXTENSION = "ultiv.mcp";
 
@@ -48,7 +55,7 @@ export interface McpWiring {
   readonly close: () => void;
 }
 
-export const wireMcp = (registry: Registry, deps: McpMindDeps): McpWiring => {
+export const wireMcp = (registry: Registry, deps: WireDeps): McpWiring => {
   const installed = new Map<string, string>();
   const sync = (): void => {
     const next = new Set<string>();
@@ -66,16 +73,18 @@ export const wireMcp = (registry: Registry, deps: McpMindDeps): McpWiring => {
       installed.delete(name);
     }
   };
+  // The helpers: connector_load/resources, connector management and the
+  // secure-input tool (keys for connectors and http_request alike).
+  const helpers = [...connectorTools(deps), ...manageTools(deps), ...secretTools(deps)];
   registry.install(
     defineExtension({
       name: MCP_EXTENSION,
-      tools: connectorTools(deps),
+      tools: helpers,
       sections: [connectorsSection(deps)],
     }),
   );
   sync();
   const unsubscribe = deps.manager.subscribe(sync);
-  const helpers = connectorTools(deps);
   return {
     allowlistTools: () => [
       ...helpers,

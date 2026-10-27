@@ -34,11 +34,15 @@ interface PendingEntry {
 }
 
 export interface ApprovalsService {
-  /** Called by a gated tool: resolves once the user decides (or the timeout denies). */
+  /**
+   * Called by a gated tool: resolves once the user decides (or the timeout
+   * denies). `timeout` overrides the default wait (secure inputs need longer).
+   */
   readonly request: (
     conversationId: string,
     callId: string,
     request: ApprovalRequest,
+    options?: { readonly timeout?: Duration.Duration },
   ) => Effect.Effect<boolean>;
   /**
    * Called by the surface's `approve` method with the user's decision. An
@@ -94,7 +98,7 @@ export const makeApprovals = (
     setHooks: (next) => {
       hooks = next;
     },
-    request: (conversationId, callId, request) =>
+    request: (conversationId, callId, request, options) =>
       Effect.gen(function* () {
         if (hooks.autoApprove?.(conversationId, request) === true) return true;
         const k = key(conversationId, callId);
@@ -103,7 +107,9 @@ export const makeApprovals = (
         pending.set(k, { conversationId, request });
         waiters.set(k, deferred);
         for (const fn of listeners) fn(conversationId, request);
-        const exit = yield* Effect.exit(Deferred.await(deferred).pipe(Effect.timeout(timeout)));
+        const exit = yield* Effect.exit(
+          Deferred.await(deferred).pipe(Effect.timeout(options?.timeout ?? timeout)),
+        );
         if (Exit.isFailure(exit)) hooks.onExpire?.(conversationId, request);
         settle(k, Exit.isSuccess(exit));
         return Exit.isSuccess(exit) ? exit.value : false;

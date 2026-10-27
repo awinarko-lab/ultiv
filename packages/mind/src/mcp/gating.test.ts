@@ -14,6 +14,7 @@ import {
 import { makeApprovals } from "../approvals.ts";
 import { makeAudit } from "../audit/audit.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
+import { makeSecretRequests } from "../secrets/requests.ts";
 import { makeUntrustedNotes } from "./access.ts";
 import { wireMcp, type McpWiring } from "./install.ts";
 
@@ -47,6 +48,9 @@ const setUp = async (allowlist: string[] | null = null) => {
     profiles,
     notes: makeUntrustedNotes(),
     callTimeoutMs: 5_000,
+    secrets: makeSecretRequests({ approvals, vault: null, ownerOf: () => OWNER }),
+    vault: null,
+    bindings: null,
   });
   const added = rig.manager.add(OWNER, remoteInput(`${fake.base}/mcp`));
   await waitFor(rig.manager, OWNER, added.id, "connected");

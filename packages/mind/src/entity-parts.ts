@@ -6,6 +6,7 @@
 import { defineExtension } from "@earendil-works/pi-durable";
 import { FIRST_USE_APPROVAL, type ScopeHolder } from "@ultiv/ext";
 import { isMcpFirstUse } from "./mcp/access.ts";
+import { isNeverAutoApproved } from "./mcp/manage.ts";
 import type { ApprovalsService } from "./approvals.ts";
 import type { actService } from "./act/act.ts";
 import { codemodeExtension } from "./act/codemode.ts";
@@ -132,6 +133,7 @@ export const wirePolicies = (
     autoApprove: (conversationId, request) =>
       request.name !== FIRST_USE_APPROVAL &&
       !isMcpFirstUse(request.name) &&
+      !isNeverAutoApproved(request.name) &&
       profiles.profileOf(conversationId)?.policies.autoApprove.includes(request.name) === true,
     onExpire: (conversationId, request) => {
       audit.record({
