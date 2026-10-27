@@ -48,6 +48,16 @@ conversation→profile index):
   expires and NACKs the sender. `mailbox.onExpired` hears it.
 - `approvals` — the gate broker; `approvals.listen` hears every card that
   actually waits on the owner (auto-approved calls never fire).
+- `mcp` — MCP connectors (HTTP, SSE, stdio) installed live per server, each
+  bot reaching them through `connector_load`. Bots manage them with the
+  `connector_*` tools; every change parks on a never-auto-approved card
+  showing the exact change (`mcp/manage*.ts`, presets in `mcp/presets.ts`).
+- `secrets` — `secret_request`: a masked field in the chat that stores a key
+  straight into the vault (`POST /api/secrets/:callId`); the value never
+  passes through the model, transcript, audit or logs.
+- Bot discovery — `bots_list` / `bot_info` (`profiles/bots*.ts`): siblings'
+  public facts only (role, persona's first line, contact rights, tool
+  groups, busy/idle). The prompt roster stays one capped line per sibling.
 - `generate`, `memory`, `audit`, `profiles`, `schedules`, `sensors`, `state`.
 
 The three listeners (`tasks.listen`, `approvals.listen`,
