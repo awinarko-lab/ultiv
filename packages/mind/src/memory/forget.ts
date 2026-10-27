@@ -5,12 +5,13 @@
  * source). Own writable scope only: a bot forgets its own facts; owner-trust
  * facts only when the owner asked in that very turn.
  */
+import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
 import { InvalidInput, NotFound } from "@ultiv/core";
 import type { MemoryFact } from "@ultiv/contracts";
 import type { AuditService } from "../audit/audit.ts";
 import type { ConverseService } from "../converse/converse.ts";
-import { FactsDoc, ownerKey, profileKey } from "./model.ts";
+import { EpisodesDoc, FactsDoc, LIMITS, ownerKey, profileKey } from "./model.ts";
 import { contextOf, type WriteContext } from "./guard.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 
@@ -57,34 +58,66 @@ export const forgetFact = async (
   if (target === undefined || targetKey === null) {
     throw new NotFound({ what: `fact ${factId}` });
   }
-  // Authority: a bot forgets facts from its OWN store (or its own writes in
-  // the owner store); owner-trust facts only when the owner asked this turn.
-  const isOwnStore = targetKey === key;
   const context: WriteContext | null =
     conversationId === null
       ? null
       : await contextOf({ converse: deps.converse, ...deps.guard }, conversationId).catch(
           () => null,
         );
-  if (!isOwnStore && target.trust === "owner") {
-    if (context === null || context.origin !== "owner") {
-      throw new InvalidInput({
-        reason: "owner-stated facts are forgotten only when the owner asked in this turn",
-      });
-    }
-  }
+  const verdict = forgetVerdict(target, context);
+  if (!verdict.ok) throw new InvalidInput({ reason: verdict.reason ?? "refused" });
+  const now = Date.now();
   await run(
     deps.converse.docs.commit(async (tx) => {
       const facts = await tx.doc(FactsDoc, targetKey, { facts: [], migratedAt: null });
       facts.facts = facts.facts.map((fact) =>
-        fact.id === factId
-          ? { ...fact, status: "forgotten" as const, expiredAt: Date.now() }
-          : fact,
+        fact.id === factId ? { ...fact, status: "forgotten" as const, expiredAt: now } : fact,
       );
+      // Provenance: the retraction's reason rides the episode ring, so the
+      // owner sees WHY in history — and Purge clears it with everything else.
+      if (reason.trim() !== "") {
+        const episodes = await tx.doc(EpisodesDoc, targetKey, { episodes: [] });
+        episodes.episodes = [
+          {
+            id: randomUUID(),
+            at: now,
+            origin: "forget",
+            conversation: conversationId,
+            input: reason.slice(0, 2_000),
+            facts: [factId],
+          },
+          ...episodes.episodes,
+        ].slice(0, LIMITS.episodesRing * 2);
+      }
     }),
   );
-  void reason;
   return { id: factId, restored: false };
+};
+
+/**
+ * The forget authorization, pure over the target and this turn's context:
+ * a bot never retracts an owner-stated fact (either store) unless the owner
+ * asked IN THIS TURN, untainted. Outside-content turns never retract.
+ */
+export const forgetVerdict = (
+  target: Pick<MemoryFact, "trust">,
+  context: WriteContext | null,
+): { readonly ok: boolean; readonly reason: string | null } => {
+  if (context !== null && context.tainted && context.origin !== "owner") {
+    return {
+      ok: false,
+      reason: "refused: this turn touched outside content; retraction waits for a clean turn",
+    };
+  }
+  if (target.trust === "owner") {
+    if (context === null || context.origin !== "owner" || context.tainted) {
+      return {
+        ok: false,
+        reason: "owner-stated facts are forgotten only when the owner asks, in their own turn",
+      };
+    }
+  }
+  return { ok: true, reason: null };
 };
 
 export interface HistoryEntry {
