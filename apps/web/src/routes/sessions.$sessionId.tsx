@@ -1,4 +1,4 @@
-import { Link, useNavigate, createFileRoute } from "@tanstack/react-router";
+import { useNavigate, createFileRoute } from "@tanstack/react-router";
 import { Chat } from "@/components/chat";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -52,13 +52,12 @@ function SessionPage() {
           )}
         </div>
       </header>
-      <Chat sessionId={sessionId} models={sessions.models} bot={bot} />
-      <Link
-        className="w-fit text-sm text-muted-foreground underline-offset-4 hover:underline"
-        to="/"
-      >
-        ← Home
-      </Link>
+      <Chat
+        sessionId={sessionId}
+        models={sessions.models}
+        bot={bot}
+        onBack={() => void navigate({ to: "/" })}
+      />
     </main>
   );
 }

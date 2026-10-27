@@ -106,8 +106,6 @@ function HomePage() {
     setPinnedSessionId(sessionId);
     setTab("chat");
   };
-  const activeBotName =
-    choosable.find((profile) => profile.id === profileId)?.name ?? "the active bot";
   const activeChatId = pinnedSessionId ?? chatId;
   // The bot the visible chat belongs to (a pinned history session may be another bot's).
   const chatBotId =
@@ -203,16 +201,6 @@ function HomePage() {
               : "mx-auto hidden w-full max-w-4xl min-h-0 flex-1 flex-col sm:flex"
           }
         >
-          {pinnedSessionId !== null && sessions.profiles.length > 0 && (
-            <Button
-              variant="ghost"
-              size="xs"
-              className="w-fit"
-              onClick={() => setPinnedSessionId(null)}
-            >
-              ← Back to {activeBotName}'s main chat
-            </Button>
-          )}
           {sessions.profiles.length === 0 ? (
             <OnboardingHome
               models={sessions.models}
@@ -223,7 +211,12 @@ function HomePage() {
               }}
             />
           ) : activeChatId !== null ? (
-            <Chat sessionId={activeChatId} models={sessions.models} bot={chatBot} />
+            <Chat
+              sessionId={activeChatId}
+              models={sessions.models}
+              bot={chatBot}
+              onBack={pinnedSessionId !== null ? () => setPinnedSessionId(null) : undefined}
+            />
           ) : (
             <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
               {chatError !== null ? `Could not open the chat: ${chatError}` : "Opening the chat…"}

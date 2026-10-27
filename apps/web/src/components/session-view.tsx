@@ -14,98 +14,18 @@ import {
   InputGroupTextarea,
 } from "@/components/ui/input-group";
 import { ArrowUpIcon, CircleStopIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ApprovalCard, type Decide } from "@/components/approval-card";
+import { ChatHeader, type ChatBot, type LinkState } from "@/components/chat-header";
 import { TranscriptItems } from "@/components/transcript-items";
-
-function formatTokens(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
-
-/** Model and effort selection, plus this session's cumulative spend. */
-function SessionMeta({
-  usage,
-  model,
-  effort,
-  models,
-  onConfigure,
-}: {
-  usage: UsageSummary | null;
-  model: string | null;
-  effort: ThinkingLevel | null;
-  models: ModelInfo[];
-  onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
-}) {
-  const selected = models.find((candidate) => candidate.id === model);
-  const efforts = selected?.efforts ?? (["off", "low", "high", "max"] as const);
-  // min-w-0 + truncation: on phones the selects render at 16px (index.css) and
-  // long model labels must shrink rather than push the card wider.
-  const select =
-    "min-w-0 max-w-full truncate rounded-md border bg-transparent px-2 py-1 text-xs text-muted-foreground outline-none";
-  return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <select
-          aria-label="Model"
-          className={select}
-          value={model ?? ""}
-          onChange={(event) => {
-            const id = event.target.value === "" ? null : event.target.value;
-            onConfigure(id, null);
-          }}
-        >
-          <option value="">Default model</option>
-          {models.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {candidate.label}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Effort"
-          className={select}
-          value={effort ?? ""}
-          onChange={(event) =>
-            onConfigure(
-              model,
-              event.target.value === "" ? null : (event.target.value as ThinkingLevel),
-            )
-          }
-        >
-          <option value="">Default effort</option>
-          {efforts.map((level) => (
-            <option key={level} value={level}>
-              {level}
-            </option>
-          ))}
-        </select>
-      </div>
-      {usage !== null && (
-        <span className="text-xs text-muted-foreground">
-          {formatTokens(usage.totalTokens)} tokens · {formatTokens(usage.input)} in ·{" "}
-          {formatTokens(usage.output)} out
-        </span>
-      )}
-    </div>
-  );
-}
 
 const coarsePointer = (): boolean =>
   typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 
-/** The link label, shown only when the chat is not connected. */
-const linkLabel = { connecting: "connecting…", live: "live", lost: "disconnected" } as const;
-
-/** Who the chat is with — names the composer and the empty state. */
-export interface ChatBot {
-  name: string;
-  description: string;
-}
-
 export function SessionView({
   bot,
+  onBack,
   link,
   transcript,
   phase,
@@ -121,7 +41,9 @@ export function SessionView({
   onInterrupt,
 }: {
   bot?: ChatBot | undefined;
-  link: "connecting" | "live" | "lost";
+  /** Shown as the header's round back button when set. */
+  onBack?: (() => void) | undefined;
+  link: LinkState;
   transcript: TranscriptEntry[];
   phase: Phase;
   lastError: string | null;
@@ -196,18 +118,16 @@ export function SessionView({
     // Frameless: the chat is the page, not a card on it. Transcript scrolls;
     // the composer stays pinned at the bottom of the available height.
     <section aria-label="Chat" className="flex min-h-0 flex-1 flex-col gap-2">
-      <header className="flex min-w-0 flex-wrap items-center gap-2">
-        {link !== "live" && (
-          <Badge variant={link === "lost" ? "destructive" : "outline"}>{linkLabel[link]}</Badge>
-        )}
-        <SessionMeta
-          usage={usage}
-          model={model}
-          effort={effort}
-          models={models}
-          onConfigure={(nextModel, nextEffort) => control(() => onConfigure(nextModel, nextEffort))}
-        />
-      </header>
+      <ChatHeader
+        bot={bot}
+        link={link}
+        onBack={onBack}
+        usage={usage}
+        model={model}
+        effort={effort}
+        models={models}
+        onConfigure={(nextModel, nextEffort) => control(() => onConfigure(nextModel, nextEffort))}
+      />
       <div className="min-h-0 flex-1">
         <div ref={transcriptRef} className="h-full min-h-0">
           <ScrollArea className="h-full">
