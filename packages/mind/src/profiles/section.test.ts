@@ -67,6 +67,8 @@ describe("assembled prompt: key rules and budget", () => {
     "latest direct request", // priority order
     "always hold", // safety holds over the priority order
     "Voice:",
+    "task_message", // steer running tasks
+    "Relay each [task …] result once",
   ];
   const persona = async (): Promise<string> =>
     render(
@@ -89,7 +91,8 @@ describe("assembled prompt: key rules and budget", () => {
   });
 
   // Budgets: measured size (rules 380, baseline 518, sample persona 619) plus ~10%.
-  // The mid-task owner-message rule (+33 words: rules 413) fits inside them.
+  // The mid-task owner-message rule (+33 words: rules 413) fits inside them;
+  // the task-handling rule (ack, task_message, relay once) was paid for by trims.
   // Raising them is a decision: the rules ship on every turn of every bot.
   it("stays within its word budget", async () => {
     expect(words(OPERATING_RULES)).toBeLessThanOrEqual(420);
