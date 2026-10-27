@@ -93,6 +93,12 @@ const open = (kek: Buffer, sealed: Sealed): unknown => {
   return JSON.parse(plain.toString("utf8")) as unknown;
 };
 
+/** Seal any JSON value under the vault KEK (MCP OAuth tokens ride this). */
+export const sealValue = (value: unknown): Sealed => seal(kekOf(), value);
+
+/** Open a value sealed by `sealValue`; throws when VAULT_KEY changed. */
+export const openSealed = (sealed: Sealed): unknown => open(kekOf(), sealed);
+
 const hostOf = (url: string | undefined): string => {
   try {
     return url !== undefined ? new URL(url).host : "";

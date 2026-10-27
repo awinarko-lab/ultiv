@@ -19,3 +19,4 @@ export * from "./broker/http-adapter.ts";
 export * from "./broker/http-request-tool.ts";
 export * from "./broker/net-guard.ts";
 export * from "./broker/redact.ts";
+export * from "./mcp/index.ts";
