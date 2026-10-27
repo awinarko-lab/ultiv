@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./mcp-testing": "./src/mcp/testing/index.ts"
   },
   "scripts": {
     "test": "vp test"
