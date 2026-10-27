@@ -6,7 +6,6 @@
  */
 import { DownloadIcon, PinIcon, SparklesIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { MemoryRecord } from "@ultiv/contracts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DevDetails } from "@/components/ui/dev-details";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +14,13 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { api, type ArtifactRow, type MemoryV2Line, type MemoryV2State } from "@/lib/api";
+import {
+  api,
+  type ArtifactRow,
+  type MemoryV2Fact,
+  type MemoryV2Line,
+  type MemoryV2State,
+} from "@/lib/api";
 import { formatWhen } from "@/lib/format";
 
 const formatBytes = (n: number): string =>
@@ -57,7 +62,7 @@ export function MemoryPanel({
     setOwnOpen(next);
     onOpenChange?.(next);
   };
-  const [records, setRecords] = useState<MemoryRecord[]>([]);
+  const [facts, setFacts] = useState<MemoryV2Fact[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactRow[]>([]);
   const [state, setState] = useState<{ key: string; value: string; updatedAt: number }[]>([]);
   const [v2, setV2] = useState<MemoryV2State | null>(null);
@@ -68,13 +73,12 @@ export function MemoryPanel({
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      const [memory, files, kv, v2State] = await Promise.all([
-        api.profileMemory(profileId),
+      const [files, kv, v2State] = await Promise.all([
         api.artifacts(profileId),
         api.stateOf(profileId),
-        api.memoryV2(profileId).catch(() => null),
+        api.memoryV2(profileId),
       ]);
-      setRecords(Array.isArray(memory) ? memory : []);
+      setFacts(v2State.facts.filter((fact) => fact.status !== "forgotten"));
       setArtifacts(Array.isArray(files) ? files : []);
       setState(Array.isArray(kv) ? kv : []);
       setV2(v2State);
@@ -103,11 +107,6 @@ export function MemoryPanel({
   };
 
   // Throws on failure — the confirm dialog stays open and shows the reason.
-  const remove = async (recordId: string): Promise<void> => {
-    await api.profileMemoryRemove(profileId, recordId);
-    setRecords((rows) => rows.filter((row) => row.id !== recordId));
-    setError(null);
-  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -116,34 +115,39 @@ export function MemoryPanel({
         <DialogTitle>What {name} remembers</DialogTitle>
         {error !== null && <p className="text-destructive mt-2 text-sm">{error}</p>}
         <div className="mt-3 flex flex-col gap-2">
-          {records.length === 0 && (
+          {facts.length === 0 && (
             <p className="text-muted-foreground text-sm">
               Nothing yet. Facts {name} keeps about its work show up here, and you can edit or
               delete them.
             </p>
           )}
-          {records.map((record) => (
+          {facts.map((fact) => (
             <div
-              key={record.id}
+              key={fact.id}
               className="flex items-start gap-2 rounded-lg border px-2.5 py-2 text-sm"
             >
               <div className="min-w-0 flex-1">
-                <p className="break-words">{record.text}</p>
+                <p className="break-words">{fact.text}</p>
                 <p className="text-muted-foreground mt-1 text-xs">
-                  {formatWhen(record.at)}
-                  {record.tags.length > 0 && ` · ${record.tags.join(", ")}`}
+                  {formatWhen(fact.createdAt)}
+                  {fact.tags.length > 0 && ` · ${fact.tags.join(", ")}`}
+                  {fact.status !== "current" && ` · ${fact.status}`}
+                  {fact.trust === "untrusted" && " · unverified"}
                 </p>
               </div>
               <ConfirmDialog
                 title="Forget this?"
-                warning={`${name} will no longer remember it. This cannot be undone.`}
+                warning={`${name} will stop recalling it. It stays as a restorable tombstone until you purge.`}
                 confirmLabel="Forget"
-                onConfirm={() => remove(record.id)}
+                onConfirm={async () => {
+                  await api.memoryFactForget(fact.id, profileId);
+                  await load();
+                }}
               >
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label={`Forget: ${record.text.slice(0, 40)}`}
+                  aria-label={`Forget: ${fact.text.slice(0, 40)}`}
                 >
                   <Trash2Icon />
                 </Button>
@@ -385,8 +389,8 @@ export function MemoryPanel({
           )}
         </div>
         <p className="text-muted-foreground mt-3 text-xs">
-          {name} reads this store plus your workspace-wide memory. Deleting an item here is
-          immediate.
+          {name} reads this store plus your workspace-wide memory. Forgetting an item hides it until
+          you purge; the workspace-wide store is editable from any bot's panel.
         </p>
       </DialogContent>
     </Dialog>

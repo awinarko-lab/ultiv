@@ -261,6 +261,11 @@ export const api = {
     ),
   memoryTidyRun: (): Promise<{ proposals: number }> =>
     send<{ proposals: number }>("/api/memory/tidy/run", "POST"),
+  memoryFactForget: (id: string, profile?: string): Promise<{ ok: boolean }> =>
+    send<{ ok: boolean }>(
+      `/api/memory/v2/facts/${encodeURIComponent(id)}?profile=${encodeURIComponent(profile ?? "owner")}`,
+      "DELETE",
+    ),
   artifacts: (profile: string): Promise<ArtifactRow[]> =>
     getJson<ArtifactRow[]>(`/api/artifacts?profile=${encodeURIComponent(profile)}`),
   artifactUrl: (id: string): string => `${base()}/api/artifacts/${encodeURIComponent(id)}`,

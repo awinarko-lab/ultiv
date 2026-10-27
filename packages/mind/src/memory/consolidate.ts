@@ -1,7 +1,7 @@
 /**
  * The consolidating write pipeline: extract → resolve entities → decide →
  * apply, all in ONE `docs.commit` transaction that re-reads the store inside
- * the lock, then mirrors to v1 while the soak is on. The decision rules live
+ * the lock. The decision rules live
  * in decide.ts; extraction in extract.ts. Nothing is deleted: supersede and
  * refine create new versions and mark the old ones superseded.
  */
@@ -20,11 +20,8 @@ import {
   FactsDoc,
   GraphDoc,
   LIMITS,
-  MemoryDoc,
   ProposalsDoc,
   factHash,
-  flags,
-  mirrorRecord,
   newFact,
   ownerKey,
   profileKey,
@@ -226,10 +223,6 @@ export const writeFactV2 = async (
         episodes.episodes = kept.map((episode, index) =>
           index >= LIMITS.episodesRing ? { ...episode, input: "" } : episode,
         );
-      }
-      if (flags.mirror()) {
-        const legacy = await tx.doc(MemoryDoc, key, { records: [] });
-        legacy.records = [...legacy.records, mirrorRecord(fact)].slice(-LIMITS.mirrorCap);
       }
       return {
         id: fact.id,

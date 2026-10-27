@@ -142,6 +142,22 @@ export async function memoryV2Routes(args: RouteArgs): Promise<boolean> {
       json(200, { purged });
       return true;
     }
+    if (path === "/api/memory/v1/cleanup" && method === "POST") {
+      // Owner-approved one-time sweep of the mirrored v1 docs (soak ended).
+      json(200, { cleared: await args.mind.memory.cleanupV1(args.owner) });
+      return true;
+    }
+    const factMatch = path.match(/^\/api\/memory\/v2\/facts\/([^/]+)$/);
+    if (factMatch !== null && method === "DELETE") {
+      // The owner's unconditional tombstone (restore or purge from here).
+      await args.mind.memory.tombstone(
+        args.owner,
+        profile === undefined || profile === "owner" ? null : profile,
+        factMatch[1] ?? "",
+      );
+      json(200, { ok: true });
+      return true;
+    }
     const proposalMatch = path.match(/^\/api\/memory\/v2\/proposals\/([^/]+)\/(accept|reject)$/);
     if (proposalMatch !== null && method === "POST") {
       const [, id, verdict] = proposalMatch;

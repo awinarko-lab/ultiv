@@ -7,10 +7,10 @@
  * a sibling's. Cross-thread recall resolves through here, never transcripts.
  *
  * v2 rides behind `ULTIV_MEMORY_V2` (default on): writes land in
- * `ultiv.mem.facts` and, while the 14-day mirror is on, also append a v1
- * record so a rollback still sees new facts. The v1 doc family and helpers
- * stay exported for the REST surfaces and the mirror; they are never cleared
- * by v2 code.
+ * `ultiv.mem.facts`. The 14-day v1 mirror ended 2026-10-28 (owner-approved):
+ * new writes are v2-only and the v1 `ultiv.memory` docs are cleared via
+ * `POST /api/memory/v1/cleanup`. The v1 doc family and helpers stay exported
+ * for the REST surfaces.
  */
 import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
@@ -102,8 +102,8 @@ export interface MemoryService {
   ) => Promise<RecallResult>;
   /**
    * v2 consolidating write: extract → resolve → decide → apply in one
-   * transaction (supersede/refine keep history), mirrored to v1. The tool
-   * surface; `write` above stays the plain append for REST/v1.
+   * transaction (supersede/refine keep history). The tool surface; `write`
+   * above stays the plain append for REST/v1.
    */
   readonly writeV2: (input: {
     readonly owner: string;
@@ -141,6 +141,14 @@ export interface MemoryService {
   readonly restore: (owner: string, profileId: string | null, factId: string) => Promise<void>;
   /** The owner's irreversible purge of forgotten facts' text. */
   readonly purge: (owner: string, profileId: string | null) => Promise<number>;
+  /** The owner's unconditional tombstone (REST surface on any store). */
+  readonly tombstone: (owner: string, profileId: string | null, factId: string) => Promise<void>;
+  /**
+   * One-time v1 cleanup (owner-approved 2026-10-28): empties the v1
+   * `ultiv.memory` docs for the owner store and every profile whose v2
+   * migration verified. Returns the cleared store count.
+   */
+  readonly cleanupV1: (owner: string) => Promise<number>;
   /** The store's resolved entities. */
   readonly entities: (owner: string, profileId: string | null) => Promise<readonly MemoryEntity[]>;
   /** The entity card: current facts plus the neighbourhood (1–2 hops). */
@@ -187,7 +195,7 @@ export const memoryService = (deps: {
     }
   };
 
-  /** The v2 add: one fact into `ultiv.mem.facts`, mirrored to v1 when on. */
+  /** The v2 add: one fact into `ultiv.mem.facts`. The v1 mirror is gone. */
   const addFactV2 = async (input: {
     readonly owner: string;
     readonly profileId: string | null;
@@ -232,10 +240,6 @@ export const memoryService = (deps: {
       converse.docs.commit(async (tx) => {
         const facts = await tx.doc(FactsDoc, key, { facts: [], migratedAt: null });
         facts.facts = [...facts.facts, fact];
-        if (flags.mirror()) {
-          const legacy = await tx.doc(MemoryDoc, key, { records: [] });
-          legacy.records = [...legacy.records, mirrorRecord(fact)].slice(-LIMITS.mirrorCap);
-        }
       }),
     );
     return mirrorRecord(fact);
@@ -328,14 +332,35 @@ export const memoryService = (deps: {
         .slice(-100)
         .reverse();
     },
-    read: (owner, scope, profileId) =>
-      scope === "owner"
+    read: (owner, scope, profileId) => {
+      if (flags.v2()) {
+        // REST compatibility: the old endpoints project the v2 store.
+        return service
+          .readFacts(owner, scope === "owner" ? null : (profileId ?? ""))
+          .then((facts) =>
+            facts
+              .filter((fact) => fact.status !== "forgotten")
+              .slice(-500)
+              .reverse()
+              .map((fact) => ({
+                id: fact.id,
+                scope: fact.scope,
+                profile: fact.profile,
+                text: fact.text,
+                tags: fact.tags,
+                at: fact.createdAt,
+              })),
+          );
+      }
+      return scope === "owner"
         ? readStore(ownerKey(owner)).then((records) => records.slice(-500).reverse())
         : profileId !== undefined
           ? readStore(profileKey(owner, profileId)).then((records) => records.slice(-500).reverse())
-          : Promise.resolve([]),
+          : Promise.resolve([]);
+    },
     removeProfile: async (owner, profileId) => {
-      const records = await readStore(profileKey(owner, profileId));
+      // Count BEFORE clearing (the tx below empties both stores).
+      const v2Count = (await service.readFacts(owner, profileId)).length;
       await writeStore(profileKey(owner, profileId), []);
       // v2 tiers clear with the store (purge cascade); the v1 doc too.
       await run(
@@ -359,9 +384,13 @@ export const memoryService = (deps: {
           core.lines = [];
         }),
       );
-      return records.length;
+      return v2Count;
     },
     remove: async (owner, profileId, recordId) => {
+      if (flags.v2()) {
+        await service.tombstone(owner, profileId, recordId);
+        return;
+      }
       const key = profileKey(owner, profileId);
       const records = await readStore(key);
       const next = records.filter((record) => record.id !== recordId);
@@ -429,6 +458,38 @@ export const memoryService = (deps: {
     entities: (owner, profileId) => entitiesOf({ converse }, owner, profileId),
     related: (owner, profileId, entity, depth) =>
       relatedEntity({ converse }, owner, profileId, entity, depth ?? 1),
+    tombstone: async (owner, profileId, factId) => {
+      const key = profileId === null ? ownerKey(owner) : profileKey(owner, profileId);
+      await run(
+        converse.docs.commit(async (tx) => {
+          const facts = await tx.doc(FactsDoc, key, { facts: [], migratedAt: null });
+          facts.facts = facts.facts.map((fact) =>
+            fact.id === factId && fact.status !== "forgotten"
+              ? { ...fact, status: "forgotten" as const, expiredAt: Date.now() }
+              : fact,
+          );
+        }),
+      );
+    },
+    cleanupV1: async (owner) => {
+      // Safety: only clear stores whose v2 migration VERIFIED (migratedAt set).
+      const targets: string[] = [ownerKey(owner)];
+      for (const profile of await profiles.list(owner)) {
+        if (profile.archivedAt !== null) continue;
+        const migrated = await run(
+          converse.docs.snapshotKeyed(FactsDoc, profileKey(owner, profile.id)),
+        ).then((store) => store?.migratedAt !== null && store?.migratedAt !== undefined);
+        if (migrated) targets.push(profileKey(owner, profile.id));
+      }
+      let cleared = 0;
+      for (const key of targets) {
+        const records = await readStore(key);
+        if (records.length === 0) continue;
+        await writeStore(key, []);
+        cleared += 1;
+      }
+      return cleared;
+    },
   };
   return service;
 };

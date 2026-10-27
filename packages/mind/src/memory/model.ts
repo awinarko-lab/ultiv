@@ -123,15 +123,11 @@ export const LIMITS = {
   /** Text and tag caps. */
   textChars: 1_000,
   tags: 12,
-  /** Default v1 mirror record cap (same as the v1 store). */
-  mirrorCap: 2_000,
 } as const;
 
 export const flags = {
   /** ULTIV_MEMORY_V2=off brings the v1 code path back, unchanged. */
   v2: (): boolean => process.env.ULTIV_MEMORY_V2 !== "off",
-  /** 14-day dual-write: v2 writes also append a v1 record. Default on. */
-  mirror: (): boolean => process.env.MEMORY_V1_MIRROR !== "off",
   /** Model extraction; off = deterministic fallback only. */
   extract: (): boolean => process.env.MEMORY_EXTRACT !== "off",
   /** Embeddings are off by default; prefer a local Ollama model if ever on. */
@@ -198,7 +194,7 @@ export const newFact = (input: NewFactInput): MemoryFact => ({
   hash: factHash(input.text),
 });
 
-/** The v1 record a v2 fact mirrors to (rollback still sees new facts). */
+/** The v1 record shape a v2 fact projects to (REST compatibility only). */
 export const mirrorRecord = (fact: MemoryFact): MemoryRecord => ({
   id: fact.id,
   scope: fact.scope,

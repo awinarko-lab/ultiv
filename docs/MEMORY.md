@@ -6,14 +6,14 @@ described in RFC 0001 §9 — now shipped. Storage stays pi-durable docs in
 
 ## Tiers
 
-| Tier | Doc kind | Holds |
-|---|---|---|
-| Core | `ultiv.mem.core` | The always-on block, its own prompt section (`memory_core`) |
-| Facts | `ultiv.mem.facts` | Current, superseded and forgotten facts — the unit of memory |
-| Graph | `ultiv.mem.graph` | Entities (people, pets, places, projects); edges are the triples on facts |
-| Episodes | `ultiv.mem.episodes` | Where facts came from; ring of 1,000 full inputs, never prompted |
-| Archive | `ultiv.mem.archive` | Cold facts, still searchable on demand |
-| Proposals | `ultiv.mem.proposals` | Tidy suggestions; nothing changes until the owner accepts |
+| Tier      | Doc kind              | Holds                                                                     |
+| --------- | --------------------- | ------------------------------------------------------------------------- |
+| Core      | `ultiv.mem.core`      | The always-on block, its own prompt section (`memory_core`)               |
+| Facts     | `ultiv.mem.facts`     | Current, superseded and forgotten facts — the unit of memory              |
+| Graph     | `ultiv.mem.graph`     | Entities (people, pets, places, projects); edges are the triples on facts |
+| Episodes  | `ultiv.mem.episodes`  | Where facts came from; ring of 1,000 full inputs, never prompted          |
+| Archive   | `ultiv.mem.archive`   | Cold facts, still searchable on demand                                    |
+| Proposals | `ultiv.mem.proposals` | Tidy suggestions; nothing changes until the owner accepts                 |
 
 All are `scope: "session"`, family docs keyed `owner:<o>` (owner store) or
 `profile:<o>:<id>` (a bot's own store). Bots never see a sibling's store.
@@ -143,17 +143,16 @@ is verified against its v1 source inside the transaction; a mismatch aborts
 and the store keeps serving v1.
 
 - Rollback: `ULTIV_MEMORY_V2=off` brings back the v1 code path unchanged.
-- Mirror: `MEMORY_V1_MIRROR` (default on) dual-writes every v2 add/refine/
-  supersede into the v1 `ultiv.memory` docs for 14 days. The v1 docs are
-  never cleared by v2 code; removing the mirror or the docs is a separate,
-  owner-approved commit after the soak.
+- Mirror: REMOVED 2026-10-28 (owner-approved end of the 14-day soak, commit
+  of that date). Writes are v2-only; `POST /api/memory/v1/cleanup` swept the
+  mirrored v1 `ultiv.memory` docs (only stores whose migration had verified).
+  The v1 doc family stays as REST-compatible stubs.
 
 ## Flags
 
-| Flag | Default | Effect |
-|---|---|---|
-| `ULTIV_MEMORY_V2` | on | `off` = full v1 rollback |
-| `MEMORY_V1_MIRROR` | on | dual-write v1 records during the soak |
-| `MEMORY_EXTRACT` | on | `off` = deterministic extraction only |
-| `MEMORY_EMBEDDINGS` | off | embeddings; prefer local Ollama if ever on |
-| `MEMORY_TIDY_CRON` | `0 9 * * 0` | tidy schedule (croner, Asia/Jakarta) |
+| Flag                | Default     | Effect                                     |
+| ------------------- | ----------- | ------------------------------------------ |
+| `ULTIV_MEMORY_V2`   | on          | `off` = full v1 rollback                   |
+| `MEMORY_EXTRACT`    | on          | `off` = deterministic extraction only      |
+| `MEMORY_EMBEDDINGS` | off         | embeddings; prefer local Ollama if ever on |
+| `MEMORY_TIDY_CRON`  | `0 9 * * 0` | tidy schedule (croner, Asia/Jakarta)       |

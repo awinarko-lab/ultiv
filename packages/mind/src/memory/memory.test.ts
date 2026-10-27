@@ -87,7 +87,8 @@ describe("Memory seam (offline, MemoryStorage)", () => {
     expect(facts[0]?.trust).toBe("self");
     // Idempotent: a second read neither duplicates nor re-stamps.
     expect((await memory.readFacts("harry", bot.id)).length).toBe(1);
-    // A v2 write also lands in the v1 mirror while MEMORY_V1_MIRROR is on.
+    // The mirror is gone: v2 writes stay v2-only, but the old REST GET now
+    // projects v2 (newest first).
     await memory.write({
       owner: "harry",
       writer: bot.id,
@@ -95,8 +96,8 @@ describe("Memory seam (offline, MemoryStorage)", () => {
       profileId: bot.id,
       text: "fresh fact",
     });
-    const v1 = await memory.read("harry", "profile", bot.id);
-    expect(v1.map((record) => record.text).sort()).toEqual(["fresh fact", "legacy fact"]);
+    const projected = await memory.read("harry", "profile", bot.id);
+    expect(projected.map((record) => record.text)).toEqual(["fresh fact", "legacy fact"]);
     delete process.env.ULTIV_MEMORY_V2;
     await handle.close();
   });
@@ -140,9 +141,12 @@ describe("Memory seam (offline, MemoryStorage)", () => {
     const old = facts.find((fact) => fact.id === first.id);
     expect(old?.status).toBe("superseded");
     expect(old?.supersededBy).toBe(moved.id);
-    // The mirror saw both new facts.
-    const v1 = await memory.read("harry", "profile", bot.id);
-    expect(v1.length).toBe(2);
+    // The mirror is gone: `read` projects the v2 store (newest first).
+    const projected = await memory.read("harry", "profile", bot.id);
+    expect(projected.map((record) => record.text)).toEqual([
+      "harry moved to surabaya last month",
+      "harry lives in bandung",
+    ]);
     await handle.close();
   });
 });
