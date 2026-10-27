@@ -142,10 +142,37 @@ export async function memoryV2Routes(args: RouteArgs): Promise<boolean> {
       return true;
     }
     if (path === "/api/memory/purge" && method === "POST") {
-      const purged = await args.mind.memory.purge(
-        args.owner,
-        profile === undefined || profile === "owner" ? null : profile,
+      const target = profile === undefined || profile === "owner" ? null : profile;
+      // Server-side confirmation: `confirm` must echo the number of facts
+      // about to lose their text. A bare POST never purges.
+      const body = await args.readJson<{ confirm?: number }>(args.req).catch(
+        () =>
+          ({}) as {
+            confirm?: number;
+          },
       );
+      const pending = (await args.mind.memory.readFacts(args.owner, target)).filter(
+        (fact) => fact.status === "forgotten" && fact.text !== "",
+      ).length;
+      if (body.confirm !== pending) {
+        json(400, {
+          error: `confirm must echo the count of facts losing their text (${pending})`,
+          forgotten: pending,
+        });
+        return true;
+      }
+      const purged = await args.mind.memory.purge(args.owner, target);
+      args.mind.audit.record({
+        at: Date.now(),
+        kind: "memory",
+        conversationId: "",
+        profile: null,
+        callId: null,
+        name: "memory.purge",
+        durationMs: null,
+        ok: true,
+        error: null,
+      });
       json(200, { purged });
       return true;
     }

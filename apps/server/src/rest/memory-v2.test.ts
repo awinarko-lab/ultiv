@@ -1,0 +1,105 @@
+import { describe, expect, it } from "vite-plus/test";
+import { MemoryStorage } from "@earendil-works/pi-durable";
+import { openMind } from "@ultiv/mind";
+import type { RouteArgs } from "./types.ts";
+import { memoryV2Routes } from "./memory-v2.ts";
+
+/** Minimal RouteArgs over a real offline mind; captures the JSON response. */
+const routeArgs = (
+  mind: Awaited<ReturnType<typeof openMind>>["mind"],
+  opts: {
+    path: string;
+    method?: string;
+    profile?: string;
+    body?: unknown;
+  },
+): { args: RouteArgs; status: () => number; body: () => unknown } => {
+  let captured: { status: number; body: unknown } | undefined;
+  const url = new URL(
+    `http://localhost${opts.path}${opts.profile === undefined ? "" : `?profile=${opts.profile}`}`,
+  );
+  return {
+    args: {
+      mind,
+      scheduler: {} as RouteArgs["scheduler"],
+      req: { method: opts.method ?? "GET" } as RouteArgs["req"],
+      res: {} as RouteArgs["res"],
+      url,
+      owner: "harry",
+      path: opts.path,
+      json: (status, body) => {
+        captured = { status, body };
+      },
+      readJson: async <T>() => (opts.body ?? {}) as T,
+      readBody: async () => Buffer.from(JSON.stringify(opts.body ?? {})),
+    },
+    status: () => captured?.status ?? 0,
+    body: () => captured?.body,
+  };
+};
+
+describe("POST /api/memory/purge", () => {
+  it("refuses without an echoing confirm, then purges with one", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const { mind } = handle;
+    const bot = await mind.profiles.create("harry", { name: "Purgee" });
+    const fact = await mind.memory.writeV2({
+      owner: "harry",
+      profileId: bot.id,
+      scope: "profile",
+      writer: bot.id,
+      text: "a fact bound for the purge",
+    });
+    await mind.memory.tombstone("harry", bot.id, fact.id);
+
+    // No confirm / wrong confirm → 400 with the pending count.
+    const refused = routeArgs(mind, {
+      path: "/api/memory/purge",
+      method: "POST",
+      profile: bot.id,
+      body: {},
+    });
+    expect(await memoryV2Routes(refused.args)).toBe(true);
+    expect(refused.status()).toBe(400);
+    expect(refused.body()).toMatchObject({ forgotten: 1 });
+
+    const wrong = routeArgs(mind, {
+      path: "/api/memory/purge",
+      method: "POST",
+      profile: bot.id,
+      body: { confirm: 5 },
+    });
+    expect(await memoryV2Routes(wrong.args)).toBe(true);
+    expect(wrong.status()).toBe(400);
+
+    // The count echo purges — fact text and episode input text both die.
+    const ok = routeArgs(mind, {
+      path: "/api/memory/purge",
+      method: "POST",
+      profile: bot.id,
+      body: { confirm: 1 },
+    });
+    expect(await memoryV2Routes(ok.args)).toBe(true);
+    expect(ok.status()).toBe(200);
+    expect(ok.body()).toMatchObject({ purged: 1 });
+    const facts = await mind.memory.readFacts("harry", bot.id);
+    expect(facts.find((entry) => entry.id === fact.id)?.text).toBe("");
+    await handle.close();
+  });
+
+  it("purges nothing when there is nothing forgotten (confirm: 0)", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const { mind } = handle;
+    const bot = await mind.profiles.create("harry", { name: "Clean" });
+    const ok = routeArgs(mind, {
+      path: "/api/memory/purge",
+      method: "POST",
+      profile: bot.id,
+      body: { confirm: 0 },
+    });
+    expect(await memoryV2Routes(ok.args)).toBe(true);
+    expect(ok.status()).toBe(200);
+    expect(ok.body()).toMatchObject({ purged: 0 });
+    await handle.close();
+  });
+});

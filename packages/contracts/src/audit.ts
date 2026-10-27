@@ -12,6 +12,8 @@ export const AuditEventSchema = Type.Object({
     Type.Literal("mailbox"),
     Type.Literal("escalation"),
     Type.Literal("credential"),
+    /** Human REST acts on memory (purge, tombstone, restore). */
+    Type.Literal("memory"),
   ]),
   conversationId: Type.String(),
   /** The profile the acting conversation belongs to; null when unmapped. */

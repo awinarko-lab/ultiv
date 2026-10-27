@@ -225,6 +225,12 @@ export const purgeForgotten = async (
         if (fact.text !== "") purged += 1;
         return { ...fact, text: "", tags: [], triple: null, hash: "" };
       });
+      // Episodes are provenance: their raw input text dies with the purge —
+      // ids, links and timestamps stay.
+      const episodes = await tx.doc(EpisodesDoc, key, { episodes: [] });
+      episodes.episodes = episodes.episodes.map((episode) =>
+        episode.input === "" ? episode : { ...episode, input: "" },
+      );
       return purged;
     }),
   );
