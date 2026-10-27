@@ -17,7 +17,11 @@ export const McpTransportSchema = Type.Union([
 export type McpTransport = Static<typeof McpTransportSchema>;
 
 const ItemId = Type.String({ minLength: 1, maxLength: 200 });
-const HeaderName = Type.String({ minLength: 1, maxLength: 100, pattern: "^[A-Za-z0-9!#$%&'*+.^_`|~-]+$" });
+const HeaderName = Type.String({
+  minLength: 1,
+  maxLength: 100,
+  pattern: "^[A-Za-z0-9!#$%&'*+.^_`|~-]+$",
+});
 const EnvName = Type.String({ minLength: 1, maxLength: 100, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" });
 
 /** One header whose value is a vault item, e.g. `Authorization` + `Bearer `. */
@@ -72,7 +76,10 @@ export const McpServerInputSchema = Type.Object({
   command: Type.Union([McpCommandSchema, Type.Null()]),
   auth: McpAuthSchema,
   /** Bots that may use it; null = every bot. */
-  profiles: Type.Union([Type.Array(Type.String({ maxLength: 100 }), { maxItems: 100 }), Type.Null()]),
+  profiles: Type.Union([
+    Type.Array(Type.String({ maxLength: 100 }), { maxItems: 100 }),
+    Type.Null(),
+  ]),
   enabled: Type.Boolean(),
   /** Run read-only tools without asking (after the first approved use). */
   autoAllowReadOnly: Type.Boolean(),
