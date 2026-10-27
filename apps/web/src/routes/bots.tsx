@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { BotsPanel } from "@/components/bots-panel";
 import { Page } from "@/components/page";
+import { PushToggle } from "@/components/push-toggle";
 import { useApp } from "@/lib/app-state";
 
 export const Route = createFileRoute("/bots")({
@@ -20,6 +21,7 @@ function BotsPage() {
         refresh={refreshAll}
         onOpenMain={(id) => void navigate({ to: "/", search: id === mainId ? {} : { bot: id } })}
       />
+      <PushToggle />
     </Page>
   );
 }

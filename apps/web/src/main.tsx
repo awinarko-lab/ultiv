@@ -4,8 +4,11 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import { router } from "./router.ts";
 import { followColorScheme } from "./lib/color-scheme.ts";
+import { registerServiceWorker, startPresence } from "./lib/push.ts";
 
 followColorScheme();
+registerServiceWorker();
+startPresence();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

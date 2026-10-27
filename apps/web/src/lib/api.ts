@@ -95,6 +95,13 @@ export interface RoomLine {
   error?: string | null;
 }
 
+/** GET /api/push/config — whether the server can push, and this owner's device count. */
+export interface PushConfig {
+  configured: boolean;
+  publicKey: string | null;
+  devices: number;
+}
+
 /** One row of GET /api/approvals — a gate waiting on the owner somewhere. */
 export interface PendingApprovalRow {
   conversationId: string;
@@ -183,6 +190,21 @@ export const api = {
   vaultCreate: (item: Record<string, unknown>): Promise<VaultItemInfo> =>
     send<VaultItemInfo>("/api/vault", "POST", item),
   vaultRemove: (id: string): Promise<boolean> => drop(`/api/vault/${encodeURIComponent(id)}`),
+  pushConfig: (): Promise<PushConfig> => getJson<PushConfig>("/api/push/config"),
+  pushSubscribe: (subscription: PushSubscriptionJSON): Promise<{ ok: boolean }> =>
+    send("/api/push/subscribe", "POST", { subscription }),
+  pushUnsubscribe: (endpoint: string): Promise<{ removed: boolean }> =>
+    send("/api/push/unsubscribe", "POST", { endpoint }),
+  pushTest: (): Promise<{ outcome: string }> => send("/api/push/test", "POST", {}),
+  /** Fire-and-forget (keepalive, so a closing tab still reports hidden). */
+  pushPresence: (tab: string, visible: boolean): void => {
+    void fetch(`${base()}/api/push/presence`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tab, visible }),
+      keepalive: true,
+    }).catch(() => undefined);
+  },
   bindings: (): Promise<CredentialBinding[]> => getJson<CredentialBinding[]>("/api/vault/bindings"),
   bindingSave: (id: string, input: CredentialBindingInput): Promise<CredentialBinding> =>
     send<CredentialBinding>(`/api/vault/${encodeURIComponent(id)}/binding`, "PUT", input),
