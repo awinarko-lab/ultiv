@@ -10,7 +10,12 @@ import { Effect } from "effect";
 import { Type } from "typebox";
 import { definePlugin, toolCapability, type Plugin, type Tool } from "@ultiv/ext";
 import { defineTool } from "@ultiv/ext";
-import { titleOf, type TasksService } from "../tasks/tasks.ts";
+import {
+  MAX_RUNNING_TASKS,
+  runningCapMessage,
+  titleOf,
+  type TasksService,
+} from "../tasks/tasks.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 import { messageTool, tasksVisibleTo, textReply } from "./task-live.ts";
 
@@ -40,7 +45,7 @@ const REFUSE_NESTED =
   "refused: you are already running AS a background task — tasks cannot spawn sub-tasks (it " +
   "compounds cost). Do the work yourself in this conversation, or finish and let the parent decide.";
 
-const spawnTool = (tasks: TasksService): Tool =>
+const spawnTool = (tasks: TasksService, profiles: ProfilesService): Tool =>
   defineTool({
     name: "task_spawn",
     description:
@@ -57,6 +62,12 @@ const spawnTool = (tasks: TasksService): Tool =>
       if (await Effect.runPromise(tasks.isTaskConversation(spawning))) {
         return textReply(REFUSE_NESTED, true);
       }
+      const running = tasksVisibleTo(
+        profiles,
+        spawning,
+        await Effect.runPromise(tasks.list()),
+      ).filter((task) => task.status === "running");
+      if (running.length >= MAX_RUNNING_TASKS) return textReply(runningCapMessage(running), true);
       const task = await Effect.runPromise(
         tasks.spawn({
           sessionId: args.sessionId ?? "",
@@ -80,17 +91,26 @@ const statusTool = (tasks: TasksService): Tool =>
     name: "task_status",
     description:
       "One-shot status check for a background task by id. Tasks you spawned wake you with their " +
-      "result automatically — use this only for an on-demand check, never to poll in a loop.",
+      "result automatically — use this only for an on-demand check, never to poll in a loop. " +
+      "Shows its last few steps.",
     parameters: StatusParams,
     structuredOutputSchema: Type.Object({
       status: Type.String(),
+      title: Type.String(),
+      steps: Type.Array(Type.String()),
       result: Type.Union([Type.String(), Type.Null()]),
       error: Type.Union([Type.String(), Type.Null()]),
     }),
     execute: async (args) => {
       const task = await Effect.runPromise(tasks.get(args.id));
       if (task === undefined) return textReply(`unknown task: ${args.id}`, true);
-      const status = { status: task.status, result: task.result, error: task.error };
+      const status = {
+        status: task.status,
+        title: titleOf(task),
+        steps: await tasks.steps(args.id),
+        result: task.result,
+        error: task.error,
+      };
       return { ...textReply(JSON.stringify(status)), structuredOutput: status };
     },
   });
@@ -132,7 +152,7 @@ const listTool = (tasks: TasksService, profiles: ProfilesService): Tool =>
 
 /** The task tools in registry order. */
 export const taskTools = (tasks: TasksService, profiles: ProfilesService): readonly Tool[] => [
-  spawnTool(tasks),
+  spawnTool(tasks, profiles),
   statusTool(tasks),
   cancelTool(tasks),
   listTool(tasks, profiles),

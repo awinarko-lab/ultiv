@@ -1,6 +1,11 @@
 /** Task routes: spawn/status/list/remove/activity over the mind's tasks faculty. */
 import type { LiveState } from "@earendil-works/pi-durable";
-import { taskConversationKey } from "@ultiv/mind";
+import {
+  MAX_RUNNING_TASKS,
+  runningCapMessage,
+  taskConversationKey,
+  tasksVisibleTo,
+} from "@ultiv/mind";
 import { projectTranscript } from "@ultiv/mind";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { TranscriptEntry } from "@ultiv/contracts";
@@ -38,7 +43,16 @@ export async function taskRoutes(
   const { req, mind, path, json } = args;
   const method = req.method ?? "GET";
   if (path === "/api/tasks" && method === "GET") {
-    json(200, await Effect.runPromise(mind.tasks.list()));
+    const list = await Effect.runPromise(mind.tasks.list());
+    // Running tasks carry their latest step for the task pill (a few at most).
+    const withSteps = await Promise.all(
+      list.map(async (task) => {
+        if (task.status !== "running") return task;
+        const [last] = (await mind.tasks.steps(task.id, 1).catch(() => [])).slice(-1);
+        return last === undefined ? task : { ...task, lastStep: last };
+      }),
+    );
+    json(200, withSteps);
     return true;
   }
   if (path === "/api/tasks" && method === "POST") {
@@ -55,6 +69,17 @@ export async function taskRoutes(
             ),
           )) ?? null)
         : null;
+    if (spawnerConversationId !== null) {
+      const running = tasksVisibleTo(
+        mind.profiles,
+        spawnerConversationId,
+        await Effect.runPromise(mind.tasks.list()),
+      ).filter((task) => task.status === "running");
+      if (running.length >= MAX_RUNNING_TASKS) {
+        json(429, { error: runningCapMessage(running) });
+        return true;
+      }
+    }
     // The task runs AS the bot whose session spawned it (spawn binds it before
     // the first turn) — unscoped only when no session context was given.
     const task = await Effect.runPromise(

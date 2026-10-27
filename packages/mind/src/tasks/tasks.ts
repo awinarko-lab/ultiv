@@ -19,6 +19,7 @@ import { External } from "@ultiv/core";
 import type { TaskInfo, TaskList } from "@ultiv/contracts";
 import { Converse, type ConverseService } from "../converse/converse.ts";
 import { findTask, readTasks, taskConversationKey, updateTask, writeTasks } from "./store.ts";
+import { recentSteps } from "./steps.ts";
 import { owed, wakeParent } from "./wake.ts";
 
 export { TasksDoc, taskConversationKey, titleOf } from "./store.ts";
@@ -66,6 +67,8 @@ export interface TasksService {
    * reply). "not_running" when the task is unknown or already settled.
    */
   readonly message: (id: string, text: string) => Effect.Effect<"sent" | "not_running", External>;
+  /** A task's last few steps as plain lines, oldest first ([] when none). */
+  readonly steps: (id: string, count?: number) => Promise<string[]>;
   /** True when the conversation belongs to a background task: tasks cannot spawn sub-tasks. */
   readonly isTaskConversation: (conversationId: string) => Effect.Effect<boolean, External>;
   /**
@@ -78,6 +81,15 @@ export interface TasksService {
 export class Tasks extends Context.Service<Tasks, TasksService>()("ultiv/mind/Tasks") {}
 
 const TITLE_CHARS = 40;
+
+/** Running tasks one bot may have at once (env ULTIV_MAX_RUNNING_TASKS overrides). */
+export const MAX_RUNNING_TASKS = Math.max(1, Number(process.env.ULTIV_MAX_RUNNING_TASKS) || 3);
+
+/** The refusal a spawn over the cap gets, naming what is running. */
+export const runningCapMessage = (running: readonly TaskInfo[]): string =>
+  `You already have ${running.length} tasks running (the limit is ${MAX_RUNNING_TASKS}): ` +
+  `${running.map((task) => task.id).join(", ")}. Wait for one to finish, cancel one, or send ` +
+  "new instructions to one with task_message.";
 
 const RESUME_NOTE =
   "[resume] You were interrupted by a server restart. Continue the task from where the " +
@@ -295,6 +307,7 @@ export const tasksService = (converse: ConverseService): TasksService => {
     list: () => readTasks(converse),
     cancel: (id) => cancelTask(converse, id),
     message: messageTask(rt),
+    steps: (id, count) => recentSteps(converse, id, count),
     remove: (id) =>
       Effect.gen(function* () {
         const task = yield* findTask(converse, id);

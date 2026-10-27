@@ -38,3 +38,5 @@ export * from "./providers/gate.ts";
 export * from "./providers/kenari.ts";
 export * from "./providers/models.ts";
 export * from "./tasks/tasks.ts";
+export { recentSteps, stepLine } from "./tasks/steps.ts";
+export { tasksVisibleTo } from "./act/task-live.ts";

@@ -37,6 +37,8 @@ export const TaskInfoSchema = Type.Object({
   bot: Type.Optional(Type.Object({ owner: Type.String(), profileId: Type.String() })),
   /** Progress updates the task posted for the owner (notify_owner), oldest first. */
   updates: Type.Optional(Type.Array(TaskUpdateSchema)),
+  /** The latest step of a running task, as a plain line (list responses only, never stored). */
+  lastStep: Type.Optional(Type.String()),
 });
 
 export type TaskInfo = Static<typeof TaskInfoSchema>;
