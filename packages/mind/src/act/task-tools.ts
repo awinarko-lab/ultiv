@@ -16,7 +16,9 @@ import type { ProfilesService } from "../profiles/profiles.ts";
 
 const SpawnParams = Type.Object({
   prompt: Type.String({
-    description: "The full, self-contained instruction for the background task.",
+    description:
+      "The full, self-contained instruction for the background task: the goal, the steps " +
+      "and what to report back.",
   }),
   sessionId: Type.Optional(
     Type.String({ description: "App session to file the task under; optional." }),
@@ -53,9 +55,11 @@ const spawnTool = (tasks: TasksService, profiles: ProfilesService): Tool =>
     name: "task_spawn",
     description:
       "Start a background task: your own sub-agent turn, run in its own durable conversation. " +
-      "Use it for work that would hold this conversation open for minutes. After spawning, END " +
-      "YOUR TURN and tell the user what is running — you are woken automatically with the result " +
-      "as a new input when the task settles. Do NOT poll task_status in a loop.",
+      "Use it for work that would hold this conversation open for minutes (long research, batch " +
+      "jobs); do quick or back-and-forth steps inline. When you spawn, tell your owner in a " +
+      "sentence what is running and that you will report the result, then END YOUR TURN — " +
+      "you are woken automatically with the result as a new input when the task settles. Do " +
+      "NOT poll task_status in a loop.",
     parameters: SpawnParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), status: Type.String() }),
     execute: (args, api) => {
