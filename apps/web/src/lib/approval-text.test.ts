@@ -14,6 +14,16 @@ describe("describeTool", () => {
     });
   });
 
+  it("words the credential broker's cards", () => {
+    expect(describeTool("http_request")).toMatchObject({ risky: true });
+    expect(describeTool("http_request (first use of a credential)").action).toBe(
+      "use a saved credential on a site for the first time",
+    );
+    expect(hintOf({ method: "POST", url: "https://api.x.com/v1", credential: "Stripe" })).toBe(
+      "https://api.x.com/v1",
+    );
+  });
+
   it("falls back to the humanized name", () => {
     expect(describeTool("weatherLookup")).toMatchObject({
       action: "use weather lookup",

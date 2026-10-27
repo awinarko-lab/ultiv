@@ -7,7 +7,8 @@
  */
 import { Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { ProfileInfo, VaultItemInfo, VaultKind } from "@ultiv/contracts";
+import type { CredentialBinding, ProfileInfo, VaultItemInfo, VaultKind } from "@ultiv/contracts";
+import { BindingEditor } from "@/components/binding-editor";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,9 +17,48 @@ import { DevDetails } from "@/components/ui/dev-details";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ApiError, api } from "@/lib/api";
+import { bindingSummary } from "@/lib/binding-text";
 import { formatWhen } from "@/lib/format";
 
 const KINDS: VaultKind[] = ["login", "card", "key", "note", "contact"];
+/** Kinds the credential broker can spend (cards and contacts never). */
+const SPENDABLE = new Set<VaultKind>(["login", "key", "note"]);
+
+/** One item's "where it can be used" line, and its editor when open. */
+function BindingLine(props: {
+  item: VaultItemInfo;
+  binding: CredentialBinding | undefined;
+  profiles: ProfileInfo[];
+  editing: boolean;
+  setEditing: (open: boolean) => void;
+  reload: () => Promise<void>;
+}) {
+  const { item, binding } = props;
+  if (item.access !== "secret" || !SPENDABLE.has(item.kind)) return null;
+  if (props.editing) {
+    return (
+      <BindingEditor
+        itemId={item.id}
+        binding={binding}
+        profiles={props.profiles}
+        onDone={() => {
+          props.setEditing(false);
+          void props.reload();
+        }}
+      />
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="text-muted-foreground min-w-0 flex-1 truncate">
+        {binding === undefined ? "Not usable for web requests" : `Web: ${bindingSummary(binding)}`}
+      </span>
+      <Button variant="outline" size="sm" onClick={() => props.setEditing(true)}>
+        {binding === undefined ? "Allow web use" : "Edit web use"}
+      </Button>
+    </div>
+  );
+}
 
 /** The vault manager content — shared by the header dialog and the mobile view. */
 export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
@@ -31,6 +71,8 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
   const [fields, setFields] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bindings, setBindings] = useState<CredentialBinding[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -48,6 +90,7 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
         );
       }
       setLoadFailed(false);
+      setBindings(await api.bindings().catch(() => []));
     } catch (cause) {
       setLoadFailed(true);
       if (cause instanceof ApiError && cause.status === 503) setConfigured(false);
@@ -193,6 +236,14 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
                   </Button>
                 </ConfirmDialog>
               </div>
+              <BindingLine
+                item={item}
+                binding={bindings.find((binding) => binding.itemId === item.id)}
+                profiles={profiles}
+                editing={editing === item.id}
+                setEditing={(open) => setEditing(open ? item.id : null)}
+                reload={load}
+              />
             </div>
           ))
         )}

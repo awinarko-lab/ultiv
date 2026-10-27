@@ -24,6 +24,8 @@ const HINT_KEYS = [
 interface Known {
   action: string;
   risk: string;
+  /** Overrides the name-based guess. */
+  risky?: boolean;
 }
 
 /** The gated tools the server ships, in plain words. */
@@ -58,6 +60,16 @@ const KNOWN: Record<string, Known> = {
     risk: "Lower risk: you can pause or remove it under Routines.",
   },
   sensor_remove: { action: "remove a watch", risk: "Higher risk: the watch stops for good." },
+  http_request: {
+    action: "send a web request that can change something",
+    risk: "Higher risk: a POST/PUT/PATCH/DELETE can create, change or delete data on that site.",
+    risky: true,
+  },
+  "http_request (first use of a credential)": {
+    action: "use a saved credential on a site for the first time",
+    risk: "Approving lets it use that credential on this host from now on. The bot never sees the secret.",
+    risky: true,
+  },
 };
 
 /** "schedule_set" -> "schedule set"; camelCase too. */
@@ -78,7 +90,8 @@ export interface ApprovalText {
 export function describeTool(name: string): ApprovalText {
   const risky = RISKY_TOOL.test(name);
   const known = KNOWN[name];
-  if (known !== undefined) return { action: known.action, risky, risk: known.risk };
+  if (known !== undefined)
+    return { action: known.action, risky: known.risky ?? risky, risk: known.risk };
   return {
     action: `use ${humanize(name)}`,
     risky,

@@ -1,5 +1,7 @@
 import type {
   AuditEvent,
+  CredentialBinding,
+  CredentialBindingInput,
   CronJobInfo,
   MemoryRecord,
   ModelInfo,
@@ -181,6 +183,11 @@ export const api = {
   vaultCreate: (item: Record<string, unknown>): Promise<VaultItemInfo> =>
     send<VaultItemInfo>("/api/vault", "POST", item),
   vaultRemove: (id: string): Promise<boolean> => drop(`/api/vault/${encodeURIComponent(id)}`),
+  bindings: (): Promise<CredentialBinding[]> => getJson<CredentialBinding[]>("/api/vault/bindings"),
+  bindingSave: (id: string, input: CredentialBindingInput): Promise<CredentialBinding> =>
+    send<CredentialBinding>(`/api/vault/${encodeURIComponent(id)}/binding`, "PUT", input),
+  bindingRemove: (id: string): Promise<boolean> =>
+    drop(`/api/vault/${encodeURIComponent(id)}/binding`),
   models: (): Promise<ModelInfo[]> => getJson<ModelInfo[]>("/api/models"),
   create: (title: string | null, profileId?: string): Promise<{ id: string }> =>
     send<{ id: string }>("/api/sessions", "POST", {
