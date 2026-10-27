@@ -141,7 +141,14 @@ export const withApproval = <TParameters extends TSchema>(
       const note = approvals.noteFor(conversationId, api.callId);
       return {
         isError: true,
-        output: [{ type: "text", text: note ?? "denied by the user" }],
+        output: [
+          {
+            type: "text",
+            text:
+              note ??
+              "not approved (the owner denied it, stopped the turn, or did not answer in time) — do not retry; tell the owner what was not done",
+          },
+        ],
       };
     }
     return tool.execute(args, api, context);

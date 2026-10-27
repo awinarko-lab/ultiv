@@ -161,7 +161,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
           await Effect.runPromise(mind.converse.interrupt(chat));
           // Release whatever still waits on the aborted turn — a stopped turn
           // must not leave approval cards hanging (each waiter is denied, the
-          // gated tool unwinds with "denied by the user").
+          // gated tool unwinds with the broker's "not approved" note).
           const id = await conversationId;
           for (const request of mind.approvals.pendingFor(id)) {
             mind.approvals.decide(id, request.callId, false);
