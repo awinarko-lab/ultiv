@@ -20,7 +20,11 @@ import type { ConverseService } from "../converse/converse.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 import { ensureMigrated } from "./migrate.ts";
 import {
+  ArchiveDoc,
+  CoreDoc,
+  EpisodesDoc,
   FactsDoc,
+  GraphDoc,
   LIMITS,
   MemoryDoc,
   flags,
@@ -29,6 +33,7 @@ import {
   ownerKey,
   profileKey,
 } from "./model.ts";
+import { recall, type RecallResult } from "./recall.ts";
 
 const run = <A>(effect: Effect.Effect<A, unknown>): Promise<A> =>
   Effect.runPromise(effect) as Promise<A>;
@@ -62,6 +67,21 @@ export interface MemoryService {
    * the v2 seam's first access — so callers stay on one code path.
    */
   readonly readFacts: (owner: string, profileId: string | null) => Promise<readonly MemoryFact[]>;
+  /**
+   * v2 ranked recall over own + owner facts (never a sibling's). Empty query
+   * returns the top facts by importance × recency; history stays behind
+   * `includeHistory`.
+   */
+  readonly recallV2: (
+    owner: string,
+    profileId: string,
+    opts?: {
+      readonly query?: string;
+      readonly includeHistory?: boolean;
+      readonly limit?: number;
+      readonly budgetTokens?: number;
+    },
+  ) => Promise<RecallResult>;
 }
 
 export const memoryService = (deps: {
@@ -186,6 +206,21 @@ export const memoryService = (deps: {
       return record;
     },
     recallFor: async (owner, profileId, query) => {
+      if (flags.v2()) {
+        const ranked = await service.recallV2(
+          owner,
+          profileId,
+          query !== undefined ? { query } : {},
+        );
+        return ranked.facts.map((fact) => ({
+          id: fact.id,
+          scope: fact.scope,
+          profile: fact.profile,
+          text: fact.text,
+          tags: fact.tags,
+          at: fact.createdAt,
+        }));
+      }
       const [own, ownerStore] = await Promise.all([
         readStore(profileKey(owner, profileId)),
         readStore(ownerKey(owner)),
@@ -208,11 +243,30 @@ export const memoryService = (deps: {
         : profileId !== undefined
           ? readStore(profileKey(owner, profileId)).then((records) => records.slice(-500).reverse())
           : Promise.resolve([]),
-    removeProfile: (owner, profileId) =>
-      readStore(profileKey(owner, profileId)).then(async (records) => {
-        await writeStore(profileKey(owner, profileId), []);
-        return records.length;
-      }),
+    removeProfile: async (owner, profileId) => {
+      const records = await readStore(profileKey(owner, profileId));
+      await writeStore(profileKey(owner, profileId), []);
+      // v2 tiers clear with the store (purge cascade); the v1 doc too.
+      await run(
+        converse.docs.commit(async (tx) => {
+          const facts = await tx.doc(FactsDoc, profileKey(owner, profileId), {
+            facts: [],
+            migratedAt: null,
+          });
+          facts.facts = [];
+          facts.migratedAt = null;
+          const graph = await tx.doc(GraphDoc, profileKey(owner, profileId), { entities: [] });
+          graph.entities = [];
+          const episodes = await tx.doc(EpisodesDoc, profileKey(owner, profileId), {
+            episodes: [],
+          });
+          episodes.episodes = [];
+          const core = await tx.doc(CoreDoc, profileKey(owner, profileId), { lines: [] });
+          core.lines = [];
+        }),
+      );
+      return records.length;
+    },
     remove: async (owner, profileId, recordId) => {
       const key = profileKey(owner, profileId);
       const records = await readStore(key);
@@ -226,6 +280,32 @@ export const memoryService = (deps: {
       await ensureMigrated(deps, owner, profileId);
       const key = profileId === null ? ownerKey(owner) : profileKey(owner, profileId);
       return run(converse.docs.snapshotKeyed(FactsDoc, key)).then((store) => store?.facts ?? []);
+    },
+    recallV2: async (owner, profileId, opts = {}) => {
+      // An entity recalls its own store plus the owner store — never a sibling's.
+      const [own, ownerStore, entities] = await Promise.all([
+        service.readFacts(owner, profileId),
+        service.readFacts(owner, null),
+        run(converse.docs.snapshotKeyed(GraphDoc, profileKey(owner, profileId))).then(
+          (store) => store?.entities ?? [],
+        ),
+      ]);
+      const rankOne = (facts: readonly MemoryFact[]) =>
+        recall({
+          facts,
+          entities,
+          ...(opts.query !== undefined ? { query: opts.query } : {}),
+          ...(opts.includeHistory !== undefined ? { includeHistory: opts.includeHistory } : {}),
+          ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+          ...(opts.budgetTokens !== undefined ? { budgetTokens: opts.budgetTokens } : {}),
+        });
+      const merged = [rankOne(own), rankOne(ownerStore)];
+      return {
+        core: [],
+        facts: merged.flatMap((entry) => entry.facts).slice(0, opts.limit ?? 10),
+        lines: merged.flatMap((entry) => entry.lines),
+        tokens: merged.reduce((sum, entry) => sum + entry.tokens, 0),
+      };
     },
   };
   return service;
