@@ -15,10 +15,13 @@
 import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
 import { InvalidInput, NotFound } from "@ultiv/core";
-import type { FactTrust, MemoryFact, MemoryRecord } from "@ultiv/contracts";
+import type { FactKind, FactTrust, MemoryFact, MemoryRecord } from "@ultiv/contracts";
 import type { ConverseService } from "../converse/converse.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
+import type { DecideService } from "../decide/decide.ts";
+import type { GenerateService } from "../generate/generate.ts";
 import { ensureMigrated } from "./migrate.ts";
+import { writeFactV2, type WriteFactResult } from "./consolidate.ts";
 import {
   ArchiveDoc,
   CoreDoc,
@@ -86,11 +89,35 @@ export interface MemoryService {
       readonly budgetTokens?: number;
     },
   ) => Promise<RecallResult>;
+  /**
+   * v2 consolidating write: extract → resolve → decide → apply in one
+   * transaction (supersede/refine keep history), mirrored to v1. The tool
+   * surface; `write` above stays the plain append for REST/v1.
+   */
+  readonly writeV2: (input: {
+    readonly owner: string;
+    readonly profileId: string | null;
+    readonly scope: "profile" | "owner";
+    readonly writer: string | null;
+    readonly text: string;
+    readonly tags?: readonly string[];
+    readonly kind?: FactKind;
+    readonly importance?: number;
+    readonly basis?: "owner_said" | "observed" | "inferred";
+    readonly replaces?: string | null;
+    readonly validFrom?: number | null;
+    readonly trust?: FactTrust;
+    readonly origin?: string;
+    readonly conversation?: string | null;
+  }) => Promise<WriteFactResult>;
 }
 
 export const memoryService = (deps: {
   readonly converse: ConverseService;
   readonly profiles: ProfilesService;
+  /** The extraction/decision models; absent ⇒ deterministic fallbacks. */
+  readonly generate?: GenerateService;
+  readonly decide?: DecideService;
 }): MemoryService => {
   const { converse, profiles } = deps;
 
@@ -327,6 +354,11 @@ export const memoryService = (deps: {
         lines: merged.flatMap((entry) => entry.lines),
         tokens: merged.reduce((sum, entry) => sum + entry.tokens, 0),
       };
+    },
+    writeV2: async (input) => {
+      if (input.scope === "owner") await requireKeeper(input.owner, input.writer);
+      await ensureMigrated(deps, input.owner, input.profileId);
+      return writeFactV2(deps, (owner, profileId) => service.readFacts(owner, profileId), input);
     },
   };
   return service;

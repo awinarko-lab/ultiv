@@ -57,7 +57,9 @@ describe("content checks", () => {
   it("refuses API keys, JWTs, private keys, cards, NIK and OTPs", () => {
     expect(checkContent("my key is sk-abcdefghijklmnopqrstuvwx").ok).toBe(false);
     expect(
-      checkContent("token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c").ok,
+      checkContent(
+        "token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c",
+      ).ok,
     ).toBe(false);
     expect(checkContent("-----BEGIN RSA PRIVATE KEY-----").ok).toBe(false);
     expect(checkContent("card 4532015112830366 for billing").ok).toBe(false);

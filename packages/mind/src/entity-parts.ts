@@ -34,6 +34,7 @@ import { kvService, type KvService } from "./state/kv.ts";
 import { stateTools } from "./state/tools.ts";
 import { sensorsService, type SensorsService } from "./sensors/sensors.ts";
 import { sensorTools } from "./sensors/tools.ts";
+import type { GenerateService } from "./generate/generate.ts";
 import type { DecideService } from "./decide/decide.ts";
 
 /** The services whose tools ride the pi-durable registry as late installs. */
@@ -194,8 +195,13 @@ export const routineServices = (
   converse: ConverseService,
   profiles: ProfilesService,
   onSchedulesChanged: (() => Promise<void>) | undefined,
+  models: {
+    /** The extraction/decision models for the memory v2 write pipeline. */
+    readonly generate?: GenerateService;
+    readonly decide?: DecideService;
+  } = {},
 ) => ({
-  memory: memoryService({ converse, profiles }),
+  memory: memoryService({ converse, profiles, ...models }),
   history: historyService({ converse, profiles }),
   schedules: schedulesService({
     converse,

@@ -222,7 +222,10 @@ const mindLayerRaw = (
       void mailbox.recover().catch((cause) => console.error("mailbox recovery failed:", cause));
       // Tasks run as their bot: bind (and resume) only once the index exists.
       void tasks.attach(profiles.bindTask);
-      const routines = routineServices(converse, profiles, wiring.onSchedulesChanged);
+      const routines = routineServices(converse, profiles, wiring.onSchedulesChanged, {
+        generate,
+        decide,
+      });
       wirePolicies(wiring.holder, approvals, audit, profiles);
       // Everything rides one pi-durable registry; late installs are legal —
       // the harness reconsiders its tools as the registry changes.

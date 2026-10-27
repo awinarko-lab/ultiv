@@ -10,6 +10,7 @@ import type { AuditService } from "../audit/audit.ts";
 import type { ConverseService } from "../converse/converse.ts";
 import type { MemoryService } from "./memory.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
+import { flags } from "./model.ts";
 import {
   appearsInOwnerInput,
   checkContent,
@@ -28,6 +29,32 @@ const WriteParams = Type.Object({
         '"profile" (default): your own memory. "owner": the user\'s cross-profile store — ' +
         "only allowed if you are the designated memory keeper.",
     }),
+  ),
+  kind: Type.Optional(
+    Type.Union(
+      [
+        Type.Literal("fact"),
+        Type.Literal("preference"),
+        Type.Literal("instruction"),
+        Type.Literal("event"),
+        Type.Literal("note"),
+      ],
+      { description: "The fact's kind; note (default) fits most writes." },
+    ),
+  ),
+  importance: Type.Optional(
+    Type.Number({ description: "1–5; 3 by default. Use 5 sparingly (identity, standing rules)." }),
+  ),
+  basis: Type.Optional(
+    Type.Union([Type.Literal("owner_said"), Type.Literal("observed"), Type.Literal("inferred")], {
+      description: "How you know it: owner_said (highest confidence), observed, inferred.",
+    }),
+  ),
+  replaces: Type.Optional(
+    Type.String({ description: "Id of an outdated fact this one corrects — never duplicate." }),
+  ),
+  validFrom: Type.Optional(
+    Type.Number({ description: "World-time (WIB ms) the fact became true; defaults to now." }),
   ),
 });
 
@@ -101,27 +128,48 @@ const writeTool = (
             : requestedScope === "owner"
               ? trustFor("owner", policy)
               : trustFor("self", policy);
-        return memory
-          .write({
-            owner: scope.owner,
-            writer: scope.profileId,
-            scope: requestedScope,
-            profileId: scope.profileId,
-            text: args.text,
-            ...(args.tags !== undefined ? { tags: args.tags } : {}),
-            ...(trust !== undefined ? { trust } : {}),
-            ...(context !== null ? { origin: context.origin } : {}),
-            ...(context !== null ? { conversation: String(api.conversationId) } : {}),
-          })
-          .then((record) => ({
-            output: [
-              {
-                type: "text" as const,
-                text: `remembered (${record.scope}${trust !== undefined ? `, trust: ${trust}` : ""}): ${record.text.slice(0, 120)}`,
-              },
-            ],
-            structuredOutput: { id: record.id, scope: record.scope },
-          }));
+        const guardVerdicts = {
+          ...(trust !== undefined ? { trust } : {}),
+          ...(context !== null ? { origin: context.origin } : {}),
+          ...(context !== null ? { conversation: String(api.conversationId) } : {}),
+        };
+        const writeInput = {
+          owner: scope.owner,
+          writer: scope.profileId,
+          scope: requestedScope,
+          profileId: scope.profileId,
+          text: args.text,
+          ...(args.tags !== undefined ? { tags: args.tags } : {}),
+          ...guardVerdicts,
+        };
+        const structured = (id: string, scope: string, op?: string, replaced?: string | null) => ({
+          output: [
+            {
+              type: "text" as const,
+              text:
+                op === undefined
+                  ? `remembered (${scope}${trust !== undefined ? `, trust: ${trust}` : ""}): ${args.text.slice(0, 120)}`
+                  : `remembered (${op}${replaced != null ? `, replaced ${replaced.slice(0, 8)}…` : ""}): ${args.text.slice(0, 120)}`,
+            },
+          ],
+          structuredOutput: { id, scope },
+        });
+        const v2 = flags.v2();
+        const result = v2
+          ? await memory.writeV2({
+              ...writeInput,
+              ...(args.kind !== undefined ? { kind: args.kind } : {}),
+              ...(args.importance !== undefined ? { importance: args.importance } : {}),
+              ...(args.basis !== undefined ? { basis: args.basis } : {}),
+              ...(args.replaces !== undefined ? { replaces: args.replaces } : {}),
+              ...(args.validFrom !== undefined ? { validFrom: args.validFrom } : {}),
+            })
+          : null;
+        if (result !== null) {
+          return structured(result.id, requestedScope, result.op, result.replaced);
+        }
+        const record = await memory.write(writeInput);
+        return structured(record.id, record.scope);
       };
       return run().catch((cause: unknown) =>
         refuse(`refused: ${(cause as { reason?: string }).reason ?? String(cause)}`),

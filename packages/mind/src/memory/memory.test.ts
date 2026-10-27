@@ -100,4 +100,49 @@ describe("Memory seam (offline, MemoryStorage)", () => {
     delete process.env.ULTIV_MEMORY_V2;
     await handle.close();
   });
+
+  it("consolidates v2 writes: dedupe, supersede with history, mirror", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const { memory, profiles } = handle.mind;
+    const bot = await profiles.create("harry", { name: "Consolidator" });
+    const first = await memory.writeV2({
+      owner: "harry",
+      profileId: bot.id,
+      scope: "profile",
+      writer: bot.id,
+      text: "harry lives in bandung",
+      tags: ["home"],
+    });
+    expect(first.op).toBe("add");
+    // A reworded duplicate collapses onto the existing fact (noop).
+    const dup = await memory.writeV2({
+      owner: "harry",
+      profileId: bot.id,
+      scope: "profile",
+      writer: bot.id,
+      text: "Harry lives in Bandung!",
+    });
+    expect(dup.op).toBe("noop");
+    expect(dup.id).toBe(first.id);
+    // An explicit correction supersedes; the old version stays as history.
+    const moved = await memory.writeV2({
+      owner: "harry",
+      profileId: bot.id,
+      scope: "profile",
+      writer: bot.id,
+      text: "harry moved to surabaya last month",
+      replaces: first.id,
+    });
+    expect(moved.op).toBe("supersede");
+    expect(moved.replaced).toBe(first.id);
+    const facts = await memory.readFacts("harry", bot.id);
+    expect(facts.length).toBe(2);
+    const old = facts.find((fact) => fact.id === first.id);
+    expect(old?.status).toBe("superseded");
+    expect(old?.supersededBy).toBe(moved.id);
+    // The mirror saw both new facts.
+    const v1 = await memory.read("harry", "profile", bot.id);
+    expect(v1.length).toBe(2);
+    await handle.close();
+  });
 });
