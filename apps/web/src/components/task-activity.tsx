@@ -6,8 +6,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { TaskInfo } from "@ultiv/contracts";
+import { ApprovalCard } from "@/components/approval-card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { api, type ArtifactRow, type TaskActivity } from "@/lib/api";
 import { formatWhen } from "@/lib/format";
@@ -61,12 +61,9 @@ export function TaskActivityDialog({
     const conversationId = activity?.conversationId;
     const callId = activity?.waiting?.callId;
     if (conversationId === null || conversationId === undefined || callId === undefined) return;
-    try {
-      await api.approvalDecide(conversationId, callId, approved, always, takeover);
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
+    // A failure throws into the card, which keeps it visible for a retry.
+    await api.approvalDecide(conversationId, callId, approved, always, takeover);
+    await load();
   };
 
   return (
@@ -80,32 +77,13 @@ export function TaskActivityDialog({
         {error !== null && <p className="text-destructive mt-2 text-sm">{error}</p>}
 
         {activity?.waiting !== null && activity?.waiting !== undefined && (
-          <div className="border-destructive mt-3 rounded-md border px-3 py-2">
-            <p className="text-destructive text-xs font-semibold uppercase">
-              Waiting for you — {activity.waiting.name}
-            </p>
-            <pre className="text-muted-foreground mt-1 max-h-24 overflow-y-auto text-xs whitespace-pre-wrap">
-              {JSON.stringify(activity.waiting.input, null, 2)}
-            </pre>
-            <div className="mt-2 flex flex-wrap justify-end gap-2">
-              <Button
-                size="xs"
-                variant="ghost"
-                className="text-destructive"
-                onClick={() => void decide(false, undefined, true)}
-              >
-                Take over
-              </Button>
-              <Button size="xs" variant="outline" onClick={() => void decide(false)}>
-                Deny
-              </Button>
-              <Button size="xs" variant="secondary" onClick={() => void decide(true, true)}>
-                Always allow
-              </Button>
-              <Button size="xs" onClick={() => void decide(true)}>
-                Approve
-              </Button>
-            </div>
+          <div className="mt-3">
+            <ApprovalCard
+              name={activity.waiting.name}
+              input={activity.waiting.input}
+              who="This task"
+              onDecide={decide}
+            />
           </div>
         )}
 

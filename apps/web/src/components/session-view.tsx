@@ -155,8 +155,19 @@ export function SessionView({
               <EmptyChat bot={bot} onPick={setDraft} />
             )}
             <TranscriptItems transcript={transcript} />
-            {(busy || pending !== null) && (
-              <StatusRow bot={bot} transcript={transcript} pending={pending} />
+            {pending !== null ? (
+              <li>
+                <ApprovalCard
+                  name={pending.name}
+                  input={pending.input}
+                  who={bot?.name}
+                  onDecide={(approved, always, takeover) =>
+                    onDecide(pending.callId, approved, always, takeover)
+                  }
+                />
+              </li>
+            ) : (
+              busy && <StatusRow bot={bot} transcript={transcript} pending={pending} />
             )}
           </ul>
         </ScrollArea>
@@ -187,7 +198,6 @@ export function SessionView({
         {controlError !== null && (
           <p className={floatingError}>Couldn't apply that: {controlError}</p>
         )}
-        {pending !== null && <ApprovalCard pending={pending} onDecide={onDecide} />}
         <Composer
           botName={bot?.name}
           live={link === "live"}
