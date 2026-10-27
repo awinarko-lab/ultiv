@@ -357,7 +357,12 @@ export const converseLayer = (
           "open harness",
           Harness.open(
             resolvedStorage,
-            { models, registry: piRegistry, settings: { compaction: kenariCompaction() } },
+            {
+              models,
+              registry: piRegistry,
+              // Every steer queued during a step lands at the next boundary together.
+              settings: { compaction: kenariCompaction(), steeringMode: "all" },
+            },
             BACKGROUND_CONTEXT,
           ),
         ),

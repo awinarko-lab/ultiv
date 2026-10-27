@@ -108,11 +108,16 @@ export const PhaseSchema = Type.Union([
 
 export type Phase = Static<typeof PhaseSchema>;
 
+/** How an owner message sent mid-turn is delivered. */
+export const WhenBusySchema = Type.Union([Type.Literal("steer"), Type.Literal("followUp")]);
+
+export type WhenBusy = Static<typeof WhenBusySchema>;
+
 export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 9,
+  version: 10,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {
@@ -134,6 +139,11 @@ export const Session = remote("ultiv.session", {
             text: Type.String(),
             /** Artifact ids to attach; each rides into the prompt as a reference the agent can read. */
             attachments: Type.Optional(Type.Array(Type.String())),
+            /**
+             * While the bot works: join the running turn at its next step (steer,
+             * the default) or wait until the turn finishes (followUp).
+             */
+            whenBusy: Type.Optional(WhenBusySchema),
           }),
         ),
         /** Stop the running turn: withdraw queued inputs, abort, go idle. */

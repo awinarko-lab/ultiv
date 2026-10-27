@@ -12,6 +12,7 @@ export {
   ToolStepSchema,
   TranscriptEntrySchema,
   TranscriptSchema,
+  WhenBusySchema,
 } from "./session.ts";
 export type {
   ModelInfo,
@@ -21,6 +22,7 @@ export type {
   Phase,
   ToolStep,
   TranscriptEntry,
+  WhenBusy,
 } from "./session.ts";
 export {
   ModelListSchema,

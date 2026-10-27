@@ -1,12 +1,6 @@
-import type { Cell, Host } from "@earendil-works/chord";
-import { invalid, isChordError } from "@earendil-works/chord";
+import type { Host } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type {
-  Conversation,
-  ConversationView,
-  LiveState,
-  Submission,
-} from "@earendil-works/pi-durable";
+import type { ConversationView, LiveState } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
 import { artifactsDir, readArtifact } from "@ultiv/ext";
 import {
@@ -19,42 +13,15 @@ import {
   PhaseSchema,
   TranscriptSchema,
   UsageSummarySchema,
-  type PendingApproval,
-  type Phase,
   type ThinkingLevel,
-  type TranscriptEntry,
-  type UsageSummary,
 } from "@ultiv/contracts";
 import { projectTranscript, usageOf, type MindService } from "@ultiv/mind";
 import { ownerOf, type Principal } from "./identity.ts";
-
-type SessionCells = {
-  transcript: Cell<TranscriptEntry[]>;
-  phase: Cell<Phase>;
-  lastError: Cell<string | null>;
-  pending: Cell<PendingApproval>;
-  usage: Cell<UsageSummary>;
-  model: Cell<string | null>;
-  effort: Cell<ThinkingLevel | null>;
-  conversationId: Cell<string | null>;
-};
+import { InFlight, safeChange, settle, type SessionCells } from "./session-turns.ts";
 
 /** The `pi.live` conversation doc from a structural view, typed. */
 function liveOf(view: ConversationView): LiveState | undefined {
   return view.docs["pi.live"] as LiveState | undefined;
-}
-
-/** Cell write that survives object disposal: background turns may outlive the last reference. */
-function safeChange<T>(
-  cell: Cell<T>,
-  ctx: Parameters<Cell<T>["change"]>[0],
-  fn: Parameters<Cell<T>["change"]>[1],
-): void {
-  try {
-    cell.change(ctx, fn);
-  } catch (error) {
-    console.warn("cell write skipped:", isChordError(error) ? error.code : error);
-  }
 }
 
 /** Registers per-session Session objects: state is a live projection of the durable transcript. */
@@ -93,6 +60,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
       // Live replay: every committed publication of the durable transcript re-projects the
       // cell, whoever wrote it (this object's turns, tasks, tools, future code).
       const conversationId = conversation.then((chat) => String(chat.id));
+      const inFlight = new InFlight();
       let lastView: ConversationView | undefined;
       self.task(async (ctx) => {
         const chat = await conversation;
@@ -211,10 +179,10 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
           safeChange(cells.pending, ctx, () => mind.approvals.pendingFor(id)[0] ?? null);
           return { ok: true };
         },
-        input: async ({ text, attachments }, ctx) => {
-          if (cells.phase.value === "working") {
-            throw invalid("busy", "the agent is already working");
-          }
+        input: async ({ text, attachments, whenBusy }, ctx) => {
+          // Mid-turn sends are welcome: by default they steer the running turn
+          // at its next step; `followUp` waits until the turn finishes.
+          inFlight.start();
           cells.phase.change(ctx, () => "working");
           cells.lastError.change(ctx, () => null);
           try {
@@ -223,9 +191,23 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
             const chat = await conversation;
             const content =
               attachments === undefined ? text : await withAttachments(text, attachments);
-            const submission = await Effect.runPromise(mind.converse.submit(chat, content));
-            settle(host, mind, chat, submission, owner, input.id, cells, text);
+            const submission = await Effect.runPromise(
+              mind.converse.submit(chat, content, whenBusy ?? "steer"),
+            );
+            const sessionId = input.id;
+            settle({
+              host,
+              mind,
+              conversation: chat,
+              submission,
+              owner,
+              sessionId,
+              cells,
+              inFlight,
+              text,
+            });
           } catch (error) {
+            inFlight.finish();
             console.error("input failed:", error);
             safeChange(cells.lastError, ctx, () => String(error));
             safeChange(cells.phase, ctx, () => "error");
@@ -238,38 +220,6 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
     // navigation mid-turn does not dispose it out from under the background turn.
     { linger: 60_000 },
   );
-}
-
-/** Settles an admitted submission in the background; the transcript projection picks up the turn. */
-function settle(
-  host: Host<Principal>,
-  mind: MindService,
-  conversation: Conversation,
-  submission: Submission,
-  owner: string,
-  sessionId: string,
-  cells: SessionCells,
-  text: string,
-): void {
-  void host.root(async (ctx) => {
-    try {
-      const result = await Effect.runPromise(mind.converse.settle(conversation, submission));
-      if (result.text.trim() !== "") {
-        await mind.profiles.touchSession(owner, sessionId, { at: Date.now(), titleSeed: text });
-      }
-      safeChange(cells.phase, ctx, () => "idle");
-    } catch (error) {
-      // A user stop is not an error: the abort surfaces as an unanswered
-      // submission and the phase is already idle.
-      if (!String(error).includes("abort")) {
-        console.error("agent turn failed:", error);
-        safeChange(cells.lastError, ctx, () => String(error));
-        safeChange(cells.phase, ctx, () => "error");
-      } else {
-        safeChange(cells.phase, ctx, () => "idle");
-      }
-    }
-  });
 }
 
 /** The attachment block an input carries: one reference line per artifact id. */
