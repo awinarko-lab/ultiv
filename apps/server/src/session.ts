@@ -17,7 +17,7 @@ import {
   UsageSummarySchema,
   type ThinkingLevel,
 } from "@ultiv/contracts";
-import { projectTranscript, usageOf, type MindService } from "@ultiv/mind";
+import { projectTranscript, stopTurn, usageOf, type MindService } from "@ultiv/mind";
 import { ownerOf, type Principal } from "./identity.ts";
 import {
   InFlight,
@@ -146,15 +146,8 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
           return { ok: true };
         },
         interrupt: async (_input, ctx) => {
-          const chat = await conversation;
-          await Effect.runPromise(mind.converse.interrupt(chat));
-          // Release whatever still waits on the aborted turn — a stopped turn
-          // must not leave approval cards hanging (each waiter is denied, the
-          // gated tool unwinds with the broker's "not approved" note).
-          const id = await conversationId;
-          for (const request of mind.approvals.pendingFor(id)) {
-            mind.approvals.decide(id, request.callId, false);
-          }
+          // Withdraw the queue, abort the turn, deny every waiting approval card.
+          await stopTurn(mind.converse, mind.approvals, await conversation);
           safeChange(cells.pending, ctx, () => null);
           safeChange(cells.queued, ctx, () => []);
           safeChange(cells.phase, ctx, () => "idle");

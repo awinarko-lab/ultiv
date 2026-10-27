@@ -239,15 +239,15 @@ export const converseService = (harness: Harness, agent: AgentChange): ConverseS
       try: () => conversation.abort(BACKGROUND_CONTEXT),
       catch: (cause) => new External({ op: "conversation abort", cause }),
     }),
-  withdraw: (conversation, submissionId) =>
-    asEffect(
+  withdraw: (conversation, submissionId) => {
+    // Submission ids are numbers on the wire as strings (as the inbox mirror sends them).
+    const numeric = Number(submissionId);
+    const id = (Number.isSafeInteger(numeric) ? numeric : submissionId) as unknown as SubmissionId;
+    return asEffect(
       "submission withdraw",
-      harness.abortSubmission(
-        submissionId as unknown as SubmissionId,
-        BACKGROUND_CONTEXT,
-        conversation.id,
-      ),
-    ),
+      harness.abortSubmission(id, BACKGROUND_CONTEXT, conversation.id),
+    );
+  },
   conversationIdOf: (key) =>
     Effect.map(
       asEffect("session map read", harness.snapshot(SessionMapDoc, key, BACKGROUND_CONTEXT)),

@@ -22,7 +22,7 @@ import type {
   TranscriptEntry,
   UsageSummary,
 } from "@ultiv/contracts";
-import type { MindService } from "@ultiv/mind";
+import { isStopped, type MindService } from "@ultiv/mind";
 import type { Principal } from "./identity.ts";
 
 export type SessionCells = {
@@ -62,9 +62,6 @@ export class InFlight {
     return this.#count === 0;
   }
 }
-
-/** A stop or a withdrawal settles the input unanswered with reason "aborted". */
-export const isStopped = (error: unknown): boolean => String(error).includes("abort");
 
 export type SettleArgs = {
   readonly host: Host<Principal>;
