@@ -199,6 +199,8 @@ const mindLayerRaw = (
         audit,
         ...(wiring.grantArtifacts !== undefined ? { grantArtifacts: wiring.grantArtifacts } : {}),
       });
+      // Messages a crash interrupted are redelivered (idempotently) on boot.
+      void mailbox.recover().catch((cause) => console.error("mailbox recovery failed:", cause));
       const memory = memoryService({ converse, profiles });
       const history = historyService({ converse, profiles });
       const schedules = schedulesService({

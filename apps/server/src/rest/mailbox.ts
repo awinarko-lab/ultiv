@@ -12,6 +12,15 @@ export async function mailboxRoutes(args: RouteArgs): Promise<boolean> {
     json(200, await mind.mailbox.dead(args.owner));
     return true;
   }
+  const cancel = path.match(/^\/api\/mailbox\/([^/]+)\/cancel$/);
+  if (cancel !== null && method === "POST") {
+    try {
+      json(200, await mind.mailbox.cancel(args.owner, decodeURIComponent(cancel[1] ?? "")));
+    } catch (cause) {
+      json(404, { error: errorOf(cause) });
+    }
+    return true;
+  }
   const send = path.match(/^\/api\/profiles\/([^/]+)\/messages$/);
   if (send !== null && method === "POST") {
     const profile = await mind.profiles.get(args.owner, send[1] ?? "");

@@ -37,6 +37,10 @@ export const MailboxEntrySchema = Type.Object({
     Type.Literal("replied"),
     Type.Literal("failed"),
     Type.Literal("dead"),
+    /** No reply before the deadline; the sender was told. */
+    Type.Literal("expired"),
+    /** The owner cancelled it before the recipient started on it. */
+    Type.Literal("cancelled"),
   ]),
   /** Settled turn attempts so far (re-delivery on failure, capped). */
   retries: Type.Number(),
@@ -60,6 +64,14 @@ export const MailboxEntrySchema = Type.Object({
    * started there, otherwise the bot's main thread.
    */
   originConversation: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  /** Epoch ms after which a still-pending message expires and the sender is told. */
+  deadlineAt: Type.Optional(Type.Number()),
+  /** The conversation the envelope was delivered into (fixed after the first attempt). */
+  endpoint: Type.Optional(Type.String()),
+  /** The durable submission of the latest attempt, so it can be withdrawn. */
+  submissionId: Type.Optional(Type.String()),
+  /** false = a finish signal or NACK is still owed to the sender (re-sent on boot). */
+  senderNotified: Type.Optional(Type.Boolean()),
 });
 
 export type MailboxEntry = Static<typeof MailboxEntrySchema>;
