@@ -29,7 +29,7 @@ import {
   titleFor,
 } from "./docs.ts";
 import type { ConversationScope } from "./docs.ts";
-import { PROFILE_LIMITS, mainConversationOf, patchedProfile, validatePatch } from "./update.ts";
+import { PROFILE_LIMITS, patchedProfile, refreshCopies, validatePatch } from "./update.ts";
 
 export {
   MAIN_PREFIX,
@@ -310,9 +310,8 @@ export const profilesService = (deps: {
           profiles.map((row) => (row.id === id && row.owner === owner ? next : row)),
         ),
       );
-      // Only the main chat picks the edit up from its next turn (see update.ts).
-      const main = await mainConversationOf(converse, keyOfRowImpl, owner, id);
-      if (main !== undefined) profileByConversation.set(main, next);
+      // Every chat of the bot picks the edit up from its next turn.
+      refreshCopies(profileByConversation, next);
       return next;
     },
     setArchived: (owner, id, archived) =>

@@ -100,9 +100,8 @@ function SaveRow({ busy, unnamed }: { busy: boolean; unnamed: boolean }) {
         </span>
       </div>
       <p className="text-muted-foreground text-xs">
-        A new bot introduces itself in its main chat. Role and personality changes apply to its main
-        chat from the next message; other chats keep the version they started with. Model changes
-        apply to all of its chats.
+        A new bot introduces itself in its main chat. Changes to the role, personality and model
+        apply to all of this bot's chats from the next message.
       </p>
     </>
   );

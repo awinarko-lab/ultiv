@@ -47,7 +47,7 @@ describe("Profiles (offline, MemoryStorage)", () => {
     await handle.close();
   });
 
-  it("an edit reaches the main chat only; other sessions keep their copy", async () => {
+  it("an edit reaches every chat of the bot, clamps, and clears", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });
     const { profiles } = handle.mind;
     const bot = await profiles.create("harry", {
@@ -64,20 +64,23 @@ describe("Profiles (offline, MemoryStorage)", () => {
       );
     const main = await cidOf(await profiles.ensureMain("harry", bot.id));
     const other = await cidOf(await profiles.createSession("harry", bot.id, "side"));
+    // A reset leaves the old main listed as a session; it is refreshed too.
+    const fresh = await cidOf(await profiles.resetMain("harry", bot.id));
 
     const long = "x".repeat(9_000);
     const updated = await profiles.update("harry", bot.id, { persona: long });
     expect(updated.persona.length).toBe(8_000);
     expect(profiles.profileOf(main)?.persona).toBe(updated.persona);
-    // Other sessions keep the snapshot they were registered with.
-    expect(profiles.profileOf(other)?.persona).toBe("Old persona.");
+    // Other sessions pick the edit up too.
+    expect(profiles.profileOf(other)?.persona).toBe(updated.persona);
+    expect(profiles.profileOf(fresh)?.persona).toBe(updated.persona);
 
     // Empty strings clear the role and persona.
     await profiles.update("harry", bot.id, { description: "", persona: "" });
     expect(profiles.profileOf(main)?.persona).toBe("");
     expect(profiles.profileOf(main)?.description).toBe("");
     expect((await profiles.get("harry", bot.id))?.description).toBe("");
-    expect(profiles.profileOf(other)?.description).toBe("Old role");
+    expect(profiles.profileOf(other)?.description).toBe("");
     await handle.close();
   });
 

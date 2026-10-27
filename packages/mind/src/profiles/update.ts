@@ -1,16 +1,12 @@
 /**
- * Profile edits: the same validation and limits as create, and which
- * conversation picks the edit up. Only the bot's current main chat ("Bot Mode")
- * gets the edited profile from its next turn; its other sessions, task threads
- * and reset (old) main chats keep the profile copy they were registered with
- * until the server restarts and rebuilds the index.
+ * Profile edits: the same validation and limits as create, and the refresh
+ * of every conversation's profile copy. Each chat of the bot (main, reset
+ * mains, sessions, task threads) gets the edited profile from its next turn.
  */
-import { Effect } from "effect";
 import { InvalidInput } from "@ultiv/core";
-import type { ProfileCreate, ProfileInfo, SessionInfo } from "@ultiv/contracts";
+import type { ProfileCreate, ProfileInfo } from "@ultiv/contracts";
 import { KENARI_MODELS } from "../providers/kenari.ts";
-import type { ConverseService } from "../converse/converse.ts";
-import { readSessions, validTimezone } from "./docs.ts";
+import { validTimezone } from "./docs.ts";
 
 /** Field limits, shared with create. */
 export const PROFILE_LIMITS = { name: 80, description: 500, persona: 8_000 } as const;
@@ -48,18 +44,9 @@ export const patchedProfile = (
   policies: patch.policies !== undefined ? patch.policies : current.policies,
 });
 
-/** The conversation id of a profile's current main chat, if it has one yet. */
-export const mainConversationOf = async (
-  converse: ConverseService,
-  keyOf: (row: SessionInfo) => Promise<string>,
-  owner: string,
-  profileId: string,
-): Promise<string | undefined> => {
-  const rows = await Effect.runPromise(readSessions(converse));
-  const main = rows.find(
-    (row) => row.owner === owner && row.profile === profileId && row.kind === "main",
-  );
-  if (main === undefined) return undefined;
-  const cid = await Effect.runPromise(converse.conversationIdOf(await keyOf(main)));
-  return cid === undefined ? undefined : String(cid);
+/** Point every conversation that carries this profile at its edited copy. */
+export const refreshCopies = (copies: Map<string, ProfileInfo>, next: ProfileInfo): void => {
+  for (const [conversationId, copy] of copies) {
+    if (copy.owner === next.owner && copy.id === next.id) copies.set(conversationId, next);
+  }
 };
