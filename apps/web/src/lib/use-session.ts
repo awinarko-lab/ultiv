@@ -20,10 +20,15 @@ export function useSession(sessionId: string): {
   model: string | null;
   effort: ThinkingLevel | null;
   conversationId: string | null;
-  input: (text: string) => void;
-  decide: (callId: string, approved: boolean, always?: boolean, takeover?: boolean) => void;
-  configure: (model: string | null, effort: ThinkingLevel | null) => void;
-  interrupt: () => void;
+  input: (text: string) => Promise<void>;
+  decide: (
+    callId: string,
+    approved: boolean,
+    always?: boolean,
+    takeover?: boolean,
+  ) => Promise<void>;
+  configure: (model: string | null, effort: ThinkingLevel | null) => Promise<void>;
+  interrupt: () => Promise<void>;
 } {
   const [link, setLink] = useState<LinkPhase>("connecting");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -83,37 +88,47 @@ export function useSession(sessionId: string): {
     };
   }, [sessionId]);
 
+  // Every action resolves when the server accepted it and rejects otherwise —
+  // the view decides how to surface the failure (nothing is swallowed here).
+  const linked = useCallback((): SessionRef => {
+    if (ref === undefined) throw new Error("Not connected");
+    return ref;
+  }, [ref]);
+
   const input = useCallback(
-    (text: string) => {
-      ref?.input({ text }).catch((error) => console.warn("input failed:", error));
+    async (text: string): Promise<void> => {
+      await linked().input({ text });
     },
-    [ref],
+    [linked],
   );
 
   const decide = useCallback(
-    (callId: string, approved: boolean, always?: boolean, takeover?: boolean) => {
-      ref
-        ?.approve({
-          callId,
-          approved,
-          ...(always === true ? { always: true } : {}),
-          ...(takeover === true ? { takeover: true } : {}),
-        })
-        .catch((error) => console.warn("approve failed:", error));
+    async (
+      callId: string,
+      approved: boolean,
+      always?: boolean,
+      takeover?: boolean,
+    ): Promise<void> => {
+      await linked().approve({
+        callId,
+        approved,
+        ...(always === true ? { always: true } : {}),
+        ...(takeover === true ? { takeover: true } : {}),
+      });
     },
-    [ref],
+    [linked],
   );
 
   const configure = useCallback(
-    (model: string | null, effort: ThinkingLevel | null) => {
-      ref?.configure({ model, effort }).catch((error) => console.warn("configure failed:", error));
+    async (model: string | null, effort: ThinkingLevel | null): Promise<void> => {
+      await linked().configure({ model, effort });
     },
-    [ref],
+    [linked],
   );
 
-  const interrupt = useCallback(() => {
-    ref?.interrupt({}).catch((error) => console.warn("interrupt failed:", error));
-  }, [ref]);
+  const interrupt = useCallback(async (): Promise<void> => {
+    await linked().interrupt({});
+  }, [linked]);
 
   return {
     link,

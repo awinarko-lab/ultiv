@@ -13,20 +13,13 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
-import { ArrowUpIcon, CircleAlertIcon, CircleStopIcon } from "lucide-react";
+import { ArrowUpIcon, CircleStopIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ApprovalCard, type Decide } from "@/components/approval-card";
 import { TranscriptItems } from "@/components/transcript-items";
-
-/**
- * Tools that reach outside the conversation (delete/send/pay/publish): their
- * approval cards carry an explicit warning and a red border.
- */
-const RISKY_TOOL =
-  /delete|remove|purge|drop|send|post|email|tweet|publish|pay|transfer|archive|overwrite/i;
 
 function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -135,12 +128,17 @@ export function SessionView({
   model: string | null;
   effort: ThinkingLevel | null;
   models: ModelInfo[];
-  onInput: (text: string) => void;
-  onDecide: (callId: string, approved: boolean, always?: boolean, takeover?: boolean) => void;
-  onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
-  onInterrupt: () => void;
+  onInput: (text: string) => Promise<void>;
+  onDecide: Decide;
+  onConfigure: (model: string | null, effort: ThinkingLevel | null) => Promise<void>;
+  onInterrupt: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  // Send failures keep the draft and offer a retry; control failures
+  // (model/effort/stop) are reported on the same line.
+  const [sendFailed, setSendFailed] = useState(false);
+  const [controlError, setControlError] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   // Autoscroll only while the user is at the bottom: scrolling up mid-stream
   // must stay put (the transcript keeps growing underneath).
@@ -164,16 +162,32 @@ export function SessionView({
     viewport.scrollTop = viewport.scrollHeight;
   }, [transcript, busy, pending]);
 
-  const run = () => {
+  const run = async (): Promise<void> => {
     const text = draft.trim();
-    if (text === "" || busy) return;
-    onInput(text);
-    setDraft("");
+    if (text === "" || busy || sending) return;
+    setSending(true);
+    setSendFailed(false);
+    try {
+      await onInput(text);
+      // Clear only what was sent — anything typed meanwhile stays.
+      setDraft((current) => (current.trim() === text ? "" : current));
+    } catch {
+      setSendFailed(true);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const control = (action: () => Promise<void>): void => {
+    setControlError(null);
+    action().catch((cause: unknown) => {
+      setControlError(cause instanceof Error ? cause.message : String(cause));
+    });
   };
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    run();
+    void run();
   };
 
   return (
@@ -188,7 +202,9 @@ export function SessionView({
             model={model}
             effort={effort}
             models={models}
-            onConfigure={onConfigure}
+            onConfigure={(nextModel, nextEffort) =>
+              control(() => onConfigure(nextModel, nextEffort))
+            }
           />
         </div>
       </CardHeader>
@@ -208,60 +224,10 @@ export function SessionView({
       </CardContent>
       <CardFooter className="flex flex-col gap-2">
         {lastError !== null && <p className="w-full text-sm text-destructive">{lastError}</p>}
-        {pending !== null && (
-          <Card
-            className={
-              RISKY_TOOL.test(pending.name) ? "w-full border-destructive" : "w-full border-ring"
-            }
-          >
-            <CardHeader className="pb-0">
-              <CardTitle className="text-sm">Approve {pending.name}?</CardTitle>
-            </CardHeader>
-            {RISKY_TOOL.test(pending.name) && (
-              <CardContent className="pb-0">
-                <p className="text-destructive flex items-center gap-1 text-xs">
-                  <CircleAlertIcon className="size-3.5" />
-                  This reaches outside the conversation and may not be reversible — check the
-                  details.
-                </p>
-              </CardContent>
-            )}
-            <CardContent className="pt-2">
-              <p className="text-muted-foreground text-xs">
-                “Always allow” saves {pending.name} to this bot’s auto-approve rules. “Take over”
-                declines the call and tells the bot you are doing it yourself.
-              </p>
-              <CodeBlock size="sm">
-                <CodeBlockContent wrap className="max-h-48 overflow-y-auto">
-                  {JSON.stringify(pending.input, null, 2)}
-                </CodeBlockContent>
-              </CodeBlock>
-            </CardContent>
-            <CardFooter className="flex-wrap justify-end gap-2 pb-3">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-destructive"
-                onClick={() => onDecide(pending.callId, false, undefined, true)}
-              >
-                Take over
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => onDecide(pending.callId, false)}>
-                Deny
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => onDecide(pending.callId, true, true)}
-              >
-                Always allow
-              </Button>
-              <Button size="sm" onClick={() => onDecide(pending.callId, true)}>
-                Approve
-              </Button>
-            </CardFooter>
-          </Card>
+        {controlError !== null && (
+          <p className="w-full text-sm text-destructive">Couldn't apply that: {controlError}</p>
         )}
+        {pending !== null && <ApprovalCard pending={pending} onDecide={onDecide} />}
         <form className="flex w-full flex-col gap-2" onSubmit={submit}>
           <InputGroup>
             <InputGroupTextarea
@@ -280,7 +246,7 @@ export function SessionView({
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  run();
+                  void run();
                 }
               }}
             />
@@ -291,7 +257,7 @@ export function SessionView({
                   size="xs"
                   variant="outline"
                   className="text-destructive"
-                  onClick={onInterrupt}
+                  onClick={() => control(onInterrupt)}
                   disabled={link !== "live"}
                 >
                   <CircleStopIcon /> Stop
@@ -304,12 +270,20 @@ export function SessionView({
                 className="ml-auto"
                 aria-label="Send"
                 title="Send"
-                disabled={link !== "live" || busy}
+                disabled={link !== "live" || busy || sending}
               >
                 <ArrowUpIcon />
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>
+          {sendFailed && (
+            <p className="text-destructive flex items-center gap-2 text-sm" role="alert">
+              Not sent.
+              <Button type="submit" variant="link" size="xs" className="h-auto p-0">
+                Retry
+              </Button>
+            </p>
+          )}
         </form>
       </CardFooter>
     </Card>
