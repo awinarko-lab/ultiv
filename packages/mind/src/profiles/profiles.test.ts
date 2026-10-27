@@ -141,12 +141,16 @@ describe("Profiles (offline, MemoryStorage)", () => {
     const { profiles } = handle.mind;
     const profile = await profiles.create("harry", {
       name: "Locked",
-      toolAllowlist: ["now", "web_search"],
+      toolAllowlist: ["now", "web_search", "no_such_tool"],
     });
     const agent = profiles.agentFor(profile);
     expect(Array.isArray(agent.tools)).toBe(true);
     const names = (agent.tools as readonly { name: string }[]).map((tool) => tool.name);
-    expect(names).toEqual(["now", "web_search"]);
+    // web_search only installs when TINYFISH_API_KEY is set, so expect exactly
+    // the allowlisted tools this mind really has; unknown names drop out.
+    const installed = new Set(handle.mind.act.tools().map((tool) => tool.name));
+    expect(installed.has("now")).toBe(true);
+    expect(names).toEqual(["now", "web_search"].filter((name) => installed.has(name)));
     // No allowlist: all tools stay available.
     const open = profiles.agentFor(
       await profiles.create("harry", { name: "Open", onboard: false }),
