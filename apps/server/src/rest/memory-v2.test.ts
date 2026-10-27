@@ -104,6 +104,35 @@ describe("POST /api/memory/purge", () => {
   });
 });
 
+describe("POST /api/memory/v2/facts/:id/restore", () => {
+  it("restores a forgotten tombstone and records the audit event", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const { mind } = handle;
+    const bot = await mind.profiles.create("harry", { name: "Restorer" });
+    const fact = await mind.memory.writeV2({
+      owner: "harry",
+      profileId: bot.id,
+      scope: "profile",
+      writer: bot.id,
+      text: "a fact worth restoring",
+    });
+    await mind.memory.tombstone("harry", bot.id, fact.id);
+    expect((await mind.memory.read("harry", "profile", bot.id)).map((r) => r.id)).not.toContain(
+      fact.id,
+    );
+    const route = routeArgs(mind, {
+      path: `/api/memory/v2/facts/${fact.id}/restore`,
+      method: "POST",
+      profile: bot.id,
+    });
+    expect(await memoryV2Routes(route.args)).toBe(true);
+    expect(route.status()).toBe(200);
+    const restored = await mind.memory.read("harry", "profile", bot.id);
+    expect(restored.map((record) => record.id)).toContain(fact.id);
+    await handle.close();
+  });
+});
+
 describe("DELETE /api/memory/v2/facts/:id (tombstone)", () => {
   it("tombstones a fact — hidden from reads, restorable by the mind seam", async () => {
     const handle = await openMind({ storage: new MemoryStorage() });

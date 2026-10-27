@@ -186,6 +186,39 @@ export async function memoryV2Routes(args: RouteArgs): Promise<boolean> {
         profile === undefined || profile === "owner" ? null : profile,
         factMatch[1] ?? "",
       );
+      args.mind.audit.record({
+        at: Date.now(),
+        kind: "memory",
+        conversationId: "",
+        profile: profile ?? null,
+        callId: null,
+        name: "memory.fact.tombstone",
+        durationMs: null,
+        ok: true,
+        error: null,
+      });
+      json(200, { ok: true });
+      return true;
+    }
+    const restoreMatch = path.match(/^\/api\/memory\/v2\/facts\/([^/]+)\/restore$/);
+    if (restoreMatch !== null && method === "POST") {
+      // The owner's undo of a tombstone (the "Forgotten" list in the panel).
+      await args.mind.memory.restore(
+        args.owner,
+        profile === undefined || profile === "owner" ? null : profile,
+        restoreMatch[1] ?? "",
+      );
+      args.mind.audit.record({
+        at: Date.now(),
+        kind: "memory",
+        conversationId: "",
+        profile: profile ?? null,
+        callId: null,
+        name: "memory.fact.restore",
+        durationMs: null,
+        ok: true,
+        error: null,
+      });
       json(200, { ok: true });
       return true;
     }
