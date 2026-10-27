@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
 import { InvalidInput, NotFound } from "@ultiv/core";
-import type { FactKind, FactTrust, MemoryFact, MemoryRecord } from "@ultiv/contracts";
+import type { FactKind, FactTrust, MemoryEntity, MemoryFact, MemoryRecord } from "@ultiv/contracts";
 import type { ConverseService } from "../converse/converse.ts";
 import type { AuditService } from "../audit/audit.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
@@ -32,6 +32,7 @@ import {
   type ForgetResult,
   type HistoryEntry,
 } from "./forget.ts";
+import { entitiesOf, relatedEntity, type EntityCard } from "./graph.ts";
 import {
   ArchiveDoc,
   CoreDoc,
@@ -140,6 +141,15 @@ export interface MemoryService {
   readonly restore: (owner: string, profileId: string | null, factId: string) => Promise<void>;
   /** The owner's irreversible purge of forgotten facts' text. */
   readonly purge: (owner: string, profileId: string | null) => Promise<number>;
+  /** The store's resolved entities. */
+  readonly entities: (owner: string, profileId: string | null) => Promise<readonly MemoryEntity[]>;
+  /** The entity card: current facts plus the neighbourhood (1–2 hops). */
+  readonly related: (
+    owner: string,
+    profileId: string | null,
+    entity: string,
+    depth?: 1 | 2,
+  ) => Promise<EntityCard>;
 }
 
 export const memoryService = (deps: {
@@ -416,6 +426,9 @@ export const memoryService = (deps: {
     history: (owner, profileId, factId) => historyOf({ converse }, owner, profileId, factId),
     restore: (owner, profileId, factId) => restoreFact({ converse }, owner, profileId, factId),
     purge: (owner, profileId) => purgeForgotten({ converse }, owner, profileId),
+    entities: (owner, profileId) => entitiesOf({ converse }, owner, profileId),
+    related: (owner, profileId, entity, depth) =>
+      relatedEntity({ converse }, owner, profileId, entity, depth ?? 1),
   };
   return service;
 };

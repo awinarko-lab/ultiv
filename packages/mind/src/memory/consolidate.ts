@@ -14,6 +14,7 @@ import type { DecideService } from "../decide/decide.ts";
 import type { GenerateService } from "../generate/generate.ts";
 import { decideWrite, type WriteOp } from "./decide.ts";
 import { extractFact } from "./extract.ts";
+import { resolveEntitiesInTx } from "./graph.ts";
 import {
   EpisodesDoc,
   FactsDoc,
@@ -91,25 +92,22 @@ export const writeFactV2 = async (
     ),
   ].slice(0, 30);
   const extracted = await extractFact(deps, input.text, knownNames);
-  // Names resolve to ids for entities that exist; unknown names wait for the
-  // entity pass (commit 5 creates entities deterministically at write time).
-  const entityIds = extracted.entityNames
-    .map(
-      (name) =>
-        graph.find(
-          (entity) =>
-            normalize(entity.name) === normalize(name) ||
-            entity.aliases.some((alias) => normalize(alias) === normalize(name)),
-        )?.id,
-    )
-    .filter((id): id is string => id !== undefined);
   const current = (await readFacts(input.owner, input.profileId)).filter(
     (fact) => fact.status === "current",
   );
   const decision = await decideWrite(deps, {
     text: extracted.text,
     tags: input.tags ?? [],
-    entityIds,
+    entityIds: graph
+      .filter((entity) => entity.mergedInto === null)
+      .filter((entity) =>
+        extracted.entityNames.some(
+          (name) =>
+            normalize(entity.name) === normalize(name) ||
+            entity.aliases.some((alias) => normalize(alias) === normalize(name)),
+        ),
+      )
+      .map((entity) => entity.id),
     triple: extracted.triple,
     ...(input.replaces !== undefined ? { replaces: input.replaces } : {}),
     current,
@@ -153,6 +151,10 @@ export const writeFactV2 = async (
       }
       const text =
         decision.op === "refine" ? (decision.mergedText ?? extracted.text) : extracted.text;
+      // Entity resolution/creation rides the same transaction: known names
+      // fold to their id, unknown names become entities (deterministic).
+      const graphDoc = await tx.doc(GraphDoc, key, { entities: [] });
+      const entityIds = resolveEntitiesInTx(graphDoc, extracted.entityNames, null);
       const fact = newFact({
         id: randomUUID(),
         scope: input.scope,

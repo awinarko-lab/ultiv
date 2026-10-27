@@ -12,7 +12,7 @@ import type { MemoryService } from "./memory.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 import { CORE_LIMITS } from "./core.ts";
 import { flags } from "./model.ts";
-import { forgetTool, historyTool } from "./tools-lifecycle.ts";
+import { forgetTool, historyTool, relatedTool } from "./tools-lifecycle.ts";
 import {
   appearsInOwnerInput,
   checkContent,
@@ -264,6 +264,7 @@ export const memoryTools = (
   coreTool(memory, profiles),
   forgetTool(memory, profiles),
   historyTool(memory, profiles),
+  relatedTool(memory, profiles),
 ];
 
 const refuseOf = (reason: string) => ({
