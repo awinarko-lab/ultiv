@@ -106,7 +106,13 @@ const applyProposal = async (
 export async function memoryV2Routes(args: RouteArgs): Promise<boolean> {
   const { path, json } = args;
   const method = args.req.method ?? "GET";
-  if (!path.startsWith("/api/memory/v2") && !path.startsWith("/api/memory/tidy")) return false;
+  if (
+    !path.startsWith("/api/memory/v1") &&
+    !path.startsWith("/api/memory/v2") &&
+    !path.startsWith("/api/memory/tidy")
+  ) {
+    return false;
+  }
   const profile = args.url.searchParams.get("profile") ?? undefined;
   try {
     if (path === "/api/memory/v2" && method === "GET") {
