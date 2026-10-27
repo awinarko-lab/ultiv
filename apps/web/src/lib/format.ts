@@ -17,13 +17,17 @@ const shortDate = (date: Date, now: Date): string =>
     ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
   });
 
-/** A chat time divider: day word (or date) plus the clock time. */
+/** A day word (or date) plus the clock time: "Today 5:46 PM", "Tomorrow 9:00 AM". */
 export function formatDivider(at: number, now: Date = new Date()): string {
   const date = new Date(at);
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
+  const dayOffset = (days: number): Date => {
+    const shifted = new Date(now);
+    shifted.setDate(now.getDate() + days);
+    return shifted;
+  };
   if (sameDay(date, now)) return `Today ${clock(date)}`;
-  if (sameDay(date, yesterday)) return `Yesterday ${clock(date)}`;
+  if (sameDay(date, dayOffset(-1))) return `Yesterday ${clock(date)}`;
+  if (sameDay(date, dayOffset(1))) return `Tomorrow ${clock(date)}`;
   return `${shortDate(date, now)} ${clock(date)}`;
 }
 
