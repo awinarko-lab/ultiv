@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { TaskInfo } from "@ultiv/contracts";
 import { ApprovalCard } from "@/components/approval-card";
 import { Badge } from "@/components/ui/badge";
+import { SectionHeader } from "@/components/ui/section-header";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { api, type ArtifactRow, type TaskActivity } from "@/lib/api";
 import { formatWhen } from "@/lib/format";
@@ -87,7 +88,7 @@ export function TaskActivityDialog({
           </div>
         )}
 
-        <div className="mt-3 max-h-64 overflow-y-auto rounded-md border px-3 py-2">
+        <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border px-3 py-2">
           {activity === null ? (
             <p className="text-muted-foreground text-sm">Loading…</p>
           ) : activity.steps.length === 0 ? (
@@ -108,10 +109,8 @@ export function TaskActivityDialog({
         </div>
 
         {(task.status === "done" || task.status === "failed") && (
-          <div className="mt-3 rounded-md border px-3 py-2 text-sm">
-            <p className="text-xs font-semibold uppercase">
-              {task.status === "done" ? "Result" : "Failed"}
-            </p>
+          <div className="mt-3 rounded-lg border px-3 py-2 text-sm">
+            <SectionHeader title={task.status === "done" ? "Result" : "Failed"} />
             <p className="mt-1 break-words whitespace-pre-wrap">
               {task.status === "done"
                 ? (task.result ?? "Finished without a result text.")
@@ -121,7 +120,7 @@ export function TaskActivityDialog({
         )}
 
         <div className="mt-3">
-          <p className="text-xs font-medium text-muted-foreground">Files from this task</p>
+          <SectionHeader title="Files from this task" />
           <div className="mt-2 flex flex-col gap-1.5">
             {files.length === 0 ? (
               <p className="text-muted-foreground text-xs">None yet.</p>
@@ -132,7 +131,7 @@ export function TaskActivityDialog({
                   href={api.artifactUrl(file.id)}
                   target="_blank"
                   rel="noreferrer"
-                  className="hover:bg-muted flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs"
+                  className="hover:bg-muted flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs"
                 >
                   <span className="min-w-0 flex-1 truncate">{file.name}</span>
                   <Badge variant="outline">{file.mime}</Badge>

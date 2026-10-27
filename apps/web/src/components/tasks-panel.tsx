@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TaskActivityDialog } from "@/components/task-activity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SectionHeader } from "@/components/ui/section-header";
 
 const statusVariant = {
   running: "default",
@@ -65,13 +66,13 @@ export function TasksPanel({ conversationId }: { conversationId: string | null }
 
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="text-xs font-medium text-muted-foreground">Background tasks</p>
+      <SectionHeader title="Background tasks" />
       {error !== null && <p className="text-destructive text-xs">{error}</p>}
       <ul className="flex flex-col gap-1">
         {tasks.map((task) => (
           <li
             key={task.id}
-            className="flex items-center gap-2 rounded-md border bg-card/50 px-2.5 py-1.5 text-xs"
+            className="flex items-center gap-2 rounded-lg border bg-card/50 px-2.5 py-1.5 text-xs"
           >
             <Badge variant={statusVariant[task.status]}>{task.status}</Badge>
             <TaskActivityDialog task={task}>

@@ -6,23 +6,17 @@
  * turn from those details. Hiding is the safe option: reversible, and it only
  * moves the bot under "Hidden". Delete purges everything and asks for the name.
  */
-import {
-  BotIcon,
-  BrainIcon,
-  EyeIcon,
-  EyeOffIcon,
-  PencilIcon,
-  StarIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { BrainIcon, EyeIcon, EyeOffIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { MemoryPanel } from "@/components/memory-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionHeader } from "@/components/ui/section-header";
+import { ErrorState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
@@ -131,8 +125,8 @@ function BotDialog({
           <div className="flex gap-2">
             <label className="flex flex-1 flex-col gap-1 text-sm">
               Model
-              <select
-                className="bg-background rounded-md border px-2 py-2 text-sm"
+              <Select
+                className="w-full"
                 value={form.modelId}
                 onChange={(event) => setForm({ ...form, modelId: event.target.value, effort: "" })}
               >
@@ -142,15 +136,15 @@ function BotDialog({
                     {model.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label
               className="flex flex-1 flex-col gap-1 text-sm"
               title={efforts.length === 0 ? "Pick a model with effort levels first" : undefined}
             >
               Effort
-              <select
-                className="bg-background rounded-md border px-2 py-2 text-sm"
+              <Select
+                className="w-full"
                 value={form.effort}
                 disabled={efforts.length === 0}
                 onChange={(event) => setForm({ ...form, effort: event.target.value })}
@@ -161,7 +155,7 @@ function BotDialog({
                     {effort}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
           {error !== null && <p className="text-destructive text-sm">{error}</p>}
@@ -424,33 +418,33 @@ export function BotsPanel({
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BotIcon /> Bots
-        </CardTitle>
-        <BotDialog
-          title="Spawn a bot"
-          initial={emptyForm}
-          models={models}
-          confirm={async (form) => {
-            await createBot(form);
-            await refresh();
-          }}
-        >
-          <Button variant="outline" size="sm">
-            New bot
-          </Button>
-        </BotDialog>
-      </CardHeader>
-      {error !== null && <CardContent className="text-destructive text-sm">{error}</CardContent>}
+    <section aria-label="Bots" className="flex flex-col gap-2">
+      <SectionHeader
+        title="Your bots"
+        action={
+          <BotDialog
+            title="Spawn a bot"
+            initial={emptyForm}
+            models={models}
+            confirm={async (form) => {
+              await createBot(form);
+              await refresh();
+            }}
+          >
+            <Button variant="outline" size="sm">
+              New bot
+            </Button>
+          </BotDialog>
+        }
+      />
+      {error !== null && <ErrorState message={error} />}
       {ordered.length > 0 && (
-        <CardContent className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 rounded-xl border p-2">
           {ordered.map((bot, index) => (
             <div key={bot.id} className="contents">
               {index > 0 && <Separator className="my-1" />}
               {bot.archivedAt !== null && ordered[index - 1]?.archivedAt === null && (
-                <p className="text-muted-foreground mt-2 text-xs font-semibold uppercase">Hidden</p>
+                <SectionHeader title="Hidden" className="mt-2 px-2" />
               )}
               <BotRow
                 bot={bot}
@@ -465,8 +459,8 @@ export function BotsPanel({
               />
             </div>
           ))}
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </section>
   );
 }

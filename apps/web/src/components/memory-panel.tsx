@@ -10,6 +10,7 @@ import type { MemoryRecord } from "@ultiv/contracts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SectionHeader } from "@/components/ui/section-header";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -97,7 +98,7 @@ export function MemoryPanel({
           {records.map((record) => (
             <div
               key={record.id}
-              className="flex items-start gap-2 rounded-md border px-2.5 py-2 text-sm"
+              className="flex items-start gap-2 rounded-lg border px-2.5 py-2 text-sm"
             >
               <div className="min-w-0 flex-1">
                 <p className="break-words">{record.text}</p>
@@ -142,7 +143,7 @@ export function MemoryPanel({
           </Button>
         </form>
         <Separator className="my-4" />
-        <p className="text-xs font-medium text-muted-foreground">Durable state (KV)</p>
+        <SectionHeader title="Durable state (KV)" />
         <div className="mt-2 flex max-h-56 flex-col gap-2 overflow-y-auto">
           {state.length === 0 ? (
             <p className="text-muted-foreground text-sm">
@@ -153,7 +154,7 @@ export function MemoryPanel({
             state.map((row) => (
               <div
                 key={row.key}
-                className="flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-sm"
+                className="flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-sm"
               >
                 <div className="min-w-0 flex-1">
                   <code className="text-xs">{row.key}</code>
@@ -177,7 +178,7 @@ export function MemoryPanel({
           )}
         </div>
         <Separator className="my-4" />
-        <p className="text-xs font-medium text-muted-foreground">Files {name} made</p>
+        <SectionHeader title={`Files ${name} made`} />
         <div className="mt-2 flex max-h-56 flex-col gap-2 overflow-y-auto">
           {artifacts.length === 0 ? (
             <p className="text-muted-foreground text-sm">No artifacts yet.</p>
@@ -185,7 +186,7 @@ export function MemoryPanel({
             artifacts.map((artifact) => (
               <div
                 key={artifact.id}
-                className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm"
+                className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm"
               >
                 <span className="min-w-0 flex-1 truncate">{artifact.name}</span>
                 <Badge variant="outline">{artifact.mime}</Badge>

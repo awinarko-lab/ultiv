@@ -29,7 +29,7 @@ import {
 const roleStyles = {
   user: "self-end max-w-[80%] rounded-2xl bg-muted px-4 py-2.5 leading-relaxed whitespace-pre-wrap break-words",
   agent:
-    "self-start max-w-[80%] min-w-0 rounded-2xl bg-muted/40 px-4 py-2.5 ring-1 ring-border/60 dark:ring-0",
+    "self-start max-w-[80%] min-w-0 rounded-2xl bg-muted/40 px-4 py-2.5 border border-border/60 dark:border-transparent",
 } as const;
 
 /** A new divider when this much time passed since the previous message. */
@@ -165,7 +165,7 @@ export function TranscriptItems({ transcript }: { transcript: TranscriptEntry[] 
             <li
               key={`divider-${group.key}`}
               role="separator"
-              className="text-muted-foreground self-center py-1 text-[11px]"
+              className="text-muted-foreground self-center py-1 text-xs"
             >
               {formatDivider(group.at)}
             </li>

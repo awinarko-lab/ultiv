@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ApiError, api } from "@/lib/api";
 import { formatWhen } from "@/lib/format";
@@ -201,9 +202,9 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
         }}
       >
         <div className="flex flex-wrap gap-2">
-          <select
+          <Select
             aria-label="Item type"
-            className="bg-background rounded-md border px-2 py-1 text-sm"
+            className="min-w-32 flex-1"
             value={kind}
             onChange={(event) => {
               setKind(event.target.value as VaultKind);
@@ -215,7 +216,7 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
                 {candidate}
               </option>
             ))}
-          </select>
+          </Select>
           <Input
             className="min-w-32 flex-1"
             aria-label="Item name"
@@ -224,9 +225,9 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
-          <select
+          <Select
             aria-label="Which bots can use it"
-            className="bg-background rounded-md border px-2 py-1 text-sm"
+            className="min-w-32 flex-1"
             value={scope}
             onChange={(event) => setScope(event.target.value)}
           >
@@ -236,7 +237,7 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
                 {profile.name} only
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         {inputs[kind].map((field) => (
           <Input

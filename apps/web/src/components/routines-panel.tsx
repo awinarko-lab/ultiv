@@ -18,8 +18,11 @@ import type {
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SectionHeader } from "@/components/ui/section-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
@@ -365,8 +368,8 @@ function CreateWebhook({
             if (sessionId !== "" && !busy) void create();
           }}
         >
-          <select
-            className="bg-background rounded-md border px-2 py-1.5 text-sm"
+          <Select
+            className="w-full"
             value={sessionId}
             onChange={(event) => setSessionId(event.target.value)}
             aria-label="Deliver into bot"
@@ -377,7 +380,7 @@ function CreateWebhook({
                 {profile.name}
               </option>
             ))}
-          </select>
+          </Select>
           <Input
             aria-label="Webhook name (optional)"
             placeholder="Name (optional)"
@@ -386,7 +389,7 @@ function CreateWebhook({
           />
           <textarea
             aria-label="JSON Schema (optional)"
-            className="bg-background min-h-20 rounded-md border px-2 py-1.5 font-mono text-xs"
+            className="bg-background min-h-20 rounded-lg border px-2 py-1.5 font-mono text-xs"
             placeholder='JSON Schema (optional) — e.g. {"type":"object","required":["event"]}'
             value={schema}
             onChange={(event) => setSchema(event.target.value)}
@@ -408,12 +411,12 @@ function CreateWebhook({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-1.5">
-      <h3 className="text-muted-foreground text-xs font-semibold uppercase">{title}</h3>
+      <SectionHeader title={title} />
       <div className="flex flex-col gap-2">{children}</div>
     </section>
   );
 }
 
 function Empty({ text }: { text: string }) {
-  return <p className="text-muted-foreground text-sm">{text}</p>;
+  return <EmptyState>{text}</EmptyState>;
 }

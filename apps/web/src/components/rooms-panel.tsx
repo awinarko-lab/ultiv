@@ -10,7 +10,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { ProfileInfo, RoomInfo } from "@ultiv/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState, ErrorState } from "@/components/ui/empty-state";
+import { ListRow } from "@/components/ui/list-row";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { api, type RoomDetail } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
 import { formatWhen } from "@/lib/format";
@@ -55,7 +58,7 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
 
   return (
     <div className="mt-3 flex flex-col gap-3">
-      <div className="bg-background max-h-[45dvh] overflow-y-auto rounded-md border p-3 text-sm">
+      <div className="bg-background max-h-[45dvh] overflow-y-auto rounded-lg border p-3 text-sm">
         {detail.timeline.length === 0 ? (
           <p className="text-muted-foreground text-xs">(no messages yet)</p>
         ) : (
@@ -77,7 +80,7 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
                     >
                       {line.speaker}
                     </span>
-                    <span className="text-muted-foreground ml-2 text-[10px]">
+                    <span className="text-muted-foreground ml-2 text-xs">
                       {formatWhen(line.at)}
                     </span>
                     <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
@@ -91,17 +94,13 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
         )}
       </div>
       <div className="flex gap-2">
-        <select
-          className="bg-background rounded-md border px-2 py-1 text-sm"
-          value={to}
-          onChange={(event) => setTo(event.target.value)}
-        >
+        <Select className="w-36" value={to} onChange={(event) => setTo(event.target.value)}>
           {detail.participants.map((participant) => (
             <option key={participant.profileId} value={participant.profileId}>
               to {participant.name}
             </option>
           ))}
-        </select>
+        </Select>
         <Input
           className="flex-1"
           placeholder="Say something into this bot's side…"
@@ -161,14 +160,7 @@ export function RoomsContent({
   const open = rooms.find((room) => room.id === roomId);
 
   if (loadFailed && rooms.length === 0) {
-    return (
-      <p className="text-destructive flex items-center gap-2 text-sm">
-        Couldn't load the conversations.
-        <Button variant="link" size="xs" className="h-auto p-0" onClick={() => void load()}>
-          Retry
-        </Button>
-      </p>
-    );
+    return <ErrorState message="Couldn't load the conversations." onRetry={() => void load()} />;
   }
   if (open !== undefined) {
     return (
@@ -183,27 +175,28 @@ export function RoomsContent({
   if (!loaded) return <p className="text-muted-foreground text-sm">Loading…</p>;
   if (rooms.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
-        None yet. Bots start one when they message each other, one per topic.
-      </p>
+      <EmptyState>None yet. Bots start one when they message each other, one per topic.</EmptyState>
     );
   }
   return (
     <div className="flex flex-col gap-1">
       {rooms.map((room) => (
-        <Button
+        <ListRow
           key={room.id}
-          variant="ghost"
-          className="h-auto min-h-11 justify-start"
+          leading={<MessagesSquareIcon />}
+          title={
+            <>
+              {room.participants.map((id) => nameOf(id)).join(" ↔ ")}
+              {room.topic !== "" && (
+                <Badge variant="outline" className="ml-2">
+                  {room.topic}
+                </Badge>
+              )}
+            </>
+          }
+          meta={formatWhen(room.lastMessageAt)}
           onClick={() => onOpen(room.id)}
-        >
-          <MessagesSquareIcon />
-          {room.participants.map((id) => nameOf(id)).join(" ↔ ")}
-          {room.topic !== "" && <Badge variant="outline">{room.topic}</Badge>}
-          <span className="text-muted-foreground ml-auto text-xs">
-            {formatWhen(room.lastMessageAt)}
-          </span>
-        </Button>
+        />
       ))}
     </div>
   );

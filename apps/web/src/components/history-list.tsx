@@ -2,6 +2,7 @@ import { MessagesSquareIcon, Trash2Icon } from "lucide-react";
 import { Fragment } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { ListRow } from "@/components/ui/list-row";
 import { Separator } from "@/components/ui/separator";
 import type { useSessions } from "@/lib/use-sessions";
 import { formatWhen } from "@/lib/format";
@@ -59,18 +60,12 @@ export function HistoryList({
           <Fragment key={session.id}>
             {index > 0 && <Separator className="my-1" />}
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                className="min-w-0 flex-1 justify-between"
+              <ListRow
+                className="min-w-0 flex-1"
+                title={session.title === "" ? "Untitled session" : session.title}
+                meta={<time>{formatWhen(session.lastMessageAt)}</time>}
                 onClick={() => onSelect(session.id)}
-              >
-                <span className="truncate">
-                  {session.title === "" ? "Untitled session" : session.title}
-                </span>
-                <time className="text-muted-foreground shrink-0 pl-2">
-                  {formatWhen(session.lastMessageAt)}
-                </time>
-              </Button>
+              />
               <ConfirmDialog
                 title="Delete session?"
                 warning="The conversation and its transcript are removed. This cannot be undone."

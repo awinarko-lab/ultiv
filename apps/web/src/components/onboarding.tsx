@@ -97,7 +97,7 @@ export function OnboardingHome({
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           {TEMPLATES.map((template) => (
-            <div key={template.key} className="flex flex-col gap-2 rounded-md border p-3">
+            <div key={template.key} className="flex flex-col gap-2 rounded-lg border p-3">
               <div className="flex min-w-0 items-center justify-between gap-2">
                 <p className="truncate text-sm font-semibold">{template.name}</p>
                 <Button

@@ -10,6 +10,7 @@ import type { ModelInfo, ThinkingLevel, UsageSummary } from "@ultiv/contracts";
 import { linkLabel, type ChatBot, type LinkState } from "@/components/bot-avatar";
 import { BotSwitcher } from "@/components/bot-switcher";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 
 export { BotAvatar, type ChatBot, type LinkState } from "@/components/bot-avatar";
 
@@ -35,13 +36,12 @@ function SessionDetails({
 }) {
   const selected = models.find((candidate) => candidate.id === model);
   const efforts = selected?.efforts ?? (["off", "low", "high", "max"] as const);
-  const select = "bg-background w-full min-w-0 rounded-md border px-2 py-1.5 text-sm";
   return (
     <div className="flex flex-col gap-3 text-sm">
       <label className="flex flex-col gap-1">
         <span className="text-muted-foreground text-xs">Model</span>
-        <select
-          className={select}
+        <Select
+          className="w-full"
           value={model ?? ""}
           onChange={(event) =>
             onConfigure(event.target.value === "" ? null : event.target.value, null)
@@ -53,12 +53,12 @@ function SessionDetails({
               {candidate.label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-muted-foreground text-xs">Effort</span>
-        <select
-          className={select}
+        <Select
+          className="w-full"
           value={effort ?? ""}
           onChange={(event) =>
             onConfigure(
@@ -73,7 +73,7 @@ function SessionDetails({
               {level}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       {usage !== null && (
         <p className="text-muted-foreground text-xs">
