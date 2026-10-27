@@ -37,6 +37,7 @@ import { taskTools } from "./act/task-tools.ts";
 import { ENTITY_NAME } from "./act/identity.ts";
 import type { ScopeHolder } from "@ultiv/ext";
 import { decisionPlugin } from "./act/decision-tools.ts";
+import { brokerFor } from "./act/broker.ts";
 import { temporalPlugin } from "./act/temporal.ts";
 import { Audit, auditLayer, type AuditService } from "./audit/audit.ts";
 import { Converse, converseLayer, type ConverseService } from "./converse/converse.ts";
@@ -351,7 +352,8 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
   // dirs, vault lists) can partition per profile; the entity sets it once the
   // conversation→profile index exists. Same lifecycle for the vault store.
   const holder = createScopeHolder();
-  const vaultStore = vaultConfigured() ? makeVaultStore(options.vault?.dir ?? vaultDir()) : null;
+  const vaultRoot = vaultConfigured() ? (options.vault?.dir ?? vaultDir()) : null;
+  const vaultStore = vaultRoot !== null ? makeVaultStore(vaultRoot) : null;
   const wiring: MindWiring = {
     holder,
     vaultStore,
@@ -366,6 +368,8 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
     Registry,
     Effect.gen(function* () {
       const decideService = yield* Decide;
+      // http_request rides always (credential-less calls need no vault).
+      const broker = yield* brokerFor(vaultStore, vaultRoot, holder);
       // First-party faculties ride always (temporal, artifacts); the vault and
       // TinyFish live-web egress and Jev install only when keys are present.
       const base = [
@@ -376,13 +380,14 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
         ...(emailConfigured() ? [emailPlugin()] : []),
         ...(vaultStore !== null ? [vaultPlugin(vaultStore, holder)] : []),
         ...(tinyfishConfigured() ? [tinyfishPlugin] : []),
+        broker,
       ];
       const plugins = decideService.available
         ? [...base, decisionPlugin(decideService), ...(options.plugins ?? [])]
         : [...base, ...(options.plugins ?? [])];
       return yield* makeRegistry(plugins);
     }),
-  ).pipe(Layer.provide(decideLayer));
+  ).pipe(Layer.provide(decideLayer.pipe(Layer.merge(approvals)).pipe(Layer.merge(audit))));
   const converse = converseLayer(options.storage).pipe(
     Layer.provide(
       models
