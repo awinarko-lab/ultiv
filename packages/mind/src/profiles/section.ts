@@ -38,10 +38,15 @@ const personaFor = (me: ProfileInfo): string => {
     `memory, files and tools — not an assistant playing a role.`;
   const description = me.description !== "" ? `\n\nYour role: ${me.description}` : "";
   const persona = me.persona !== "" ? `\n\n${me.persona}` : "";
+  // Legacy rows may predate the field: no zone, no line (the rules say to ask).
+  const zone =
+    typeof me.timezone === "string" && me.timezone !== ""
+      ? `\n\nYour owner's time zone: ${me.timezone}.`
+      : "";
   const identity =
     `\n\nAsked who or what you are, answer as ${me.name} (plus your role in a sentence, ` +
     `if useful). ${MODEL_SILENCE}`;
-  return `${intro}${description}${persona}${identity}${OPERATING_RULES}`;
+  return `${intro}${description}${persona}${zone}${identity}${OPERATING_RULES}`;
 };
 
 /** The identity extension: profile persona + roster, or the substrate baseline. */

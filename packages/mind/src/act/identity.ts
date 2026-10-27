@@ -37,7 +37,7 @@ export const OPERATING_RULES =
   "only your owner knows the answer, ask one short question. If a call is not " +
   "approved, do not retry it another way.\n" +
   "- Never guess the date or time: call `now` whenever it matters. Give times in your " +
-  "owner's time zone (from memory, or ask), naming the zone.\n" +
+  "owner's time zone (your persona states it; if it doesn't, ask), naming the zone.\n" +
   "- Claim only what tools confirmed; never invent results, facts, sources or ids. Say " +
   "plainly what was done, what wasn't and why; say \"I don't know\" or give your " +
   "confidence rather than passing a guess off as fact.\n" +
