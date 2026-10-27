@@ -6,7 +6,9 @@ import { memo } from "react";
 import { useApp } from "@/lib/app-state";
 import { formatDivider, formatFull } from "@/lib/format";
 import { readNote } from "@/lib/note-text";
-import type { ToolStep, TranscriptEntry } from "@ultiv/contracts";
+import { parseSystem } from "@/lib/system-text";
+import { SystemCard } from "@/components/system/system-card";
+import type { TaskInfo, ToolStep, TranscriptEntry } from "@ultiv/contracts";
 import { BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
 import { LazyMarkdown } from "@/components/lazy-markdown";
 import {
@@ -171,9 +173,12 @@ function groupTranscript(transcript: TranscriptEntry[]): Group[] {
 export function TranscriptItems({
   transcript,
   busy = false,
+  tasks = [],
 }: {
   transcript: TranscriptEntry[];
   busy?: boolean;
+  /** This chat's background tasks, so task cards can show title and duration. */
+  tasks?: readonly TaskInfo[];
 }) {
   return (
     <>
@@ -189,13 +194,31 @@ export function TranscriptItems({
               {formatDivider(group.at)}
             </li>
           ) : null;
-        return [divider, renderGroup(group, busy && index === groups.length - 1)];
+        return [divider, renderGroup(group, busy && index === groups.length - 1, tasks)];
       })}
     </>
   );
 }
 
-function renderGroup(group: Group, last: boolean) {
+/**
+ * Bracketed machinery (task results, webhooks, cron, sensors, bot mail) as a
+ * compact card; undefined when the text is not one, null when it is hidden.
+ */
+function systemItem(entry: TranscriptEntry, key: string, tasks: readonly TaskInfo[]) {
+  if (entry.kind !== "input" && entry.kind !== "note") return undefined;
+  const message = parseSystem(entry.text);
+  if (message === null) return undefined;
+  if (message.kind === "hidden") return null;
+  return (
+    <li key={key} className="w-full">
+      <SystemCard message={message} at={entry.at} tasks={tasks} />
+    </li>
+  );
+}
+
+function renderGroup(group: Group, last: boolean, tasks: readonly TaskInfo[]) {
+  const system = "tools" in group ? undefined : systemItem(group.entry, group.key, tasks);
+  if (system !== undefined) return system;
   return "tools" in group ? (
     <li key={group.key} className="w-full">
       <Trace>

@@ -35,6 +35,7 @@ export function Chat({
     <div className="flex min-h-0 flex-1 flex-col">
       <SessionView
         tasks={<TasksPill chatTasks={chatTasks} />}
+        taskInfo={chatTasks.tasks}
         bot={bot}
         onBack={onBack}
         link={session.link}

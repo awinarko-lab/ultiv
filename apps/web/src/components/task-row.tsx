@@ -70,7 +70,8 @@ export function TaskRow({
   now: number;
   onChanged: () => void;
 }) {
-  const latest = taskLatest(task);
+  // Settled rows just say how it ended; the result is in the chat.
+  const latest = task.status === "running" ? taskLatest(task) : undefined;
   return (
     <li className="flex items-center gap-2.5 rounded-2xl px-2.5 py-1.5">
       <TaskStatusIcon status={task.status} />

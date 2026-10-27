@@ -4,6 +4,7 @@ import type {
   PendingApproval,
   Phase,
   QueuedInput,
+  TaskInfo,
   ThinkingLevel,
   TranscriptEntry,
   UsageSummary,
@@ -105,6 +106,7 @@ export function SessionView({
   onConfigure,
   onInterrupt,
   tasks,
+  taskInfo = [],
 }: {
   bot?: ChatBot | undefined;
   /** Shown as the header's round back button when set. */
@@ -127,6 +129,8 @@ export function SessionView({
   onInterrupt: () => Promise<void>;
   /** Background tasks, floated above the composer. */
   tasks?: React.ReactNode;
+  /** This chat's task rows, for the task cards in the transcript. */
+  taskInfo?: readonly TaskInfo[];
 }) {
   const busy = phase === "working";
   const { draft, setDraft, sending, sendFailed, run } = useSend(onInput);
@@ -165,7 +169,7 @@ export function SessionView({
             {transcript.length === 0 && link === "live" && !busy && (
               <EmptyChat bot={bot} onPick={setDraft} />
             )}
-            <TranscriptItems transcript={transcript} busy={busy} />
+            <TranscriptItems transcript={transcript} busy={busy} tasks={taskInfo} />
             {pending !== null ? (
               <li>
                 <ApprovalCard
