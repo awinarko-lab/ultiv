@@ -230,6 +230,15 @@ exposes `vault_list` (metadata + masks) and contact search only.
 
 ## 9. Memory (future faculty — design the seam now)
 
+> **Implemented 2026-10-28** — see `docs/MEMORY.md` for the shipped contract.
+> Summary of what changed from this section: the hierarchy stands (session →
+> profile → owner), write authority is still config, and recall still
+> resolves through memory, never transcripts. Added: ranked bilingual recall,
+> dated/sourced facts with supersede history (nothing deleted but a Purge),
+> an entity graph carried by fact triples, core memory as its own prompt
+> section, and a weekly tidy whose proposals change nothing until the owner
+> accepts.
+
 Hierarchy: session context (free) → profile memory (the entity's own durable facts) →
 owner memory (cross-profile: the user's preferences, not re-taught per entity).
 
