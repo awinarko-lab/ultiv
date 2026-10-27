@@ -72,7 +72,8 @@ const bashTool = (
       HOME +
       " is an " +
       "artifact: it persists across restarts and the user can see it. Working directory " +
-      "carries over between calls.",
+      "carries over between calls. Not approval-gated: do not delete or overwrite files " +
+      "you did not create for the current task without your owner's go-ahead.",
     parameters: Params,
     structuredOutputSchema: Type.Object({
       stdout: Type.String(),

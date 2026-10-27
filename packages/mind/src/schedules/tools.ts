@@ -28,7 +28,8 @@ const jobSummary = (job: CronJobInfo): Record<string, unknown> => ({
 const SetParams = Type.Object({
   prompt: Type.String({
     description:
-      "What you should do when the schedule fires — you will be woken with it as an input.",
+      "What you should do when the schedule fires — you are woken with exactly this text, " +
+      "so make it self-contained.",
   }),
   schedule: Type.Optional(
     Type.String({
@@ -60,7 +61,8 @@ const setTool = (schedules: SchedulesService, profiles: ProfilesService): Tool =
     description:
       "Schedule a future wake-up for yourself: a recurring cron schedule or a one-shot time. " +
       "When it fires, `prompt` arrives in your main chat as an input and you act on it. Use " +
-      "`now` to ground times; cron renders in the profile's timezone.",
+      "`now` to ground times; cron renders in the profile's timezone. The owner approves " +
+      "each schedule.",
     parameters: SetParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), next: Type.Array(Type.Number()) }),
     execute: async (args, api) => {

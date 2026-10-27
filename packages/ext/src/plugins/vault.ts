@@ -44,8 +44,9 @@ const listTool = (store: VaultStore, holder: ScopeHolder): Tool =>
     name: "vault_list",
     description:
       "List the vault's items for this profile: names, kinds, masked hints (e.g. " +
-      "'VISA •••• 4242'), and access class. Secret items are USE-ONLY — you never see " +
-      "their values; connectors and executors redeem them on your behalf. Contacts are " +
+      "'VISA •••• 4242'), and access class. Secret items are USE-ONLY — no tool returns " +
+      "their values, so never claim to know one; if a secret is missing, ask your owner to " +
+      "add it in the app's Vault, never in chat. Contacts are " +
       "readable through vault_contacts.",
     parameters: Type.Object({}),
     structuredOutputSchema: Type.Array(

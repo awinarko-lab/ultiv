@@ -31,7 +31,8 @@ const setTool = (sensors: SensorsService, profiles: ProfilesService): Tool =>
       "(woken `leadMinutes` before matching events); kind 'rss' watches `url` and wakes on " +
       "every new item whose title contains `match`; kind 'watch' polls `url` and wakes once " +
       "each time its content CHANGES (edge-triggered — first poll is the baseline). Each " +
-      "event/change wakes you exactly once, even across restarts.",
+      "event/change wakes you exactly once, even across restarts. The owner approves each " +
+      "sensor.",
     parameters: Type.Object({
       kind: Type.Optional(
         Type.Union([Type.Literal("calendar"), Type.Literal("rss"), Type.Literal("watch")], {
@@ -44,7 +45,7 @@ const setTool = (sensors: SensorsService, profiles: ProfilesService): Tool =>
       match: Type.Optional(
         Type.String({
           description:
-            "Case-insensitive substring filter: item title (calendar/rss) or page text (watch). Empty = everything.",
+            "Case-insensitive substring filter: event/item title (calendar/rss) or page text (watch). Empty = everything.",
         }),
       ),
       leadMinutes: Type.Optional(
@@ -131,8 +132,10 @@ const removeTool = (sensors: SensorsService, profiles: ProfilesService): Tool =>
   defineTool({
     name: "sensor_remove",
     gated: true,
-    description: "Cancel one of YOUR sensors by id. The user approves each removal.",
-    parameters: Type.Object({ id: Type.String() }),
+    description: "Cancel one of YOUR sensors by id. The owner approves each removal.",
+    parameters: Type.Object({
+      id: Type.String({ description: "The sensor id (see sensor_list)." }),
+    }),
     structuredOutputSchema: Type.Object({ removed: Type.Boolean() }),
     execute: async (args, api) => {
       const scope = profiles.scopeOf(String(api.conversationId));

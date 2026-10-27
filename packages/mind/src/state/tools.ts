@@ -20,7 +20,7 @@ const getTool = (kv: KvService, profiles: ProfilesService): Tool =>
   defineTool({
     name: "state_get",
     description:
-      "Read YOUR durable state (survives sessions and restarts). undefined means unset — " +
+      'Read YOUR durable state (survives sessions and restarts). "unset" means no value — ' +
       "which is NOT proof you never acted; write generation markers for anything where that matters.",
     parameters: Type.Object({ key: keyParam }),
     structuredOutputSchema: Type.Object({
@@ -60,7 +60,7 @@ const setTool = (kv: KvService, profiles: ProfilesService): Tool =>
     name: "state_set",
     description:
       "Write YOUR durable state — dedup ledgers, generation tokens, cross-wake bookmarks. " +
-      "Written BEFORE acting on anything you must not do twice.",
+      "Write it BEFORE acting on anything you must not do twice.",
     parameters: Type.Object({ key: keyParam, value: Type.String() }),
     structuredOutputSchema: Type.Object({ ok: Type.Boolean() }),
     execute: async (args, api) => {
