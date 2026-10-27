@@ -86,7 +86,13 @@ function BotDialog({
       <DialogTrigger render={children} />
       <DialogContent>
         <h2 className="text-lg font-semibold">{title}</h2>
-        <div className="mt-4 flex flex-col gap-3">
+        <form
+          className="mt-4 flex flex-col gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
           <label className="flex flex-col gap-1 text-sm">
             Name
             <Input
@@ -152,11 +158,7 @@ function BotDialog({
           <div className="flex justify-end gap-2">
             {/* Disabled buttons swallow hover, so the reason sits on a wrapper. */}
             <span title={form.name.trim() === "" ? "Give the bot a name first" : undefined}>
-              <Button
-                variant="default"
-                disabled={busy || form.name.trim() === ""}
-                onClick={() => void submit()}
-              >
+              <Button type="submit" variant="default" disabled={busy || form.name.trim() === ""}>
                 {busy ? "Working…" : "Save"}
               </Button>
             </span>
@@ -166,7 +168,7 @@ function BotDialog({
             its existing chats too (sections re-render per request). The model choice becomes the
             bot's durable default across its chats.
           </p>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { TaskInfo } from "@ultiv/contracts";
 import { api } from "@/lib/api";
 import { pollFailed, pollRecovered } from "@/lib/notify";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TaskActivityDialog } from "@/components/task-activity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,9 +88,18 @@ export function TasksPanel({ conversationId }: { conversationId: string | null }
                 Stop
               </Button>
             ) : (
-              <Button variant="ghost" size="xs" onClick={() => void remove(task.id)}>
-                Delete
-              </Button>
+              <ConfirmDialog
+                title="Delete this task?"
+                warning="Its record and activity log are removed. This cannot be undone."
+                onConfirm={async () => {
+                  await api.removeTask(task.id);
+                  void refresh();
+                }}
+              >
+                <Button variant="ghost" size="xs">
+                  Delete
+                </Button>
+              </ConfirmDialog>
             )}
           </li>
         ))}

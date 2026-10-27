@@ -14,6 +14,26 @@ import { Composer } from "@/components/composer";
 import { ChatHeader, type ChatBot, type LinkState } from "@/components/chat-header";
 import { TranscriptItems } from "@/components/transcript-items";
 
+/**
+ * The polite live-region text: a finished reply or a gate waiting on the
+ * owner. Whatever was already on screen at mount is not re-announced.
+ */
+function useAnnouncement(
+  botName: string | undefined,
+  transcript: TranscriptEntry[],
+  pending: PendingApproval,
+): string {
+  const who = botName !== undefined && botName !== "" ? botName : "The bot";
+  const lastReply = transcript.findLast((entry) => entry.kind === "output" && !entry.streaming);
+  const seen = useRef<number | null | undefined>(undefined);
+  if (seen.current === undefined && transcript.length > 0) seen.current = lastReply?.id ?? null;
+  if (pending !== null) return `${who} needs your approval for ${pending.name}.`;
+  if (lastReply === undefined || lastReply.kind !== "output" || lastReply.id === seen.current) {
+    return "";
+  }
+  return `${who}: ${lastReply.text.slice(0, 280)}`;
+}
+
 export function SessionView({
   bot,
   onBack,
@@ -100,6 +120,8 @@ export function SessionView({
     });
   };
 
+  const announcement = useAnnouncement(bot?.name, transcript, pending);
+
   return (
     // Frameless: the chat is the page, not a card on it. Transcript scrolls;
     // the composer stays pinned at the bottom of the available height.
@@ -130,6 +152,10 @@ export function SessionView({
           </ScrollArea>
         </div>
       </div>
+      {/* Screen readers hear new replies and approval requests. */}
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
       <footer className="flex shrink-0 flex-col gap-2">
         {lastError !== null && <p className="w-full text-sm text-destructive">{lastError}</p>}
         {controlError !== null && (

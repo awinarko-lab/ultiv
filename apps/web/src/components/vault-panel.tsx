@@ -192,9 +192,17 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
         )}
       </div>
       <Separator className="my-4" />
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2">
+      <form
+        className="flex flex-col gap-2"
+        autoComplete="off"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy && name.trim() !== "") void create();
+        }}
+      >
+        <div className="flex flex-wrap gap-2">
           <select
+            aria-label="Item type"
             className="bg-background rounded-md border px-2 py-1 text-sm"
             value={kind}
             onChange={(event) => {
@@ -209,12 +217,15 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
             ))}
           </select>
           <Input
-            className="flex-1"
+            className="min-w-32 flex-1"
+            aria-label="Item name"
+            autoComplete="off"
             placeholder="Name (e.g. Gmail)"
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
           <select
+            aria-label="Which bots can use it"
             className="bg-background rounded-md border px-2 py-1 text-sm"
             value={scope}
             onChange={(event) => setScope(event.target.value)}
@@ -231,20 +242,22 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
           <Input
             key={field.key}
             type={field.secret ? "password" : "text"}
+            aria-label={field.label}
+            autoComplete={field.secret ? "new-password" : "off"}
             placeholder={field.label}
             value={fields[field.key] ?? ""}
             onChange={(event) => set(field.key, event.target.value)}
           />
         ))}
         {error !== null && <p className="text-destructive text-sm">{error}</p>}
-        <Button disabled={busy || name.trim() === ""} onClick={() => void create()}>
+        <Button type="submit" disabled={busy || name.trim() === ""}>
           {busy ? "Sealing…" : "Add item"}
         </Button>
         <p className="text-muted-foreground text-xs">
           Secrets are sealed server-side (AES-256-GCM under VAULT_KEY). Bots see masks and redeem
           them on your behalf — they never read the bytes, and neither does this screen again.
         </p>
-      </div>
+      </form>
     </>
   );
 }

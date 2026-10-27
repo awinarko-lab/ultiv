@@ -7,13 +7,13 @@
 import { DownloadIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { MemoryRecord } from "@ultiv/contracts";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { api, type ArtifactRow } from "@/lib/api";
-import { notifyError } from "@/lib/notify";
 
 const formatBytes = (n: number): string =>
   n >= 1_048_576
@@ -73,14 +73,11 @@ export function MemoryPanel({
     }
   };
 
+  // Throws on failure — the confirm dialog stays open and shows the reason.
   const remove = async (recordId: string): Promise<void> => {
-    try {
-      await api.profileMemoryRemove(profileId, recordId);
-      setRecords((rows) => rows.filter((row) => row.id !== recordId));
-      setError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
+    await api.profileMemoryRemove(profileId, recordId);
+    setRecords((rows) => rows.filter((row) => row.id !== recordId));
+    setError(null);
   };
 
   return (
@@ -108,33 +105,41 @@ export function MemoryPanel({
                   {record.tags.length > 0 && ` · ${record.tags.join(", ")}`}
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={`Forget: ${record.text.slice(0, 40)}`}
-                onClick={() => void remove(record.id)}
+              <ConfirmDialog
+                title="Forget this?"
+                warning={`${name} will no longer remember it. This cannot be undone.`}
+                confirmLabel="Forget"
+                onConfirm={() => remove(record.id)}
               >
-                <Trash2Icon />
-              </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Forget: ${record.text.slice(0, 40)}`}
+                >
+                  <Trash2Icon />
+                </Button>
+              </ConfirmDialog>
             </div>
           ))}
         </div>
-        <div className="mt-2 flex gap-2">
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void add();
+          }}
+        >
           <Input
             className="flex-1"
+            aria-label={`Something ${name} should always know`}
             placeholder={`Something ${name} should always know…`}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy || draft.trim() === ""}
-            onClick={() => void add()}
-          >
+          <Button type="submit" variant="outline" size="sm" disabled={busy || draft.trim() === ""}>
             {busy ? "Saving…" : "Remember"}
           </Button>
-        </div>
+        </form>
         <Separator className="my-4" />
         <p className="text-xs font-medium text-muted-foreground">Durable state (KV)</p>
         <div className="mt-2 flex max-h-56 flex-col gap-2 overflow-y-auto">
@@ -156,19 +161,18 @@ export function MemoryPanel({
                     {new Date(row.updatedAt).toLocaleString()}
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Delete state ${row.key}`}
-                  onClick={() => {
-                    api
-                      .removeState(profileId, row.key)
-                      .then(load)
-                      .catch((cause: unknown) => notifyError("Couldn't delete that state", cause));
+                <ConfirmDialog
+                  title={`Delete ${row.key}?`}
+                  warning={`${name} may redo work this marker was guarding against. This cannot be undone.`}
+                  onConfirm={async () => {
+                    await api.removeState(profileId, row.key);
+                    await load();
                   }}
                 >
-                  <Trash2Icon />
-                </Button>
+                  <Button variant="ghost" size="icon" aria-label={`Delete state ${row.key}`}>
+                    <Trash2Icon />
+                  </Button>
+                </ConfirmDialog>
               </div>
             ))
           )}

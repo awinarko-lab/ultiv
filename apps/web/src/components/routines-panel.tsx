@@ -358,7 +358,13 @@ function CreateWebhook({
       />
       <DialogContent>
         <DialogTitle>New inbound webhook</DialogTitle>
-        <div className="mt-3 flex flex-col gap-2">
+        <form
+          className="mt-3 flex flex-col gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (sessionId !== "" && !busy) void create();
+          }}
+        >
           <select
             className="bg-background rounded-md border px-2 py-1.5 text-sm"
             value={sessionId}
@@ -373,25 +379,27 @@ function CreateWebhook({
             ))}
           </select>
           <Input
+            aria-label="Webhook name (optional)"
             placeholder="Name (optional)"
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
           <textarea
+            aria-label="JSON Schema (optional)"
             className="bg-background min-h-20 rounded-md border px-2 py-1.5 font-mono text-xs"
             placeholder='JSON Schema (optional) — e.g. {"type":"object","required":["event"]}'
             value={schema}
             onChange={(event) => setSchema(event.target.value)}
           />
           {error !== null && <p className="text-destructive text-xs">{error}</p>}
-          <Button size="sm" disabled={sessionId === "" || busy} onClick={() => void create()}>
+          <Button type="submit" size="sm" disabled={sessionId === "" || busy}>
             Create
           </Button>
           <p className="text-muted-foreground text-xs">
             The URL and bearer token are shown in the list after creation — the bots never see the
             token, only the reject counters.
           </p>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
