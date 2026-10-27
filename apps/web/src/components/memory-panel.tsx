@@ -88,7 +88,7 @@ export function MemoryPanel({
       <DialogContent>
         <DialogTitle>What {name} remembers</DialogTitle>
         {error !== null && <p className="text-destructive mt-2 text-sm">{error}</p>}
-        <div className="mt-3 flex max-h-72 flex-col gap-2 overflow-y-auto">
+        <div className="mt-3 flex flex-col gap-2">
           {records.length === 0 && (
             <p className="text-muted-foreground text-sm">
               Nothing yet — durable facts {name} keeps about its work appear here, editable and
@@ -144,7 +144,7 @@ export function MemoryPanel({
         </form>
         <Separator className="my-4" />
         <SectionHeader title="Durable state (KV)" />
-        <div className="mt-2 flex max-h-56 flex-col gap-2 overflow-y-auto">
+        <div className="mt-2 flex flex-col gap-2">
           {state.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               No KV state yet — the bot's dedup ledgers and "already acted" markers live here
@@ -179,7 +179,7 @@ export function MemoryPanel({
         </div>
         <Separator className="my-4" />
         <SectionHeader title={`Files ${name} made`} />
-        <div className="mt-2 flex max-h-56 flex-col gap-2 overflow-y-auto">
+        <div className="mt-2 flex flex-col gap-2">
           {artifacts.length === 0 ? (
             <p className="text-muted-foreground text-sm">No artifacts yet.</p>
           ) : (

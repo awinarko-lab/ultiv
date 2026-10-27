@@ -88,7 +88,7 @@ export function TaskActivityDialog({
           </div>
         )}
 
-        <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border px-3 py-2">
+        <div className="mt-3 rounded-lg border px-3 py-2">
           {activity === null ? (
             <p className="text-muted-foreground text-sm">Loading…</p>
           ) : activity.steps.length === 0 ? (
