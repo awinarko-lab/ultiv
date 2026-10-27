@@ -67,6 +67,22 @@ export type {
   VaultContact,
   VaultKind,
 } from "./vault.ts";
+export {
+  CredentialAdapterSchema,
+  CredentialBindingInputSchema,
+  CredentialBindingListSchema,
+  CredentialBindingSchema,
+  HttpAuthPlacementSchema,
+  HttpMethodSchema,
+} from "./credentials.ts";
+export type {
+  CredentialAdapter,
+  CredentialBinding,
+  CredentialBindingInput,
+  CredentialBindingList,
+  HttpAuthPlacement,
+  HttpMethod,
+} from "./credentials.ts";
 export { MemoryRecordSchema, MemoryListSchema } from "./memory.ts";
 export type { MemoryRecord, MemoryList } from "./memory.ts";
 export { RoomInfoSchema, RoomListSchema } from "./rooms.ts";

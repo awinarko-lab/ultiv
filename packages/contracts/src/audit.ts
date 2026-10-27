@@ -11,6 +11,7 @@ export const AuditEventSchema = Type.Object({
     Type.Literal("approval"),
     Type.Literal("mailbox"),
     Type.Literal("escalation"),
+    Type.Literal("credential"),
   ]),
   conversationId: Type.String(),
   /** The profile the acting conversation belongs to; null when unmapped. */
@@ -20,6 +21,16 @@ export const AuditEventSchema = Type.Object({
   durationMs: Type.Union([Type.Number(), Type.Null()]),
   ok: Type.Union([Type.Boolean(), Type.Null()]),
   error: Type.Union([Type.String(), Type.Null()]),
+  /** `credential` events: which item, where, and the outcome — never the secret. */
+  credential: Type.Optional(
+    Type.Object({
+      item: Type.Union([Type.String(), Type.Null()]),
+      adapter: Type.String(),
+      host: Type.String(),
+      method: Type.String(),
+      status: Type.Union([Type.Number(), Type.Null()]),
+    }),
+  ),
 });
 
 export type AuditEvent = Static<typeof AuditEventSchema>;
