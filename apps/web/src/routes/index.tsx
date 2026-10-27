@@ -29,6 +29,7 @@ import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
 import { useSessions } from "@/lib/use-sessions";
+import { formatWhen } from "@/lib/format";
 
 type MobileTab = "chat" | "bots" | "vault" | "history" | "routines";
 
@@ -378,7 +379,7 @@ function HistoryList({
                   {session.title === "" ? "Untitled session" : session.title}
                 </span>
                 <time className="text-muted-foreground shrink-0 pl-2">
-                  {new Date(session.lastMessageAt).toLocaleString()}
+                  {formatWhen(session.lastMessageAt)}
                 </time>
               </Button>
               <ConfirmDialog

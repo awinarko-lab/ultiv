@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { api, type ArtifactRow, type TaskActivity } from "@/lib/api";
+import { formatWhen } from "@/lib/format";
 
 const statusVariant = {
   running: "default",
@@ -163,8 +164,8 @@ export function TaskActivityDialog({
           </div>
         </div>
         <p className="text-muted-foreground mt-2 text-xs">
-          Created {new Date(task.createdAt).toLocaleString()}
-          {task.finishedAt !== null && ` · finished ${new Date(task.finishedAt).toLocaleString()}`}
+          Created {formatWhen(task.createdAt)}
+          {task.finishedAt !== null && ` · finished ${formatWhen(task.finishedAt)}`}
         </p>
       </DialogContent>
     </Dialog>

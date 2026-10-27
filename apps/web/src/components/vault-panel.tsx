@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ApiError, api } from "@/lib/api";
+import { formatWhen } from "@/lib/format";
 
 const KINDS: VaultKind[] = ["login", "card", "key", "note", "contact"];
 
@@ -166,7 +167,7 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
                     {" · "}
                     {item.lastUsedAt === null
                       ? "never used"
-                      : `used ${new Date(item.lastUsedAt).toLocaleDateString()}`}
+                      : `used ${formatWhen(item.lastUsedAt)}`}
                   </span>
                 </span>
                 <Badge variant="outline">{item.kind}</Badge>

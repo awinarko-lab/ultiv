@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { api, type RoomDetail } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
+import { formatWhen } from "@/lib/format";
 
 function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void> }) {
   const [detail, setDetail] = useState<RoomDetail | null>(null);
@@ -85,12 +86,7 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
                       {line.speaker}
                     </span>
                     <span className="text-muted-foreground ml-2 text-[10px]">
-                      {new Date(line.at).toLocaleString([], {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatWhen(line.at)}
                     </span>
                     <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
@@ -202,7 +198,7 @@ export function RoomsPanel({
                 {room.participants.map((id) => nameOf(id)).join(" ↔ ")}
                 {room.topic !== "" && <Badge variant="outline">{room.topic}</Badge>}
                 <span className="text-muted-foreground ml-auto text-xs">
-                  {new Date(room.lastMessageAt).toLocaleString()}
+                  {formatWhen(room.lastMessageAt)}
                 </span>
               </Button>
             ))}

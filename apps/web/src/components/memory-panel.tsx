@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { api, type ArtifactRow } from "@/lib/api";
+import { formatWhen } from "@/lib/format";
 
 const formatBytes = (n: number): string =>
   n >= 1_048_576
@@ -101,7 +102,7 @@ export function MemoryPanel({
               <div className="min-w-0 flex-1">
                 <p className="break-words">{record.text}</p>
                 <p className="text-muted-foreground mt-1 text-xs">
-                  {new Date(record.at).toLocaleString()}
+                  {formatWhen(record.at)}
                   {record.tags.length > 0 && ` · ${record.tags.join(", ")}`}
                 </p>
               </div>
@@ -157,9 +158,7 @@ export function MemoryPanel({
                 <div className="min-w-0 flex-1">
                   <code className="text-xs">{row.key}</code>
                   <p className="text-muted-foreground truncate text-xs">{row.value}</p>
-                  <p className="text-muted-foreground text-xs">
-                    {new Date(row.updatedAt).toLocaleString()}
-                  </p>
+                  <p className="text-muted-foreground text-xs">{formatWhen(row.updatedAt)}</p>
                 </div>
                 <ConfirmDialog
                   title={`Delete ${row.key}?`}

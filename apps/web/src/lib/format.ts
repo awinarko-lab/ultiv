@@ -1,6 +1,5 @@
 /**
- * Human times in one place. Dividers read "Today 5:46 PM" / "Yesterday …" /
- * "Oct 25 5:46 PM" (with the year only when it differs).
+ * Human times in one place: every date the UI shows goes through here.
  */
 const sameDay = (a: Date, b: Date): boolean =>
   a.getFullYear() === b.getFullYear() &&
@@ -10,6 +9,14 @@ const sameDay = (a: Date, b: Date): boolean =>
 const clock = (date: Date): string =>
   date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
+/** "Oct 25", with the year only when it isn't this year's. */
+const shortDate = (date: Date, now: Date): string =>
+  date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+
 /** A chat time divider: day word (or date) plus the clock time. */
 export function formatDivider(at: number, now: Date = new Date()): string {
   const date = new Date(at);
@@ -17,12 +24,27 @@ export function formatDivider(at: number, now: Date = new Date()): string {
   yesterday.setDate(now.getDate() - 1);
   if (sameDay(date, now)) return `Today ${clock(date)}`;
   if (sameDay(date, yesterday)) return `Yesterday ${clock(date)}`;
-  const day = date.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
-  });
-  return `${day} ${clock(date)}`;
+  return `${shortDate(date, now)} ${clock(date)}`;
+}
+
+const MINUTE = 60_000;
+
+/** A clock time on its own: "5:46 PM". */
+export const formatClock = (at: number): string => clock(new Date(at));
+
+/**
+ * A list timestamp: "just now" / "12 min ago" within the hour, the clock time
+ * earlier today, "Yesterday 5:46 PM", then "Oct 25" (year only when different).
+ */
+export function formatWhen(at: number, now: Date = new Date()): string {
+  const ago = now.getTime() - at;
+  if (ago >= 0 && ago < MINUTE) return "just now";
+  if (ago >= 0 && ago < 60 * MINUTE) return `${Math.floor(ago / MINUTE)} min ago`;
+  const date = new Date(at);
+  if (sameDay(date, now)) return clock(date);
+  const divider = formatDivider(at, now);
+  if (divider.startsWith("Yesterday")) return divider;
+  return shortDate(date, now);
 }
 
 /** Full date and time, for tooltips. */

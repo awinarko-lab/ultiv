@@ -24,8 +24,9 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
+import { formatClock, formatWhen } from "@/lib/format";
 
-const when = (at: number | null): string => (at === null ? "never" : new Date(at).toLocaleString());
+const when = (at: number | null): string => (at === null ? "never" : formatWhen(at));
 
 /** The routines content — shared by the header dialog and the mobile view. */
 export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
@@ -162,7 +163,7 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
         )}
         {escalations.map((event, index) => (
           <div key={`${event.at}-${index}`} className="flex flex-wrap items-center gap-1.5 text-xs">
-            <time className="text-muted-foreground">{new Date(event.at).toLocaleString()}</time>
+            <time className="text-muted-foreground">{formatWhen(event.at)}</time>
             <Badge variant="destructive">{event.name}</Badge>
             <span className="text-muted-foreground">
               {event.profile ?? "—"} · {event.error ?? ""}
@@ -175,7 +176,7 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
         {events.length === 0 && <Empty text="Nothing has fired yet." />}
         {events.map((event) => (
           <div key={event.id} className="flex flex-wrap items-center gap-1.5 text-xs">
-            <time className="text-muted-foreground">{new Date(event.at).toLocaleTimeString()}</time>
+            <time className="text-muted-foreground">{formatClock(event.at)}</time>
             <Badge variant={event.source === "cron" ? "secondary" : "outline"}>
               {event.source}
             </Badge>
