@@ -16,6 +16,7 @@ import { httpPlugin } from "@ultiv/ext";
 import { closeWebhookPump } from "./webhooks.ts";
 import { startSensorLoop, type SensorLoop } from "./sensors.ts";
 import { wireEscalationPager } from "./attention.ts";
+import { startPush } from "./push/index.ts";
 import { openMind } from "@ultiv/mind";
 import { startScheduler, type CronScheduler } from "./cron.ts";
 import { principalFromRequest, type Principal } from "./identity.ts";
@@ -54,6 +55,8 @@ export async function buildStack(options?: {
   const mind = handle.mind;
   // The attention last-mile: dead-letters and disabled jobs must ARRIVE.
   wireEscalationPager(mind);
+  // Web Push to the owner's devices (inert until VAPID keys are in .env).
+  const push = startPush(mind);
   let refreshSchedules: () => Promise<void> = async () => undefined;
   const scheduler: CronScheduler = await startScheduler(mind);
   refreshSchedules = () => scheduler.refresh();
@@ -73,13 +76,14 @@ export async function buildStack(options?: {
   });
   serveSession(host, mind);
 
-  const http = createServer(createRestHandler({ mind, scheduler }));
+  const http = createServer(createRestHandler({ mind, scheduler, push }));
   const wss = new WebSocketServer({ server: http });
   // The upgrade request IS the credential for now: x-ultiv-user scopes the
   // link's principal (see identity.ts for the seam a real IdP replaces).
   acceptWebSockets(wss, host, { principal: async (request) => principalFromRequest(request) });
 
   const close = async () => {
+    push.stop();
     scheduler.stop();
     sensorLoop.stop();
     // Pending webhook windows first: a flush racing the mind's teardown

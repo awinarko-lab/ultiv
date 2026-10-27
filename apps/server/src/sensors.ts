@@ -63,7 +63,7 @@ const fire = async (
     deliveryId: `${sensor.id}:${uid}`,
   });
   try {
-    await deliverToSession(mind, sensor.sessionId, text, "followUp");
+    await deliverToSession(mind, sensor.sessionId, text, "followUp", "sensor");
     await settleRoutineEvent(mind.converse, eventId, "delivered");
     await recordSensorFire(mind.converse, sensor.id, uid);
   } catch (cause) {

@@ -85,6 +85,7 @@ const armedJob = (mind: MindService, job: CronJobInfo, scheduler: CronScheduler)
         job.sessionId,
         `[cron ${job.id}] ${job.prompt}`,
         job.whenBusy ?? "steer",
+        "cron",
       );
       await settleRoutineEvent(mind.converse, eventId, "delivered");
       // A one-shot's whole purpose is that single delivery — retire it.

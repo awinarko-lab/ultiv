@@ -21,10 +21,13 @@ import { bindingRoutes } from "./rest/bindings.ts";
 import { vaultRoutes } from "./rest/vault.ts";
 import { webhookRoutes } from "./rest/webhooks.ts";
 import { sensorRoutes } from "./rest/sensors.ts";
+import { pushRoutes } from "./rest/push.ts";
+import type { PushService } from "./push/index.ts";
 
 export interface RestDeps {
   readonly mind: MindService;
   readonly scheduler: CronScheduler;
+  readonly push?: PushService;
 }
 
 const readBody = async (req: IncomingMessage): Promise<Buffer> => {
@@ -59,6 +62,7 @@ export const createRestHandler = (deps: RestDeps) => {
     const args: RouteArgs = {
       mind: deps.mind,
       scheduler: deps.scheduler,
+      ...(deps.push !== undefined ? { push: deps.push } : {}),
       req,
       res,
       url,
@@ -166,6 +170,7 @@ async function route(args: RouteArgs): Promise<void> {
   if (await bindingRoutes(args, segment)) return;
   if (await vaultRoutes(args, segment)) return;
   if (await approvalRoutes(args)) return;
+  if (await pushRoutes(args)) return;
   if (path === "/" || path === "/api/health") return json(200, { app: "ultiv", ok: true });
   json(404, { error: `no route: ${method} ${path}` });
 }

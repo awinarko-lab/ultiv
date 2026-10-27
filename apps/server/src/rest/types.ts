@@ -2,10 +2,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MindService } from "@ultiv/mind";
 import type { CronScheduler } from "../cron.ts";
+import type { PushService } from "../push/index.ts";
 
 export interface RouteArgs {
   readonly mind: MindService;
   readonly scheduler: CronScheduler;
+  /** Web Push; absent in stacks built without it (tests). */
+  readonly push?: PushService;
   readonly req: IncomingMessage;
   readonly res: ServerResponse;
   readonly url: URL;

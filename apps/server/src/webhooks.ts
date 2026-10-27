@@ -93,7 +93,7 @@ const flush = async (
     const whenBusy = entries.some((entry) => entry.whenBusy === "steer") ? "steer" : "followUp";
     for (let attempt = 1; attempt <= MAX_DELIVERY_ATTEMPTS; attempt += 1) {
       try {
-        await deliverToSession(mind, sessionId, text, whenBusy);
+        await deliverToSession(mind, sessionId, text, whenBusy, "webhook");
         await Promise.all(
           entries.map((entry) => settleRoutineEvent(mind.converse, entry.eventId, "delivered")),
         );
