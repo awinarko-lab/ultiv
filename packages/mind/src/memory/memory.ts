@@ -432,7 +432,7 @@ export const memoryService = (deps: {
     writeV2: async (input) => {
       if (input.scope === "owner") await requireKeeper(input.owner, input.writer);
       await ensureMigrated(deps, input.owner, input.profileId);
-      return writeFactV2(deps, (owner, profileId) => service.readFacts(owner, profileId), input);
+      return writeFactV2(deps, input);
     },
     core: coreService({ converse, profiles }),
     forget: (owner, profileId, factId, reason, conversationId) =>
