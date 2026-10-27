@@ -5,7 +5,7 @@
  */
 import type { ChatBot } from "@/components/chat-header";
 import { SessionView } from "@/components/session-view";
-import { TasksPanel } from "@/components/tasks-panel";
+import { TasksPill } from "@/components/tasks-pill";
 import { StopDialog } from "@/components/stop-dialog";
 import { useSession } from "@/lib/use-session";
 import { useTasks } from "@/lib/use-tasks";
@@ -34,7 +34,7 @@ export function Chat({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <SessionView
-        tasks={<TasksPanel conversationId={session.conversationId} />}
+        tasks={<TasksPill chatTasks={chatTasks} />}
         bot={bot}
         onBack={onBack}
         link={session.link}
