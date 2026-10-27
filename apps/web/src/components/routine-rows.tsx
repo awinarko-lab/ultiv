@@ -10,6 +10,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DevDetails } from "@/components/ui/dev-details";
+import { writeClipboard } from "@/lib/clipboard";
 import { cronToText } from "@/lib/cron-text";
 import { formatDivider, formatWhen } from "@/lib/format";
 import { notifyError } from "@/lib/notify";
@@ -30,7 +31,7 @@ export const BUSY_LABEL: Record<string, string> = {
 
 export async function copyText(text: string, what = "Copied"): Promise<void> {
   try {
-    await navigator.clipboard.writeText(text);
+    await writeClipboard(text);
     toast.success(what);
   } catch (cause) {
     notifyError("Couldn't copy", cause);
