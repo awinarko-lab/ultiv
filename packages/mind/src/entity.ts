@@ -1,10 +1,13 @@
 /**
- * The mind — the platform's one AI entity, named **Ultius** (`@ultiv/mind`
- * keeps its working package name; the entity it implements is Ultius).
- * Chat is only one of its forms: `converse` (durable conversations),
- * `decide` (typed Jev decisions, independent of chat), `act` (its executable
- * tool surface, codemode and background tasks included), `generate` (one-shot
- * app-facing completion), and `audit` (what it did). Everything enters
+ * The mind — the entity substrate (`@ultiv/mind` keeps its working package
+ * name). One runtime hosts many entities: EACH PROFILE (bot) IS ITS OWN
+ * ENTITY, with its own persona, memory, artifacts, vault scope, tool
+ * allowlist and audit trail; the default profile is **Ultius**. Chat is only
+ * one form of an entity: `converse` (durable conversations, Redirect now),
+ * `decide` (typed Jev decisions, independent of chat), `act` (the executable
+ * tool surface: codemode, background tasks, the `http_request` credential
+ * broker), `generate` (one-shot app-facing completion), `mailbox` (bot-to-bot
+ * rooms with deadlines) and `audit` (what each entity did). Everything enters
  * through this service; nothing reaches a provider raw.
  */
 import { Context, Effect, Layer } from "effect";
