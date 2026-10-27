@@ -8,7 +8,7 @@ import { useRef, useState } from "react";
 import { Popover } from "@base-ui/react/popover";
 import type { SendMode } from "@ultiv/contracts";
 import { ArrowUpIcon } from "lucide-react";
-import { SEND_CHOICES } from "@/lib/send-mode";
+import { SEND_CHOICES } from "../lib/send-mode.ts";
 import { Button } from "./ui/button.tsx";
 
 const LONG_PRESS_MS = 500;

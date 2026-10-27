@@ -12,7 +12,7 @@ import type { SendMode } from "@ultiv/contracts";
 import { CornerUpRightIcon, PlusIcon, SquareIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { canSend, SendButton } from "@/components/send-button";
-import { canRedirect, keySendMode } from "@/lib/send-mode";
+import { canRedirect, keySendMode } from "../lib/send-mode.ts";
 
 /** Starter prompts: the "+" menu and the empty chat both offer them. */
 export const SUGGESTIONS = [
