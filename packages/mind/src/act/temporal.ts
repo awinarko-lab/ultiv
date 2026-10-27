@@ -63,8 +63,8 @@ export const nowTool = (): Tool =>
     name: "now",
     description:
       "Your sense of now: the current date, time, weekday and UTC offset, in any IANA zone " +
-      '(default: the server\u2019s). Ground every "today", deadline or freshness claim in this ' +
-      "instead of assuming.",
+      "(default: the server\u2019s — pass your owner\u2019s zone when you know it). Ground every " +
+      '"today", deadline, schedule or freshness claim in this instead of assuming.',
     parameters: NowParams,
     structuredOutputSchema: NowOutput,
     execute: (args) => {
