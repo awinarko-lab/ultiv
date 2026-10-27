@@ -8,6 +8,38 @@ import {
   policyFor,
   trustFor,
 } from "./guard.ts";
+import type { AuditEvent } from "@ultiv/contracts";
+import { Effect } from "effect";
+import type { AuditService } from "../audit/audit.ts";
+import type { ConverseService } from "../converse/converse.ts";
+
+// Minimal fakes: entriesOf is NEWEST FIRST (pi-durable scan order).
+const entry = (
+  id: number,
+  messages: readonly { role: "user" | "assistant"; content: string; timestamp: number }[],
+) => ({ id, conversationId: 7, kind: "model", model: messages });
+
+const auditEvent = (at: number, name: string): AuditEvent => ({
+  at,
+  kind: "tool_call",
+  conversationId: "c1",
+  profile: null,
+  callId: null,
+  name,
+  durationMs: null,
+  ok: true,
+  error: null,
+});
+
+const contextDeps = (
+  entries: readonly ReturnType<typeof entry>[],
+  events: readonly AuditEvent[],
+): Parameters<typeof contextOf>[0] => ({
+  converse: {
+    entriesOf: () => Effect.succeed(entries),
+  } as unknown as ConverseService,
+  audit: { tail: () => events } as unknown as AuditService,
+});
 
 describe("origin detection", () => {
   it("maps the protected bracket prefixes and plain owner input", () => {
@@ -70,6 +102,55 @@ describe("content checks", () => {
   it("lets plain facts through", () => {
     expect(checkContent("harry prefers tea over coffee")).ok;
     expect(checkContent("the cat's vet visit is on Friday")).ok;
+  });
+});
+
+describe("turn context (origin + taint window)", () => {
+  const user = (content: string, timestamp: number) => ({
+    role: "user" as const,
+    content,
+    timestamp,
+  });
+
+  it("reads origin from the NEWEST user entry", async () => {
+    const context = await contextOf(
+      contextDeps(
+        [
+          entry(20, [user("[cron nightly] run the sweep", 2_000)]),
+          entry(10, [user("plain owner words", 1_000)]),
+        ],
+        [],
+      ),
+      "c1",
+    );
+    expect(context.origin).toBe("cron");
+    // Only an owner-voiced CURRENT input counts as ownerInput — the
+    // tainted-instruction exception needs this turn's owner words.
+    expect(context.ownerInput).toBe(null);
+    const owner = await contextOf(
+      contextDeps([entry(30, [user("plain owner words", 3_000)])], []),
+      "c1",
+    );
+    expect(owner.origin).toBe("owner");
+    expect(owner.ownerInput).toBe("plain owner words");
+  });
+
+  it("taints only tools that ran AT OR AFTER the current input", async () => {
+    const entries = [entry(20, [user("summarise this page", 5_000)])];
+    const before = await contextOf(contextDeps(entries, [auditEvent(4_999, "web_fetch")]), "c1");
+    expect(before.tainted).toBe(false);
+    const after = await contextOf(contextDeps(entries, [auditEvent(5_000, "web_fetch")]), "c1");
+    expect(after.tainted).toBe(true);
+  });
+
+  it("ignores untrusted tools from other conversations", async () => {
+    const entries = [entry(20, [user("hello", 5_000)])];
+    const elsewhere = auditEvent(9_000, "web_fetch");
+    const context = await contextOf(
+      contextDeps(entries, [{ ...elsewhere, conversationId: "other" }]),
+      "c1",
+    );
+    expect(context.tainted).toBe(false);
   });
 });
 

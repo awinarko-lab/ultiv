@@ -67,6 +67,9 @@ export const contextOf = async (
   let origin: Origin = "unknown";
   let ownerInput: string | null = null;
   let inputAt = 0;
+  // entriesOf is NEWEST FIRST, so the first entry carrying a user message is
+  // the newest admitted input — this turn's input. Its `timestamp` (unix ms)
+  // anchors the taint window; entry ids are record ids, never timestamps.
   for (const entry of entries) {
     const user = entry.model?.find((message) => message.role === "user");
     if (user === undefined) continue;
@@ -76,7 +79,7 @@ export const contextOf = async (
         : user.content.map((block) => (block.type === "text" ? block.text : "")).join(" ");
     origin = originOfPrefix(content);
     if (origin === "owner" || content.trimStart().startsWith("[owner]")) ownerInput = content;
-    inputAt = Number(entry.id) || 0;
+    inputAt = user.timestamp || 0;
     break;
   }
   const isUntrusted = (name: string): boolean =>
