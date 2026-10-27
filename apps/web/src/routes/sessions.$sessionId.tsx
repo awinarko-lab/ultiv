@@ -27,13 +27,15 @@ function SessionPage() {
   };
 
   return (
-    <main className="mx-auto flex h-dvh w-full max-w-5xl flex-col gap-4 p-8">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <main className="mx-auto flex h-dvh w-full max-w-5xl flex-col gap-3 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <h1 className="font-heading text-xl font-semibold tracking-tight">
             {isMain ? "Main chat" : "Session"}
           </h1>
-          <Badge variant="outline">{sessionId}</Badge>
+          <Badge variant="outline" className="max-w-40 truncate">
+            {sessionId}
+          </Badge>
         </div>
         <div className="flex items-center gap-2">
           {botId !== undefined && <RoomsPanel profiles={sessions.profiles} botId={botId} />}

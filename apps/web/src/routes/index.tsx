@@ -24,7 +24,6 @@ import { VaultContent, VaultPanel } from "@/components/vault-panel";
 import { RoutinesContent, RoutinesPanel } from "@/components/routines-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
@@ -137,7 +136,8 @@ function HomePage() {
       <aside className="hidden w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r p-4 lg:flex">
         {botsPanel}
       </aside>
-      <main className="flex min-w-0 flex-1 flex-col gap-3 p-4 pb-24 sm:p-8 sm:pb-8">
+      {/* Phones: ~12px side gutters and room for the tab bar + home indicator. */}
+      <main className="flex min-w-0 flex-1 flex-col gap-3 px-3 pt-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-6">
         <header className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <h1 className="font-heading text-xl font-semibold tracking-tight">ultiv</h1>
@@ -225,11 +225,9 @@ function HomePage() {
           ) : activeChatId !== null ? (
             <Chat sessionId={activeChatId} models={sessions.models} bot={chatBot} />
           ) : (
-            <Card className="flex flex-1 items-center justify-center">
-              <CardContent className="text-muted-foreground text-sm">
-                {chatError !== null ? `Could not open the chat: ${chatError}` : "Opening the chat…"}
-              </CardContent>
-            </Card>
+            <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
+              {chatError !== null ? `Could not open the chat: ${chatError}` : "Opening the chat…"}
+            </div>
           )}
         </div>
 
@@ -254,7 +252,7 @@ function HomePage() {
 
         <nav
           aria-label="Sections"
-          className="bg-card fixed inset-x-0 bottom-0 z-40 flex border-t sm:hidden"
+          className="bg-card fixed inset-x-0 bottom-0 z-40 flex border-t pb-[env(safe-area-inset-bottom)] sm:hidden"
         >
           <TabButton
             icon={MessagesSquareIcon}

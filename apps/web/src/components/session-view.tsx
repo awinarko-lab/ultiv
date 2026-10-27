@@ -16,7 +16,6 @@ import {
 import { ArrowUpIcon, CircleStopIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ApprovalCard, type Decide } from "@/components/approval-card";
 import { TranscriptItems } from "@/components/transcript-items";
@@ -194,27 +193,25 @@ export function SessionView({
   };
 
   return (
-    <Card className="flex min-h-0 flex-1 flex-col">
-      <CardHeader>
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {link !== "live" && (
-            <Badge variant={link === "lost" ? "destructive" : "outline"}>{linkLabel[link]}</Badge>
-          )}
-          <SessionMeta
-            usage={usage}
-            model={model}
-            effort={effort}
-            models={models}
-            onConfigure={(nextModel, nextEffort) =>
-              control(() => onConfigure(nextModel, nextEffort))
-            }
-          />
-        </div>
-      </CardHeader>
-      <CardContent className="min-h-0 flex-1">
+    // Frameless: the chat is the page, not a card on it. Transcript scrolls;
+    // the composer stays pinned at the bottom of the available height.
+    <section aria-label="Chat" className="flex min-h-0 flex-1 flex-col gap-2">
+      <header className="flex min-w-0 flex-wrap items-center gap-2">
+        {link !== "live" && (
+          <Badge variant={link === "lost" ? "destructive" : "outline"}>{linkLabel[link]}</Badge>
+        )}
+        <SessionMeta
+          usage={usage}
+          model={model}
+          effort={effort}
+          models={models}
+          onConfigure={(nextModel, nextEffort) => control(() => onConfigure(nextModel, nextEffort))}
+        />
+      </header>
+      <div className="min-h-0 flex-1">
         <div ref={transcriptRef} className="h-full min-h-0">
           <ScrollArea className="h-full">
-            <ul className="flex flex-col gap-3 pr-3">
+            <ul className="flex flex-col gap-3 pr-2">
               <TranscriptItems transcript={transcript} />
               {busy &&
                 pending === null &&
@@ -224,8 +221,8 @@ export function SessionView({
             </ul>
           </ScrollArea>
         </div>
-      </CardContent>
-      <CardFooter className="flex flex-col gap-2">
+      </div>
+      <footer className="flex shrink-0 flex-col gap-2">
         {lastError !== null && <p className="w-full text-sm text-destructive">{lastError}</p>}
         {controlError !== null && (
           <p className="w-full text-sm text-destructive">Couldn't apply that: {controlError}</p>
@@ -290,7 +287,7 @@ export function SessionView({
             </p>
           )}
         </form>
-      </CardFooter>
-    </Card>
+      </footer>
+    </section>
   );
 }
