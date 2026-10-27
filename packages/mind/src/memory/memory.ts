@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
 import { InvalidInput, NotFound } from "@ultiv/core";
-import type { MemoryFact, MemoryRecord } from "@ultiv/contracts";
+import type { FactTrust, MemoryFact, MemoryRecord } from "@ultiv/contracts";
 import type { ConverseService } from "../converse/converse.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 import { ensureMigrated } from "./migrate.ts";
@@ -49,6 +49,10 @@ export interface MemoryService {
     readonly profileId?: string;
     readonly text: string;
     readonly tags?: readonly string[];
+    /** Guard verdicts (write guard §3). Absent = human/REST: trust owner. */
+    readonly trust?: FactTrust;
+    readonly origin?: string;
+    readonly conversation?: string | null;
   }) => Promise<MemoryRecord>;
   /** An entity's readable world: its own memory plus the owner store. */
   readonly recallFor: (owner: string, profileId: string, query?: string) => Promise<MemoryRecord[]>;
@@ -121,6 +125,10 @@ export const memoryService = (deps: {
     readonly writer: string | null;
     readonly text: string;
     readonly tags?: readonly string[];
+    /** Guard verdicts stamped onto the fact; defaults are the human/REST ones. */
+    readonly trust?: FactTrust;
+    readonly origin?: string;
+    readonly conversation?: string | null;
   }): Promise<MemoryRecord> => {
     await ensureMigrated(deps, input.owner, input.profileId);
     const key =
@@ -136,12 +144,14 @@ export const memoryService = (deps: {
       triple: null,
       importance: 3,
       confidence: 0.7,
-      trust: input.scope === "owner" ? "owner" : "self",
+      trust:
+        input.trust ??
+        (input.scope === "owner" ? "owner" : input.writer === null ? "owner" : "self"),
       source: {
         via: input.writer === null ? "rest" : "tool",
         writer: input.writer,
-        origin: "owner",
-        conversation: null,
+        origin: input.origin ?? "owner",
+        conversation: input.conversation ?? null,
         episode: null,
       },
       validFrom: Date.now(),
@@ -165,7 +175,15 @@ export const memoryService = (deps: {
     write: async (input) => {
       if (input.scope === "owner") {
         await requireKeeper(input.owner, input.writer);
-        if (flags.v2()) return addFactV2({ ...input, profileId: null });
+        if (flags.v2()) {
+          return addFactV2({
+            ...input,
+            profileId: null,
+            ...(input.trust !== undefined ? { trust: input.trust } : {}),
+            ...(input.origin !== undefined ? { origin: input.origin } : {}),
+            ...(input.conversation !== undefined ? { conversation: input.conversation } : {}),
+          });
+        }
         const record: MemoryRecord = {
           id: randomUUID(),
           scope: input.scope,
@@ -190,6 +208,9 @@ export const memoryService = (deps: {
           profileId,
           text: input.text,
           ...(input.tags !== undefined ? { tags: input.tags } : {}),
+          ...(input.trust !== undefined ? { trust: input.trust } : {}),
+          ...(input.origin !== undefined ? { origin: input.origin } : {}),
+          ...(input.conversation !== undefined ? { conversation: input.conversation } : {}),
         });
       }
       const record: MemoryRecord = {

@@ -38,6 +38,7 @@ import type { DecideService } from "./decide/decide.ts";
 
 /** The services whose tools ride the pi-durable registry as late installs. */
 interface Faculties {
+  readonly converse: ConverseService;
   readonly act: ReturnType<typeof actService>;
   readonly tasks: TasksService;
   readonly profiles: ProfilesService;
@@ -50,6 +51,10 @@ interface Faculties {
   readonly state: KvService;
   readonly sensors: SensorsService;
   readonly history: HistoryService;
+  /** The write guard reads the turn's origin and taint through these. */
+  readonly audit?: AuditService;
+  /** Names beyond the guard's base set that taint a turn (installed MCP tools). */
+  readonly untrustedTool?: (name: string) => boolean;
   /** bots_list / bot_info: read-only sibling discovery, in the allowlist universe. */
   readonly botTools: readonly ToolRegistration[];
 }
@@ -79,7 +84,14 @@ export const installFaculties = (
     }),
   );
   piRegistry.install(
-    defineExtension({ name: "ultius.mind.memory", tools: memoryTools(memory, profiles) }),
+    defineExtension({
+      name: "ultius.mind.memory",
+      tools: memoryTools(memory, profiles, {
+        converse: f.converse,
+        ...(f.audit !== undefined ? { audit: f.audit } : {}),
+        ...(f.untrustedTool !== undefined ? { untrustedTool: f.untrustedTool } : {}),
+      }),
+    }),
   );
   piRegistry.install(
     defineExtension({

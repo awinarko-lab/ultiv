@@ -228,12 +228,16 @@ const mindLayerRaw = (
       // the harness reconsiders its tools as the registry changes.
       const piRegistry = yield* PiRegistry;
       installFaculties(piRegistry, {
+        converse,
         act,
         tasks,
         profiles,
         rooms,
         mailbox,
         botTools,
+        audit,
+        untrustedTool: (name) =>
+          mcpRef?.wiring.allowlistTools().some((tool) => tool.name === name) ?? false,
         ...routines,
       });
       // Connectors install after everything else so their names never shadow ours.
