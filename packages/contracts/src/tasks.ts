@@ -24,6 +24,8 @@ export const TaskInfoSchema = Type.Object({
   error: Type.Union([Type.String(), Type.Null()]),
   createdAt: Type.Number(),
   finishedAt: Type.Union([Type.Number(), Type.Null()]),
+  /** false = the spawning conversation has not been told the outcome yet (re-sent on boot). */
+  notified: Type.Optional(Type.Boolean()),
 });
 
 export type TaskInfo = Static<typeof TaskInfoSchema>;

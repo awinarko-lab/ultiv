@@ -86,17 +86,50 @@ const RESUME_NOTE =
   "[resume] You were interrupted by a server restart. Continue the task from where the " +
   "transcript left off and produce the final deliverable now.";
 
-/** Submit the outcome into the spawning conversation; best-effort, never throws. */
-const wakeParent = async (
-  converse: ConverseService,
-  task: TaskInfo,
-  text: string,
-): Promise<void> => {
-  if (task.conversationId === null) return;
+/** The wake text for a settled task, rebuilt from its registry row. */
+const wakeTextOf = (task: TaskInfo): string | undefined => {
+  switch (task.status) {
+    case "done": {
+      const text = task.result ?? "";
+      const digest =
+        text.length > WAKE_RESULT_CHARS
+          ? `${text.slice(0, WAKE_RESULT_CHARS)}\n[truncated — full result: task_status "${task.id}"]`
+          : text;
+      return `[task ${task.id} finished]\n\n${digest}`;
+    }
+    case "failed":
+      return `[task ${task.id} failed] ${task.error ?? "unknown error"}`;
+    case "cancelled":
+      return `[task ${task.id} cancelled] stopped before completion.`;
+    default:
+      return undefined;
+  }
+};
+
+/** A settled task owes its parent a wake until `notified` flips back to true. */
+const owed = (current: TaskInfo): Partial<TaskInfo> =>
+  current.conversationId === null ? {} : { notified: false };
+
+/**
+ * Submit the outcome into the spawning conversation once; best-effort, never
+ * throws. The text comes from the row (a cancellation wins), the request id
+ * makes a repeat wake — a racing runner, or a re-wake after a restart —
+ * land only once, and the row is marked notified after admission.
+ */
+const wakeParent = async (converse: ConverseService, id: string): Promise<void> => {
   try {
+    const task = (await Effect.runPromise(readTasks(converse))).find((row) => row.id === id);
+    if (task === undefined || task.conversationId === null || task.notified !== false) return;
+    const text = wakeTextOf(task);
+    if (text === undefined) return;
     const parent = await Effect.runPromise(converse.open(task.conversationId));
     if (parent === undefined) return;
-    const submission = await Effect.runPromise(converse.submit(parent, text));
+    const submission = await Effect.runPromise(
+      converse.submit(parent, text, undefined, `task-wake:${id}`),
+    );
+    await Effect.runPromise(
+      updateTask(converse, id, (current) => ({ ...current, notified: true })),
+    );
     void Effect.runPromise(converse.settle(parent, submission)).catch((cause) => {
       console.error("wake turn failed:", cause);
     });
@@ -125,14 +158,11 @@ const runTask = (converse: ConverseService, task: TaskInfo, prompt: string): voi
                 status: "done",
                 result: result.text,
                 finishedAt: Date.now(),
+                ...owed(current),
               },
         ),
       );
-      const digest =
-        result.text.length > WAKE_RESULT_CHARS
-          ? `${result.text.slice(0, WAKE_RESULT_CHARS)}\n[truncated — full result: task_status "${task.id}"]`
-          : result.text;
-      await wakeParent(converse, task, `[task ${task.id} finished]\n\n${digest}`);
+      await wakeParent(converse, task.id);
     } catch (cause) {
       const error = String(cause).slice(0, 500);
       await Effect.runPromise(
@@ -144,10 +174,11 @@ const runTask = (converse: ConverseService, task: TaskInfo, prompt: string): voi
                 status: "failed",
                 error,
                 finishedAt: Date.now(),
+                ...owed(current),
               },
         ),
       ).catch(() => undefined);
-      await wakeParent(converse, task, `[task ${task.id} failed] ${error}`);
+      await wakeParent(converse, task.id);
     }
   })();
 };
@@ -173,11 +204,12 @@ const cancelTask = (converse: ConverseService, id: string): Effect.Effect<boolea
             status: "cancelled",
             error: "cancelled by the user",
             finishedAt: Date.now(),
+            ...owed(current),
           }
         : current,
     );
     yield* Effect.tryPromise({
-      try: () => wakeParent(converse, task, `[task ${id} cancelled] stopped before completion.`),
+      try: () => wakeParent(converse, id),
       catch: (cause) => new External({ op: "task cancel wake", cause }),
     }).pipe(Effect.ignore);
     return true;
@@ -239,11 +271,14 @@ export const tasksService = (converse: ConverseService): TasksService => ({
  * Boot-time resume: the in-process runner dies with the old process, but the
  * task's transcript is durable. Re-admit a continuation input and re-attach a
  * runner — only tasks still marked running, only their own conversations.
+ * A task that finished but whose parent was never woken (the crash hit in
+ * between) wakes the parent now.
  */
-const resumeRunning = (converse: ConverseService): Effect.Effect<void, External> =>
+export const resumeRunning = (converse: ConverseService): Effect.Effect<void, External> =>
   Effect.map(readTasks(converse), (tasks) => {
     for (const task of tasks) {
       if (task.status === "running") runTask(converse, task, RESUME_NOTE);
+      else if (task.notified === false) void wakeParent(converse, task.id);
     }
   });
 
