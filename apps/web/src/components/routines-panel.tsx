@@ -5,6 +5,7 @@
  * the entity never sees the token), watches (calendar / feed / page), and
  * the shared receipt tail. The counterpart of docs/ROUTINES.md for humans.
  */
+import { describeTool } from "@/lib/approval-text";
 import { useCallback, useEffect, useState } from "react";
 import type {
   AuditEvent,
@@ -159,7 +160,13 @@ function EscalationRow({ event, bot }: { event: AuditEvent; bot: string }) {
         {event.error ?? "Something went wrong"}
       </span>
       <span className="text-muted-foreground text-xs">
-        {[bot, event.name, formatWhen(event.at)].filter((part) => part !== null).join(" · ")}
+        {[
+          bot,
+          event.name === null ? null : `wanted to ${describeTool(event.name).action}`,
+          formatWhen(event.at),
+        ]
+          .filter((part) => part !== null)
+          .join(" · ")}
       </span>
     </li>
   );
