@@ -8,32 +8,13 @@ import {
 } from "@ultiv/mind";
 import { projectTranscript } from "@ultiv/mind";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { TranscriptEntry } from "@ultiv/contracts";
 import { Effect } from "effect";
 import { queryOr, type RouteArgs } from "./types.ts";
+import { activitySteps, type ActivityStep } from "./task-steps.ts";
 
 function liveOf(view: unknown): LiveState | undefined {
   const docs = (view as { docs?: Record<string, unknown> }).docs;
   return docs?.["pi.live"] as LiveState | undefined;
-}
-
-/** A compact, size-capped step for the activity view (no full tool dumps). */
-function compactSteps(entries: readonly TranscriptEntry[]): {
-  kind: string;
-  at: number;
-  text: string;
-}[] {
-  return entries.slice(-14).map((entry) => {
-    if (entry.kind === "tool") {
-      const output = entry.step.output;
-      return {
-        kind: "tool",
-        at: entry.at,
-        text: `${entry.step.name}${output ? ` → ${output.slice(0, 300)}` : " …"}`,
-      };
-    }
-    return { kind: entry.kind, at: entry.at, text: entry.text.slice(0, 400) };
-  });
 }
 
 export async function taskRoutes(
@@ -107,7 +88,7 @@ export async function taskRoutes(
     const conversationId =
       (await Effect.runPromise(mind.converse.conversationIdOf(taskConversationKey(id)))) ?? null;
     let waiting: { callId: string; name: string; input: unknown } | null = null;
-    let steps: { kind: string; at: number; text: string }[] = [];
+    let steps: ActivityStep[] = [];
     if (conversationId !== null) {
       const pending = mind.approvals.pendingFor(conversationId)[0];
       if (pending !== undefined) {
@@ -117,7 +98,7 @@ export async function taskRoutes(
       if (chat !== undefined) {
         const value = (await chat.viewState(BACKGROUND_CONTEXT)).value;
         if (value !== undefined) {
-          steps = compactSteps(
+          steps = activitySteps(
             projectTranscript(value.entries, liveOf(value), task.status === "running"),
           );
         }
