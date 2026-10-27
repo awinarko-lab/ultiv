@@ -30,6 +30,24 @@ import { formatClock, formatWhen } from "@/lib/format";
 
 const when = (at: number | null): string => (at === null ? "never" : formatWhen(at));
 
+/** "Ran 3 times, last 9:15 PM" instead of "fired ×3". */
+const runs = (count: number, last: number | null): string =>
+  count === 0
+    ? "Hasn't run yet"
+    : `Ran ${count === 1 ? "once" : `${count} times`}, last ${when(last)}`;
+
+/** What a job does when its bot is mid-reply ("steer" is the default, unlabelled). */
+const BUSY_LABEL: Record<string, string> = {
+  followUp: "Waits its turn",
+  reject: "Skips if busy",
+};
+
+const SOURCE_LABEL: Record<string, string> = {
+  cron: "Schedule",
+  webhook: "Webhook",
+  sensor: "Sensor",
+};
+
 /** The routines content — shared by the header dialog and the mobile view. */
 export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
   const [cron, setCron] = useState<CronJobInfo[]>([]);
@@ -74,26 +92,30 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
       {error !== null && <p className="text-destructive text-sm">{error}</p>}
 
       <Section title="Schedules">
-        {cron.length === 0 && <Empty text="No schedules — bots set their own with schedule_set." />}
+        {cron.length === 0 && (
+          <Empty text="No schedules yet. Ask a bot to remind you or to do something regularly." />
+        )}
         {cron.map((job) => (
           <div key={job.id} className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
                 <code className="text-xs">
                   {job.once !== undefined && job.once !== null
-                    ? `once @ ${when(job.once)}`
+                    ? `Once, ${when(job.once)}`
                     : job.schedule}
                 </code>
-                {!job.enabled && <Badge variant="secondary">disabled</Badge>}
+                {!job.enabled && <Badge variant="secondary">Off</Badge>}
                 {job.whenBusy !== undefined && job.whenBusy !== "steer" && (
-                  <Badge variant="outline">{job.whenBusy}</Badge>
+                  <Badge variant="outline">{BUSY_LABEL[job.whenBusy] ?? job.whenBusy}</Badge>
                 )}
-                {job.failures > 0 && <Badge variant="destructive">{job.failures} failures</Badge>}
+                {job.failures > 0 && <Badge variant="destructive">Failed {job.failures}×</Badge>}
                 <span className="text-muted-foreground text-xs">{profileName(job.profile)}</span>
               </div>
               <p className="text-muted-foreground text-xs">
-                fired ×{job.fireCount ?? 0}, last {when(job.lastFiredAt ?? null)}
-                {job.lastError !== null && job.lastError !== "" ? ` — ${job.lastError}` : ""}
+                {runs(job.fireCount ?? 0, job.lastFiredAt ?? null)}
+                {job.lastError !== null && job.lastError !== ""
+                  ? `. Last error: ${job.lastError}`
+                  : ""}
               </p>
             </div>
             <ConfirmDialog
@@ -120,8 +142,10 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
         ))}
       </Section>
 
-      <Section title="Sensors">
-        {sensors.length === 0 && <Empty text="No sensors — bots watch sources with sensor_set." />}
+      <Section title="Watching">
+        {sensors.length === 0 && (
+          <Empty text="Nothing watched yet. Ask a bot to keep an eye on a calendar or a web page." />
+        )}
         {sensors.map((sensor) => (
           <div key={sensor.id} className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
@@ -137,9 +161,9 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
                 <span className="text-muted-foreground text-xs">{profileName(sensor.profile)}</span>
               </div>
               <p className="text-muted-foreground text-xs">
-                fired ×{sensor.fireCount}, last {when(sensor.lastFiredAt)}
+                {runs(sensor.fireCount, sensor.lastFiredAt)}
                 {sensor.lastError !== null && sensor.lastError !== ""
-                  ? ` — ${sensor.lastError}`
+                  ? `. Last error: ${sensor.lastError}`
                   : ""}
               </p>
             </div>
@@ -159,9 +183,9 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
         ))}
       </Section>
 
-      <Section title="Escalations">
+      <Section title="Needs attention">
         {escalations.length === 0 && (
-          <Empty text="None — dead-letters and disabled jobs appear here (and page you by email if the pager is configured)." />
+          <Empty text="All good. Jobs that keep failing or get switched off show up here." />
         )}
         {escalations.map((event, index) => (
           <div key={`${event.at}-${index}`} className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -174,13 +198,13 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
         ))}
       </Section>
 
-      <Section title="Recent fires (receipts)">
-        {events.length === 0 && <Empty text="Nothing has fired yet." />}
+      <Section title="Recent activity">
+        {events.length === 0 && <Empty text="Nothing has run yet." />}
         {events.map((event) => (
           <div key={event.id} className="flex flex-wrap items-center gap-1.5 text-xs">
             <time className="text-muted-foreground">{formatClock(event.at)}</time>
             <Badge variant={event.source === "cron" ? "secondary" : "outline"}>
-              {event.source}
+              {SOURCE_LABEL[event.source] ?? event.source}
             </Badge>
             <Badge
               variant={
@@ -191,7 +215,7 @@ export function RoutinesContent({ profiles }: { profiles: ProfileInfo[] }) {
                     : "outline"
               }
             >
-              {event.status}
+              {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
             </Badge>
             {event.reason !== null && <span className="text-muted-foreground">{event.reason}</span>}
           </div>
@@ -232,7 +256,9 @@ function WebhookRow({
       const payload = JSON.parse(testPayload) as unknown;
       const result = await api.testWebhook(hook.id, payload);
       setTestResult(
-        result.accepted ? "accepted — schema OK" : `rejected: ${result.detail ?? "schema"}`,
+        result.accepted
+          ? "Accepted: the payload matches."
+          : `Turned away: ${result.detail ?? "the payload doesn't match the expected format"}`,
       );
     } catch (cause) {
       setTestResult(cause instanceof Error ? cause.message : String(cause));
@@ -245,28 +271,28 @@ function WebhookRow({
         <div className="flex flex-wrap items-center gap-1.5">
           <code className="text-xs">POST /hooks/{hook.id.slice(0, 8)}…</code>
           {hook.name !== null && <Badge variant="secondary">{hook.name}</Badge>}
-          {hook.schema !== null && <Badge variant="outline">schema</Badge>}
+          {hook.schema !== null && <Badge variant="outline">Checks format</Badge>}
           {hook.whenBusy !== undefined && hook.whenBusy !== "steer" && (
-            <Badge variant="outline">{hook.whenBusy}</Badge>
+            <Badge variant="outline">{BUSY_LABEL[hook.whenBusy] ?? hook.whenBusy}</Badge>
           )}
           <span className="text-muted-foreground text-xs">{profileName}</span>
         </div>
         <p className="text-muted-foreground text-xs">
-          ok ×{hook.accepted} (fired ×{hook.fireCount}, last {when(hook.lastFiredAt)})
+          Accepted {hook.accepted}. {runs(hook.fireCount, hook.lastFiredAt)}
           {rejected > 0 && (
             <>
               {" · "}
               <span className="text-destructive">
-                rejected ×{rejected} (auth {hook.rejectedAuth}, schema {hook.rejectedSchema}, rate{" "}
-                {hook.rejectedRate}, size {hook.rejectedSize})
+                Turned away {rejected} (wrong token {hook.rejectedAuth}, wrong format{" "}
+                {hook.rejectedSchema}, too often {hook.rejectedRate}, too large {hook.rejectedSize})
               </span>
             </>
           )}
         </p>
         {hook.lastRejectAt !== null && (
           <p className="text-muted-foreground text-xs">
-            last reject {when(hook.lastRejectAt)} ({hook.lastRejectReason})
-            {hook.recentRejects[0] !== undefined && ` — ${hook.recentRejects[0].detail}`}
+            Last turned away {when(hook.lastRejectAt)} ({hook.lastRejectReason})
+            {hook.recentRejects[0] !== undefined && `: ${hook.recentRejects[0].detail}`}
           </p>
         )}
         <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -390,7 +416,7 @@ function CreateWebhook({
           <textarea
             aria-label="JSON Schema (optional)"
             className="bg-background min-h-20 rounded-lg border px-2 py-1.5 font-mono text-xs"
-            placeholder='JSON Schema (optional) — e.g. {"type":"object","required":["event"]}'
+            placeholder='Expected format as JSON Schema (optional), e.g. {"type":"object","required":["event"]}'
             value={schema}
             onChange={(event) => setSchema(event.target.value)}
           />
@@ -399,8 +425,7 @@ function CreateWebhook({
             Create
           </Button>
           <p className="text-muted-foreground text-xs">
-            The URL and bearer token are shown in the list after creation — the bots never see the
-            token, only the reject counters.
+            After you create it, the list shows its URL and secret token. Bots never see the token.
           </p>
         </form>
       </DialogContent>

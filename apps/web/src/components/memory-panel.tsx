@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { MemoryRecord } from "@ultiv/contracts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
+import { DevDetails } from "@/components/ui/dev-details";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -91,8 +92,8 @@ export function MemoryPanel({
         <div className="mt-3 flex flex-col gap-2">
           {records.length === 0 && (
             <p className="text-muted-foreground text-sm">
-              Nothing yet — durable facts {name} keeps about its work appear here, editable and
-              deletable.
+              Nothing yet. Facts {name} keeps about its work show up here, and you can edit or
+              delete them.
             </p>
           )}
           {records.map((record) => (
@@ -143,12 +144,11 @@ export function MemoryPanel({
           </Button>
         </form>
         <Separator className="my-4" />
-        <SectionHeader title="Durable state (KV)" />
+        <SectionHeader title="Already handled" />
         <div className="mt-2 flex flex-col gap-2">
           {state.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              No KV state yet — the bot's dedup ledgers and "already acted" markers live here
-              (state_get / state_set).
+              Nothing yet. {name} notes what it has already done here, so it doesn't do it twice.
             </p>
           ) : (
             state.map((row) => (
@@ -169,7 +169,7 @@ export function MemoryPanel({
                     await load();
                   }}
                 >
-                  <Button variant="ghost" size="icon" aria-label={`Delete state ${row.key}`}>
+                  <Button variant="ghost" size="icon" aria-label={`Delete ${row.key}`}>
                     <Trash2Icon />
                   </Button>
                 </ConfirmDialog>
@@ -177,11 +177,14 @@ export function MemoryPanel({
             ))
           )}
         </div>
+        <DevDetails className="mt-2">
+          Key-value state the bot reads and writes with state_get and state_set.
+        </DevDetails>
         <Separator className="my-4" />
         <SectionHeader title={`Files ${name} made`} />
         <div className="mt-2 flex flex-col gap-2">
           {artifacts.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No artifacts yet.</p>
+            <p className="text-muted-foreground text-sm">No files yet.</p>
           ) : (
             artifacts.map((artifact) => (
               <div

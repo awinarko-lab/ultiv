@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DevDetails } from "@/components/ui/dev-details";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ApiError, api } from "@/lib/api";
@@ -142,7 +143,7 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
     <>
       {!configured && (
         <p className="text-destructive mt-2 text-sm">
-          VAULT_KEY is not configured on the server — secrets cannot be sealed.
+          The vault isn't set up on the server yet, so nothing can be saved.
         </p>
       )}
       <div className="mt-3 flex flex-col gap-2">
@@ -213,7 +214,7 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
           >
             {KINDS.map((candidate) => (
               <option key={candidate} value={candidate}>
-                {candidate}
+                {candidate.charAt(0).toUpperCase() + candidate.slice(1)}
               </option>
             ))}
           </Select>
@@ -252,12 +253,16 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
         ))}
         {error !== null && <p className="text-destructive text-sm">{error}</p>}
         <Button type="submit" disabled={busy || name.trim() === ""}>
-          {busy ? "Sealing…" : "Add item"}
+          {busy ? "Saving…" : "Add item"}
         </Button>
         <p className="text-muted-foreground text-xs">
-          Secrets are sealed server-side (AES-256-GCM under VAULT_KEY). Bots see masks and redeem
-          them on your behalf — they never read the bytes, and neither does this screen again.
+          Saved items are encrypted on the server. Bots only see a masked stand-in and use it for
+          you without reading the secret, and this screen won't show it again.
         </p>
+        <DevDetails>
+          Sealed with AES-256-GCM under the server's VAULT_KEY.
+          {!configured && " Set VAULT_KEY in the server's environment to turn the vault on."}
+        </DevDetails>
       </form>
     </>
   );

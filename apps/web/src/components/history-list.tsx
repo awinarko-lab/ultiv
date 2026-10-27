@@ -35,7 +35,7 @@ export function HistoryList({
         className="flex flex-col"
         title={
           sessions.profiles.length === 0
-            ? "Spawn a bot first — sessions attach to a bot"
+            ? "Create a bot first"
             : sessions.phase !== "live"
               ? "Waiting for the server"
               : undefined
@@ -47,13 +47,13 @@ export function HistoryList({
           disabled={sessions.phase !== "live" || sessions.profiles.length === 0}
           onClick={() => void create()}
         >
-          New session
+          New chat
         </Button>
       </span>
       <div className="flex flex-col gap-1">
         {ordered.length === 0 && (
           <p className="text-muted-foreground text-sm">
-            No extra sessions yet — each bot's main chat lives on the home screen.
+            No other chats yet. Each bot's main chat is on the Chat tab.
           </p>
         )}
         {ordered.map((session, index) => (
@@ -62,13 +62,13 @@ export function HistoryList({
             <div className="flex items-center gap-1">
               <ListRow
                 className="min-w-0 flex-1"
-                title={session.title === "" ? "Untitled session" : session.title}
+                title={session.title === "" ? "Untitled chat" : session.title}
                 meta={<time>{formatWhen(session.lastMessageAt)}</time>}
                 onClick={() => onSelect(session.id)}
               />
               <ConfirmDialog
-                title="Delete session?"
-                warning="The conversation and its transcript are removed. This cannot be undone."
+                title="Delete this chat?"
+                warning="The chat and all its messages are removed. This can't be undone."
                 onConfirm={async () => {
                   await sessions.remove(session.id);
                 }}
@@ -77,7 +77,7 @@ export function HistoryList({
                   variant="ghost"
                   size="icon"
                   className="shrink-0"
-                  aria-label={`Delete ${session.title === "" ? "session" : session.title}`}
+                  aria-label={`Delete ${session.title === "" ? "untitled chat" : session.title}`}
                 >
                   <Trash2Icon />
                 </Button>
@@ -87,8 +87,8 @@ export function HistoryList({
         ))}
       </div>
       <p className="text-muted-foreground flex items-center gap-1 text-xs">
-        <MessagesSquareIcon className="size-3.5" /> Each bot keeps one main chat — it lives on the
-        home screen. Extra sessions live here.
+        <MessagesSquareIcon className="size-3.5" /> Each bot has one main chat on the Chat tab.
+        Other chats you start live here.
       </p>
     </div>
   );

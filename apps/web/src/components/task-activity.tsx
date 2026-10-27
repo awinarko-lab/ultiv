@@ -22,7 +22,7 @@ const statusVariant = {
 
 const kindLabel: Record<string, string> = {
   input: "you",
-  output: "agent",
+  output: "bot",
   thinking: "thinking",
   note: "note",
   tool: "tool",

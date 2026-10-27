@@ -114,7 +114,7 @@ function BotDialog({
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            Identity &amp; persona (free text — becomes who they are)
+            Personality and instructions
             <Textarea
               rows={6}
               value={form.persona}
@@ -206,7 +206,7 @@ function BotRow({
   const deleteBlocked = !deletable
     ? "You need at least one bot"
     : bot.id === mainId
-      ? "The main bot can't be removed — make another bot main first"
+      ? "Make another bot the main one before removing this one"
       : null;
   // Two-line row: the name opens the bot's main chat; the actions live under
   // the name, so they never fight the text for width. The row is its own
@@ -423,7 +423,7 @@ export function BotsPanel({
         title="Your bots"
         action={
           <BotDialog
-            title="Spawn a bot"
+            title="New bot"
             initial={emptyForm}
             models={models}
             confirm={async (form) => {

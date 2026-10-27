@@ -53,14 +53,15 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
     }
   };
 
-  if (detail === null) return <p className="text-muted-foreground text-sm">Loading room…</p>;
+  if (detail === null)
+    return <p className="text-muted-foreground text-sm">Loading the conversation…</p>;
   const title = detail.participants.map((participant) => participant.name).join(" ↔ ");
 
   return (
     <div className="mt-3 flex flex-col gap-3">
       <div className="bg-background max-h-[45dvh] overflow-y-auto rounded-lg border p-3 text-sm">
         {detail.timeline.length === 0 ? (
-          <p className="text-muted-foreground text-xs">(no messages yet)</p>
+          <p className="text-muted-foreground text-xs">No messages yet.</p>
         ) : (
           detail.timeline.map((line, index) => {
             // biome-ignore lint/suspicious/noArrayIndexKey: append-only timeline
@@ -103,7 +104,7 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
         </Select>
         <Input
           className="flex-1"
-          placeholder="Say something into this bot's side…"
+          placeholder="Message this bot in the conversation…"
           value={say}
           onChange={(event) => setSay(event.target.value)}
           onKeyDown={(event) => {

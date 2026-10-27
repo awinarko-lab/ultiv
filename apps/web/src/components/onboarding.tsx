@@ -92,8 +92,8 @@ export function OnboardingHome({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-muted-foreground text-sm">
-          Pick a starting point — the bot is created with an identity, introduces itself in its own
-          chat, and you shape it from there (rename, persona, model — anything is editable later).
+          Pick a starting point. The bot introduces itself in its own chat, and you can change its
+          name, personality or model any time.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           {TEMPLATES.map((template) => (
@@ -106,7 +106,7 @@ export function OnboardingHome({
                   disabled={busyKey !== null}
                   onClick={() => void spawn(template)}
                 >
-                  {busyKey === template.key ? "Spawning…" : "Spawn"}
+                  {busyKey === template.key ? "Creating…" : "Create"}
                 </Button>
               </div>
               <p className="text-muted-foreground text-xs">{template.description}</p>
@@ -123,13 +123,13 @@ export function OnboardingHome({
         </div>
         {error !== null && <p className="text-destructive text-sm">{error}</p>}
         <div className="flex items-center gap-3">
-          <span className="text-muted-foreground shrink-0 text-xs uppercase">or custom</span>
+          <span className="text-muted-foreground shrink-0 text-xs ">or your own</span>
           <div className="min-w-0 flex-1">{custom}</div>
         </div>
         <p className="text-muted-foreground text-xs">
           {models.length > 0
             ? `Models available: ${models.map((model) => model.label).join(", ")}.`
-            : "Model list unavailable right now — the workspace default is used."}
+            : "Couldn't load the model list, so the default model is used."}
         </p>
       </CardContent>
     </Card>

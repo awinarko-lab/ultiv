@@ -78,7 +78,7 @@ export function useSessions(): {
         await refresh(selected);
         return created;
       } catch (cause) {
-        notifyError("Couldn't start a session", cause);
+        notifyError("Couldn't start a new chat", cause);
         return undefined;
       }
     },
