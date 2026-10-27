@@ -26,12 +26,6 @@ export const RoutineEventsDoc = defineDoc<{ items: RoutineEvent[] }>({
 const readEvents = async (converse: ConverseService): Promise<RoutineEvent[]> =>
   (await Effect.runPromise(converse.docs.snapshot(RoutineEventsDoc)))?.items ?? [];
 
-const writeEvents = (converse: ConverseService, items: RoutineEvent[]) =>
-  converse.docs.commit(async (tx) => {
-    const draft = await tx.doc(RoutineEventsDoc);
-    draft.items = items;
-  });
-
 /**
  * WRITE-AHEAD: record that a routine fired BEFORE acting on it. Returns the
  * receipt id (which doubles as the webhook ack's correlation handle).

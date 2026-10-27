@@ -56,11 +56,11 @@ describe("bash tool (durable workspace)", () => {
     // A failing COMMAND is not a failing tool: the exit code and stderr carry it.
     expect(missing.isError).toBeUndefined();
     expect(missing.structuredOutput).toMatchObject({ exitCode: 1 });
-    expect((missing.output?.[0] as { text: string }).text).toContain("stderr");
+    expect(((missing.output ?? [])[0] as { text: string }).text).toContain("stderr");
 
     const big = await capability.tool.execute({ script: "seq 1 100000" }, api, {} as never);
     expect(big.isError).toBeUndefined();
-    const text = (big.output?.[0] as { text: string }).text;
+    const text = ((big.output ?? [])[0] as { text: string }).text;
     expect(text).toContain("truncated");
   });
 

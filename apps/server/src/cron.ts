@@ -10,13 +10,11 @@ import { Cron } from "croner";
 import type { CronJobInfo } from "@ultiv/contracts";
 import type { MindService } from "@ultiv/mind";
 import {
-  createCronJob,
   isValidSchedule,
   listCronJobs,
   readCronJobs,
   recordRoutineFire,
   removeCronJob,
-  removeCronJobsForSessions,
   settleRoutineEvent,
   writeCronJobs,
 } from "@ultiv/mind";

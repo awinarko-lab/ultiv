@@ -12,7 +12,6 @@ import { removeCronJobsForSessions } from "../cron.ts";
 import { removeWebhooksForSessions } from "../webhooks.ts";
 import {
   createCronJob,
-  createWebhook,
   listCronJobs,
   listSensors,
   listWebhooks,
