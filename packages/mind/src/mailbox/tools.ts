@@ -23,7 +23,8 @@ const MessageParams = Type.Object({
   }),
   body: Type.String({
     description:
-      "The full, self-contained message. The recipient sees only this, not your context.",
+      "The full, self-contained message, kept short: include everything the recipient " +
+      "needs — it sees only this, not your context.",
   }),
   topic: Type.Optional(
     Type.String({
@@ -49,7 +50,8 @@ const messageTool = (mailbox: MailboxService, profiles: ProfilesService): Tool =
       "room; YOUR current thread is then woken with a finish signal — END YOUR TURN after " +
       "sending; never wait or poll. Exchanges are capped (the output shows your remaining " +
       "budget per sibling) — say everything you need in as few messages as possible. Prefer " +
-      "notify when no answer is needed.",
+      "notify when no answer is needed, and never reply to a plain acknowledgement (it " +
+      "starts loops).",
     parameters: MessageParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), status: Type.String() }),
     execute: (args, api) => {
