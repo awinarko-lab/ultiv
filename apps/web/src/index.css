@@ -135,6 +135,11 @@
   isolation: isolate;
 }
 
+/* Native controls (selects, scrollbars) follow the theme too. */
+.dark {
+  color-scheme: dark;
+}
+
 /* Phones: form controls at 16px so iOS Safari doesn't zoom on focus. */
 @media (max-width: 640px) {
   input,

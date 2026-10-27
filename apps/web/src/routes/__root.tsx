@@ -9,7 +9,7 @@ function RootLayout() {
   return (
     <div className="root min-h-dvh bg-background text-foreground antialiased">
       <Outlet />
-      <Toaster position="top-center" richColors closeButton />
+      <Toaster position="top-center" theme="system" richColors closeButton />
     </div>
   );
 }
