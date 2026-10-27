@@ -83,8 +83,34 @@ export type {
   HttpAuthPlacement,
   HttpMethod,
 } from "./credentials.ts";
-export { MemoryRecordSchema, MemoryListSchema } from "./memory.ts";
-export type { MemoryRecord, MemoryList } from "./memory.ts";
+export {
+  MemoryRecordSchema,
+  MemoryListSchema,
+  FactStatusSchema,
+  FactKindSchema,
+  FactTrustSchema,
+  FactSourceSchema,
+  FactTripleSchema,
+  MemoryFactSchema,
+  MemoryEntitySchema,
+  MemoryEpisodeSchema,
+  CoreLineSchema,
+  MemoryProposalSchema,
+} from "./memory.ts";
+export type {
+  MemoryRecord,
+  MemoryList,
+  FactStatus,
+  FactKind,
+  FactTrust,
+  FactSource,
+  FactTriple,
+  MemoryFact,
+  MemoryEntity,
+  MemoryEpisode,
+  CoreLine,
+  MemoryProposal,
+} from "./memory.ts";
 export { RoomInfoSchema, RoomListSchema } from "./rooms.ts";
 export type { RoomInfo, RoomList } from "./rooms.ts";
 export { TaskInfoSchema, TaskListSchema, TaskStatusSchema } from "./tasks.ts";

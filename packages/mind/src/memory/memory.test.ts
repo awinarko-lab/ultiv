@@ -63,4 +63,41 @@ describe("Memory seam (offline, MemoryStorage)", () => {
     expect(await memory.recallFor("harry", gone.id, "fact")).toEqual([]);
     await handle.close();
   });
+
+  it("migrates a v1 store lazily and mirrors v2 writes back to v1", async () => {
+    process.env.ULTIV_MEMORY_V2 = "off";
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const { memory, profiles } = handle.mind;
+    const bot = await profiles.create("harry", { name: "Migrator" });
+    await memory.write({
+      owner: "harry",
+      writer: bot.id,
+      scope: "profile",
+      profileId: bot.id,
+      text: "legacy fact",
+      tags: ["old"],
+    });
+    // First v2 access migrates in place; ids, text and tags survive.
+    process.env.ULTIV_MEMORY_V2 = "on";
+    const facts = await memory.readFacts("harry", bot.id);
+    expect(facts.length).toBe(1);
+    expect(facts[0]?.text).toBe("legacy fact");
+    expect(facts[0]?.importance).toBe(3);
+    expect(facts[0]?.status).toBe("current");
+    expect(facts[0]?.trust).toBe("self");
+    // Idempotent: a second read neither duplicates nor re-stamps.
+    expect((await memory.readFacts("harry", bot.id)).length).toBe(1);
+    // A v2 write also lands in the v1 mirror while MEMORY_V1_MIRROR is on.
+    await memory.write({
+      owner: "harry",
+      writer: bot.id,
+      scope: "profile",
+      profileId: bot.id,
+      text: "fresh fact",
+    });
+    const v1 = await memory.read("harry", "profile", bot.id);
+    expect(v1.map((record) => record.text).sort()).toEqual(["fresh fact", "legacy fact"]);
+    delete process.env.ULTIV_MEMORY_V2;
+    await handle.close();
+  });
 });

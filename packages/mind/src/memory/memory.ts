@@ -5,29 +5,30 @@
  * the owner-designated memory keeper (policies.memoryKeeper) writes owner
  * memory. Reads: an entity sees its own memory plus the owner store — never
  * a sibling's. Cross-thread recall resolves through here, never transcripts.
+ *
+ * v2 rides behind `ULTIV_MEMORY_V2` (default on): writes land in
+ * `ultiv.mem.facts` and, while the 14-day mirror is on, also append a v1
+ * record so a rollback still sees new facts. The v1 doc family and helpers
+ * stay exported for the REST surfaces and the mirror; they are never cleared
+ * by v2 code.
  */
 import { randomUUID } from "node:crypto";
-import { defineDocFamily } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
 import { InvalidInput, NotFound } from "@ultiv/core";
-import type { MemoryRecord } from "@ultiv/contracts";
+import type { MemoryFact, MemoryRecord } from "@ultiv/contracts";
 import type { ConverseService } from "../converse/converse.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
-
-/** The store's shape — a type alias, so it satisfies the doc family's JsonObject. */
-type MemoryStore = { records: MemoryRecord[] };
-
-const MemoryDoc = defineDocFamily<MemoryStore, MemoryStore>({
-  kind: "ultiv.memory",
-  version: 1,
-  scope: "session",
-  family: true,
-  initial: (seed) => seed,
-  checkpointWhen: () => true,
-});
-
-const ownerKey = (owner: string): string => `owner:${owner}`;
-const profileKey = (owner: string, profileId: string): string => `profile:${owner}:${profileId}`;
+import { ensureMigrated } from "./migrate.ts";
+import {
+  FactsDoc,
+  LIMITS,
+  MemoryDoc,
+  flags,
+  mirrorRecord,
+  newFact,
+  ownerKey,
+  profileKey,
+} from "./model.ts";
 
 const run = <A>(effect: Effect.Effect<A, unknown>): Promise<A> =>
   Effect.runPromise(effect) as Promise<A>;
@@ -55,6 +56,12 @@ export interface MemoryService {
   readonly removeProfile: (owner: string, profileId: string) => Promise<number>;
   /** Remove one profile-scope record — the human's per-item delete. */
   readonly remove: (owner: string, profileId: string, recordId: string) => Promise<void>;
+  /**
+   * v2: migrate (lazily, once) and read a store's facts. With
+   * `ULTIV_MEMORY_V2=off` this still migrates — the migration itself rides
+   * the v2 seam's first access — so callers stay on one code path.
+   */
+  readonly readFacts: (owner: string, profileId: string | null) => Promise<readonly MemoryFact[]>;
 }
 
 export const memoryService = (deps: {
@@ -74,26 +81,79 @@ export const memoryService = (deps: {
       }),
     );
 
+  const requireKeeper = async (owner: string, writer: string | null): Promise<void> => {
+    // Only the designated keeper (or a human, writer null) writes owner memory.
+    if (writer !== null) {
+      const writerProfile = await profiles.get(owner, writer);
+      if (writerProfile?.policies.memoryKeeper !== true) {
+        throw new InvalidInput({
+          reason: "only the designated memory keeper writes owner memory",
+        });
+      }
+    }
+  };
+
+  /** The v2 add: one fact into `ultiv.mem.facts`, mirrored to v1 when on. */
+  const addFactV2 = async (input: {
+    readonly owner: string;
+    readonly profileId: string | null;
+    readonly scope: "profile" | "owner";
+    readonly writer: string | null;
+    readonly text: string;
+    readonly tags?: readonly string[];
+  }): Promise<MemoryRecord> => {
+    await ensureMigrated(deps, input.owner, input.profileId);
+    const key =
+      input.profileId === null ? ownerKey(input.owner) : profileKey(input.owner, input.profileId);
+    const fact = newFact({
+      id: randomUUID(),
+      scope: input.scope,
+      profile: input.profileId,
+      text: input.text.slice(0, LIMITS.textChars),
+      kind: "note",
+      tags: input.tags ?? [],
+      entities: [],
+      triple: null,
+      importance: 3,
+      confidence: 0.7,
+      trust: input.scope === "owner" ? "owner" : "self",
+      source: {
+        via: input.writer === null ? "rest" : "tool",
+        writer: input.writer,
+        origin: "owner",
+        conversation: null,
+        episode: null,
+      },
+      validFrom: Date.now(),
+      supersedes: [],
+      at: Date.now(),
+    });
+    await run(
+      converse.docs.commit(async (tx) => {
+        const facts = await tx.doc(FactsDoc, key, { facts: [], migratedAt: null });
+        facts.facts = [...facts.facts, fact];
+        if (flags.mirror()) {
+          const legacy = await tx.doc(MemoryDoc, key, { records: [] });
+          legacy.records = [...legacy.records, mirrorRecord(fact)].slice(-LIMITS.mirrorCap);
+        }
+      }),
+    );
+    return mirrorRecord(fact);
+  };
+
   const service: MemoryService = {
     write: async (input) => {
-      const record: MemoryRecord = {
-        id: randomUUID(),
-        scope: input.scope,
-        profile: input.scope === "profile" ? (input.profileId ?? null) : null,
-        text: input.text.slice(0, 4_000),
-        tags: [...(input.tags ?? [])].slice(0, 12),
-        at: Date.now(),
-      };
       if (input.scope === "owner") {
-        // Only the designated keeper (or a human, writer null) writes owner memory.
-        if (input.writer !== null) {
-          const writer = await profiles.get(input.owner, input.writer);
-          if (writer?.policies.memoryKeeper !== true) {
-            throw new InvalidInput({
-              reason: "only the designated memory keeper writes owner memory",
-            });
-          }
-        }
+        await requireKeeper(input.owner, input.writer);
+        if (flags.v2()) return addFactV2({ ...input, profileId: null });
+        const record: MemoryRecord = {
+          id: randomUUID(),
+          scope: input.scope,
+          profile: null,
+          text: input.text.slice(0, 4_000),
+          tags: [...(input.tags ?? [])].slice(0, 12),
+          at: Date.now(),
+        };
         const records = await readStore(ownerKey(input.owner));
         await writeStore(ownerKey(input.owner), [...records, record].slice(-2_000));
         return record;
@@ -101,6 +161,25 @@ export const memoryService = (deps: {
       if (input.profileId === undefined) {
         throw new InvalidInput({ reason: "profileId is required for profile scope" });
       }
+      const profileId: string = input.profileId;
+      if (flags.v2()) {
+        return addFactV2({
+          owner: input.owner,
+          writer: input.writer,
+          scope: "profile",
+          profileId,
+          text: input.text,
+          ...(input.tags !== undefined ? { tags: input.tags } : {}),
+        });
+      }
+      const record: MemoryRecord = {
+        id: randomUUID(),
+        scope: "profile",
+        profile: input.profileId,
+        text: input.text.slice(0, 4_000),
+        tags: [...(input.tags ?? [])].slice(0, 12),
+        at: Date.now(),
+      };
       const key = profileKey(input.owner, input.profileId);
       const records = await readStore(key);
       await writeStore(key, [...records, record].slice(-2_000));
@@ -143,8 +222,13 @@ export const memoryService = (deps: {
       }
       await writeStore(key, next);
     },
+    readFacts: async (owner, profileId) => {
+      await ensureMigrated(deps, owner, profileId);
+      const key = profileId === null ? ownerKey(owner) : profileKey(owner, profileId);
+      return run(converse.docs.snapshotKeyed(FactsDoc, key)).then((store) => store?.facts ?? []);
+    },
   };
   return service;
 };
 
-export { MemoryDoc, ownerKey as memoryOwnerKey, profileKey as memoryProfileKey };
+export { MemoryDoc, ownerKey as memoryOwnerKey, profileKey as memoryProfileKey } from "./model.ts";
