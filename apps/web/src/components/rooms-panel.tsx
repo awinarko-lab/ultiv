@@ -7,7 +7,6 @@ import { ArrowLeftIcon, MessagesSquareIcon, SendIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ProfileInfo, RoomInfo } from "@ultiv/contracts";
 import { LazyMarkdown } from "@/components/lazy-markdown";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState } from "@/components/ui/empty-state";
 import { ListRow } from "@/components/ui/list-row";
@@ -184,16 +183,8 @@ export function RoomsContent({
         <ListRow
           key={room.id}
           leading={<MessagesSquareIcon />}
-          title={
-            <>
-              {room.participants.map((id) => nameOf(id)).join(" ↔ ")}
-              {room.topic !== "" && (
-                <Badge variant="outline" className="ml-2">
-                  {room.topic}
-                </Badge>
-              )}
-            </>
-          }
+          title={room.participants.map((id) => nameOf(id)).join(" ↔ ")}
+          subtitle={room.topic !== "" ? room.topic : undefined}
           meta={formatWhen(room.lastMessageAt)}
           onClick={() => onOpen(room.id)}
         />
