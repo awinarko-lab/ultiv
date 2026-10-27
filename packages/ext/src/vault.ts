@@ -199,6 +199,11 @@ export interface VaultStore {
     owner: string,
     scope?: { readonly profile?: string; readonly query?: string },
   ) => readonly VaultContact[];
+  /** Contacts plus the items that could not be opened (e.g. after a VAULT_KEY change). */
+  readonly contactsReport: (
+    owner: string,
+    scope?: { readonly profile?: string; readonly query?: string },
+  ) => ContactsReport;
   readonly mintGrant: (owner: string, id: string, purpose: string) => VaultGrant | undefined;
   readonly redeemGrant: (
     token: string,
@@ -217,6 +222,55 @@ export interface VaultStore {
     profileId: string,
   ) => VaultItemInfo;
 }
+
+/** What a contacts lookup found, and what it had to skip. */
+export interface ContactsReport {
+  readonly contacts: readonly VaultContact[];
+  /** Contact items that exist but could not be decrypted (wrong or changed VAULT_KEY). */
+  readonly unreadable: readonly { readonly id: string; readonly name: string }[];
+}
+
+/**
+ * Open every contact in scope. One item that fails to decrypt (a changed
+ * VAULT_KEY, a damaged file) is skipped and reported, never fatal to the rest.
+ */
+const contactsOf = (
+  store: VaultStore,
+  owner: string,
+  scope?: { readonly profile?: string; readonly query?: string },
+): ContactsReport => {
+  const query = scope?.query?.trim().toLowerCase() ?? "";
+  const unreadable: { id: string; name: string }[] = [];
+  const contacts = store
+    .list(owner, scope)
+    .filter((info) => info.kind === "contact")
+    .flatMap((info): VaultContact[] => {
+      let secret: VaultSecret | undefined;
+      try {
+        secret = store.resolve(owner, info.id);
+      } catch {
+        unreadable.push({ id: info.id, name: info.name });
+        return [];
+      }
+      if (secret?.kind !== "contact") return [];
+      const { email, phone, note } = secret;
+      return [{ id: info.id, name: info.name, email, phone, note, profile: info.profile }];
+    })
+    .filter((contact) => {
+      if (query === "") return true;
+      return (
+        contact.name.toLowerCase().includes(query) ||
+        (contact.email ?? "").toLowerCase().includes(query)
+      );
+    });
+  if (unreadable.length > 0) {
+    console.warn(
+      `[vault] ${unreadable.length} contact item(s) could not be decrypted for ${owner}; ` +
+        "VAULT_KEY may have changed since they were saved",
+    );
+  }
+  return { contacts, unreadable };
+};
 
 export const makeVaultStore = (root: string = vaultDir()): VaultStore => {
   const itemsDir = (owner: string): string => join(root, owner, "items");
@@ -291,33 +345,8 @@ export const makeVaultStore = (root: string = vaultDir()): VaultStore => {
       writeItem(owner, { info: { ...item.info, lastUsedAt: Date.now() }, sealed: item.sealed });
       return secret;
     },
-    contacts: (owner, scope) => {
-      const query = scope?.query?.trim().toLowerCase() ?? "";
-      return store
-        .list(owner, scope)
-        .filter((info) => info.kind === "contact")
-        .flatMap((info) => {
-          const secret = store.resolve(owner, info.id);
-          if (secret?.kind !== "contact") return [];
-          return [
-            {
-              id: info.id,
-              name: info.name,
-              email: secret.email,
-              phone: secret.phone,
-              note: secret.note,
-              profile: info.profile,
-            },
-          ];
-        })
-        .filter((contact) => {
-          if (query === "") return true;
-          return (
-            contact.name.toLowerCase().includes(query) ||
-            (contact.email ?? "").toLowerCase().includes(query)
-          );
-        });
-    },
+    contacts: (owner, scope) => contactsOf(store, owner, scope).contacts,
+    contactsReport: (owner, scope) => contactsOf(store, owner, scope),
     mintGrant: (owner, id, purpose) => {
       if (store.resolve(owner, id) === undefined) return undefined;
       const grant: VaultGrant = {

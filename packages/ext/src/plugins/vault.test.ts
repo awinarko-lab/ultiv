@@ -68,6 +68,26 @@ describe("Vault store", () => {
     expect(store.list("someone-else").length).toBe(0);
   });
 
+  it("skips and reports a contact it cannot decrypt instead of failing the lookup", () => {
+    const store = makeVaultStore(tempRoot());
+    store.create("harry", { kind: "contact", name: "Old", contact: { email: "old@example.com" } });
+    const previous = process.env.VAULT_KEY;
+    process.env.VAULT_KEY = "a-different-key";
+    try {
+      store.create("harry", {
+        kind: "contact",
+        name: "New",
+        contact: { email: "new@example.com" },
+      });
+      const report = store.contactsReport("harry");
+      expect(report.contacts.map((contact) => contact.name)).toEqual(["New"]);
+      expect(report.unreadable.map((item) => item.name)).toEqual(["Old"]);
+      expect(store.contacts("harry").length).toBe(1);
+    } finally {
+      process.env.VAULT_KEY = previous;
+    }
+  });
+
   it("mints single-use, short-lived grants for executors", () => {
     const store = makeVaultStore(tempRoot());
     const key = store.create("harry", { kind: "key", name: "runner", key: { secret: "tok" } });

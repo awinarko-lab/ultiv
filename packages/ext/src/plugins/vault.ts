@@ -111,14 +111,24 @@ const contactsTool = (store: VaultStore, holder: ScopeHolder): Tool =>
           structuredOutput: [],
         });
       }
-      const contacts = store
-        .contacts(scope.owner, {
-          profile: scope.profile,
-          ...(args.query !== undefined ? { query: args.query } : {}),
-        })
-        .map(({ id, name, email, phone }) => ({ id, name, email, phone }));
+      const report = store.contactsReport(scope.owner, {
+        profile: scope.profile,
+        ...(args.query !== undefined ? { query: args.query } : {}),
+      });
+      const contacts = report.contacts.map(({ id, name, email, phone }) => ({
+        id,
+        name,
+        email,
+        phone,
+      }));
+      const skipped = report.unreadable.map((item) => item.name).join(", ");
+      const warning =
+        report.unreadable.length === 0
+          ? ""
+          : `\nWarning: ${report.unreadable.length} contact(s) could not be opened (${skipped}). ` +
+            "The vault key may have changed since they were saved; tell your owner.";
       return Promise.resolve({
-        output: [{ type: "text" as const, text: JSON.stringify(contacts) }],
+        output: [{ type: "text" as const, text: JSON.stringify(contacts) + warning }],
         structuredOutput: contacts,
       });
     },
