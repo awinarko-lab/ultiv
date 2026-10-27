@@ -4,10 +4,9 @@
  * invisible here; a supervision "say" posts into a chosen bot's side.
  */
 import { ArrowLeftIcon, MessagesSquareIcon, SendIcon } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { useCallback, useEffect, useState } from "react";
 import type { ProfileInfo, RoomInfo } from "@ultiv/contracts";
+import { Markdown } from "@/components/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState } from "@/components/ui/empty-state";
@@ -85,7 +84,7 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
                       {formatWhen(line.at)}
                     </span>
                     <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
+                      <Markdown text={body} />
                     </div>
                   </>
                 )}

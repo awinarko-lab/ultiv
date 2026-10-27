@@ -2,14 +2,15 @@
  * The transcript body: markdown output, collapsed reasoning, tool traces and
  * machinery notes, grouped so consecutive tool steps read as one sequence.
  */
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { memo } from "react";
 import { formatDivider, formatFull } from "@/lib/format";
 import type { ToolStep, TranscriptEntry } from "@ultiv/contracts";
 import { BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
+import { Markdown } from "@/components/markdown";
 import {
   CodeBlock,
   CodeBlockContent,
+  CodeBlockCopyButton,
   CodeBlockHeader,
   CodeBlockTitle,
 } from "@/components/ui/code-block";
@@ -29,24 +30,45 @@ import {
 const roleStyles = {
   user: "self-end max-w-[80%] rounded-2xl bg-muted px-4 py-2.5 leading-relaxed whitespace-pre-wrap break-words",
   agent:
-    "self-start max-w-[80%] min-w-0 rounded-2xl bg-muted/40 px-4 py-2.5 border border-border/60 dark:border-transparent",
+    "min-w-0 max-w-full rounded-2xl bg-muted/40 px-4 py-2.5 border border-border/60 dark:border-transparent",
 } as const;
 
 /** A new divider when this much time passed since the previous message. */
 const DIVIDER_GAP_MS = 10 * 60_000;
 
-/** Agent output is markdown; the newest block streams with a caret while working. */
-function Output({ text, streaming }: { text: string; streaming: boolean }) {
+/**
+ * Bot output is markdown; the newest block streams with a caret (still under
+ * reduced motion). Finished messages get a copy action under the bubble.
+ * Memoised: only the message whose text changes re-renders while streaming.
+ */
+const Output = memo(function Output({ text, streaming }: { text: string; streaming: boolean }) {
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1.5 [&_hr]:my-3 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_h1]:mt-3 [&_h2]:mt-3 [&_h3]:mt-2 [&_pre]:my-2">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-      {streaming && <span className="animate-pulse">▍</span>}
-    </div>
+    <>
+      <div className={roleStyles.agent}>
+        <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1.5 [&_hr]:my-3 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_h1]:mt-3 [&_h2]:mt-3 [&_h3]:mt-2 [&_pre]:my-2">
+          <Markdown text={text} />
+          {streaming && (
+            <span aria-hidden className="motion-safe:animate-pulse">
+              ▍
+            </span>
+          )}
+        </div>
+      </div>
+      {!streaming && (
+        <div className="opacity-0 transition-opacity group-focus-within/msg:opacity-100 group-hover/msg:opacity-100 pointer-coarse:opacity-100">
+          <CodeBlockCopyButton
+            value={text}
+            aria-label="Copy message"
+            className="text-muted-foreground"
+          />
+        </div>
+      )}
+    </>
   );
-}
+});
 
-/** Reasoning as a collapsed Trace step. */
-function Thinking({ text }: { text: string }) {
+/** Reasoning as a collapsed Trace step: "Thinking…" while live, then past tense. */
+const Thinking = memo(function Thinking({ text, live }: { text: string; live: boolean }) {
   return (
     <Trace>
       <TraceCollapsible>
@@ -55,8 +77,7 @@ function Thinking({ text }: { text: string }) {
             <TraceIcon>
               <BrainIcon />
             </TraceIcon>
-            <TraceTitle>Reasoning</TraceTitle>
-            <TraceDescription>{text.length} chars</TraceDescription>
+            <TraceTitle>{live ? "Thinking…" : "Thought for a moment"}</TraceTitle>
           </TraceLine>
         </TraceCollapsibleTrigger>
         <TraceCollapsibleContent>
@@ -65,10 +86,10 @@ function Thinking({ text }: { text: string }) {
       </TraceCollapsible>
     </Trace>
   );
-}
+});
 
 /** Tool call as a Trace line: name + duration, collapsible input/output. */
-function Tool({ step }: { step: ToolStep }) {
+const Tool = memo(function Tool({ step }: { step: ToolStep }) {
   const lineStatus =
     step.status === "running" || step.status === "error" ? { status: step.status } : {};
   return (
@@ -106,7 +127,19 @@ function Tool({ step }: { step: ToolStep }) {
       </TraceCollapsibleContent>
     </TraceCollapsible>
   );
-}
+});
+
+/** A machinery note: small caption + markdown body. */
+const Note = memo(function Note({ text }: { text: string }) {
+  return (
+    <>
+      <span className="text-foreground/70 text-xs font-medium">{noteHeader(text)}</span>
+      <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
+        <Markdown text={noteBody(text)} />
+      </div>
+    </>
+  );
+});
 
 /** Consecutive tool steps render as one Trace so a run reads as a sequence. */
 type Group =
@@ -154,8 +187,14 @@ function groupTranscript(transcript: TranscriptEntry[]): Group[] {
   return groups;
 }
 
-/** Every transcript entry, in order, as list items. */
-export function TranscriptItems({ transcript }: { transcript: TranscriptEntry[] }) {
+/** Every transcript entry, in order, as list items. busy marks the last reasoning as live. */
+export function TranscriptItems({
+  transcript,
+  busy = false,
+}: {
+  transcript: TranscriptEntry[];
+  busy?: boolean;
+}) {
   return (
     <>
       {groupTranscript(transcript).map((group, index, groups) => {
@@ -170,13 +209,13 @@ export function TranscriptItems({ transcript }: { transcript: TranscriptEntry[] 
               {formatDivider(group.at)}
             </li>
           ) : null;
-        return [divider, renderGroup(group)];
+        return [divider, renderGroup(group, busy && index === groups.length - 1)];
       })}
     </>
   );
 }
 
-function renderGroup(group: Group) {
+function renderGroup(group: Group, last: boolean) {
   return "tools" in group ? (
     <li key={group.key} className="w-full">
       <Trace>
@@ -190,12 +229,16 @@ function renderGroup(group: Group) {
       {group.entry.text}
     </li>
   ) : group.entry.kind === "output" ? (
-    <li key={group.key} className={roleStyles.agent} title={formatFull(group.entry.at)}>
+    <li
+      key={group.key}
+      className="group/msg flex max-w-[80%] min-w-0 flex-col items-start gap-0.5 self-start"
+      title={formatFull(group.entry.at)}
+    >
       <Output text={group.entry.text} streaming={group.entry.streaming} />
     </li>
   ) : group.entry.kind === "thinking" ? (
     <li key={group.key} className="w-full">
-      <Thinking text={group.entry.text} />
+      <Thinking text={group.entry.text} live={last} />
     </li>
   ) : group.entry.kind === "note" ? (
     <li
@@ -203,10 +246,7 @@ function renderGroup(group: Group) {
       className="bg-muted/30 text-muted-foreground w-full rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
       title={formatFull(group.entry.at)}
     >
-      <span className="text-foreground/70 text-xs font-medium">{noteHeader(group.entry.text)}</span>
-      <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{noteBody(group.entry.text)}</ReactMarkdown>
-      </div>
+      <Note text={group.entry.text} />
     </li>
   ) : null;
 }

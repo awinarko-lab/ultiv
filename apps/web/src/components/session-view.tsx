@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type {
   ModelInfo,
   PendingApproval,
@@ -7,12 +7,15 @@ import type {
   TranscriptEntry,
   UsageSummary,
 } from "@ultiv/contracts";
+import { ArrowDownIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ApprovalCard, type Decide } from "@/components/approval-card";
 import { ChatSkeleton, EmptyChat, StatusRow } from "@/components/chat-states";
 import { Composer } from "@/components/composer";
 import { ChatHeader, type ChatBot, type LinkState } from "@/components/chat-header";
 import { TranscriptItems } from "@/components/transcript-items";
+import { aboveComposer, useChatScroll } from "@/lib/use-chat-scroll";
 
 /**
  * The polite live-region text: a finished reply or a gate waiting on the
@@ -32,6 +35,45 @@ function useAnnouncement(
     return "";
   }
   return `${who}: ${lastReply.text.slice(0, 280)}`;
+}
+
+/** The draft and sending it. A failed send keeps the draft and offers a retry. */
+function useSend(onInput: (text: string) => Promise<void>, busy: boolean) {
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendFailed, setSendFailed] = useState(false);
+  const run = async (): Promise<void> => {
+    const text = draft.trim();
+    if (text === "" || busy || sending) return;
+    setSending(true);
+    setSendFailed(false);
+    try {
+      await onInput(text);
+      // Clear only what was sent — anything typed meanwhile stays.
+      setDraft((current) => (current.trim() === text ? "" : current));
+    } catch {
+      setSendFailed(true);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return { draft, setDraft, sending, sendFailed, run };
+}
+
+/** Floats just above the composer while the owner is scrolled up. */
+function JumpToLatest({ bottom, onJump }: { bottom: string; onJump: () => void }) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={onJump}
+      className="bg-background/70 absolute left-1/2 z-10 -translate-x-1/2 rounded-full shadow-sm backdrop-blur-md"
+      style={{ bottom }}
+    >
+      <ArrowDownIcon /> Jump to latest
+    </Button>
+  );
 }
 
 const floatingError =
@@ -71,62 +113,15 @@ export function SessionView({
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => Promise<void>;
   onInterrupt: () => Promise<void>;
 }) {
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  // Send failures keep the draft and offer a retry; control failures
-  // (model/effort/stop) are reported on the same line.
-  const [sendFailed, setSendFailed] = useState(false);
-  const [controlError, setControlError] = useState<string | null>(null);
-  const transcriptRef = useRef<HTMLDivElement | null>(null);
-  // The composer floats over the transcript; its height (it grows with the
-  // draft) becomes the transcript's bottom padding so the last message clears it.
-  const footerRef = useRef<HTMLElement | null>(null);
-  const [footerHeight, setFooterHeight] = useState(80);
-  // Autoscroll only while the user is at the bottom: scrolling up mid-stream
-  // must stay put (the transcript keeps growing underneath).
-  const pinned = useRef(true);
   const busy = phase === "working";
-
-  useEffect(() => {
-    const viewport = transcriptRef.current?.querySelector("[data-slot=scroll-area-viewport]");
-    if (viewport === null || viewport === undefined) return;
-    const onScroll = (): void => {
-      pinned.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80;
-    };
-    viewport.addEventListener("scroll", onScroll, { passive: true });
-    return () => viewport.removeEventListener("scroll", onScroll);
-  }, []);
-
-  useEffect(() => {
-    const footer = footerRef.current;
-    if (footer === null) return;
-    const observer = new ResizeObserver(() => setFooterHeight(footer.offsetHeight));
-    observer.observe(footer);
-    return () => observer.disconnect();
-  }, []);
-
-  // Pin the transcript to the newest entry only while the user is pinned there.
-  useEffect(() => {
-    const viewport = transcriptRef.current?.querySelector("[data-slot=scroll-area-viewport]");
-    if (viewport === null || viewport === undefined || !pinned.current) return;
-    viewport.scrollTop = viewport.scrollHeight;
-  }, [transcript, busy, pending, footerHeight]);
-
-  const run = async (): Promise<void> => {
-    const text = draft.trim();
-    if (text === "" || busy || sending) return;
-    setSending(true);
-    setSendFailed(false);
-    try {
-      await onInput(text);
-      // Clear only what was sent — anything typed meanwhile stays.
-      setDraft((current) => (current.trim() === text ? "" : current));
-    } catch {
-      setSendFailed(true);
-    } finally {
-      setSending(false);
-    }
-  };
+  const { draft, setDraft, sending, sendFailed, run } = useSend(onInput, busy);
+  // Control failures (model/effort/stop) are reported above the composer.
+  const [controlError, setControlError] = useState<string | null>(null);
+  const { transcriptRef, footerRef, footerHeight, atBottom, jumpToLatest } = useChatScroll([
+    transcript,
+    busy,
+    pending,
+  ]);
 
   const control = (action: () => Promise<void>): void => {
     setControlError(null);
@@ -147,14 +142,14 @@ export function SessionView({
           <ul
             className="flex flex-col gap-3 pt-[calc(3.75rem+env(safe-area-inset-top))] pr-2"
             style={{
-              paddingBottom: `calc(${footerHeight + 12}px + var(--chat-bottom, env(safe-area-inset-bottom)))`,
+              paddingBottom: aboveComposer(footerHeight, 12),
             }}
           >
             {transcript.length === 0 && link === "connecting" && <ChatSkeleton />}
             {transcript.length === 0 && link === "live" && !busy && (
               <EmptyChat bot={bot} onPick={setDraft} />
             )}
-            <TranscriptItems transcript={transcript} />
+            <TranscriptItems transcript={transcript} busy={busy} />
             {pending !== null ? (
               <li>
                 <ApprovalCard
@@ -189,6 +184,7 @@ export function SessionView({
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
+      {!atBottom && <JumpToLatest bottom={aboveComposer(footerHeight, 8)} onJump={jumpToLatest} />}
       <footer
         ref={footerRef}
         className="pointer-events-none absolute inset-x-0 z-10 flex flex-col gap-2 pb-3 *:pointer-events-auto"
