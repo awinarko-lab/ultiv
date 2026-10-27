@@ -8,12 +8,12 @@
  */
 import { defineExtension, type Extension } from "@earendil-works/pi-durable";
 import type { ProfileInfo } from "@ultiv/contracts";
-import { MODEL_SILENCE, OPERATING_RULES } from "../act/identity.ts";
+import { MODEL_SILENCE, OPERATING_RULES, VOICE } from "../act/identity.ts";
 import type { ProfilesService } from "./profiles.ts";
 
 const baseline = (name: string): string =>
   `You are ${name}. That is your name, always; asked who or what you are, answer as ` +
-  `${name}. ${MODEL_SILENCE}${OPERATING_RULES}`;
+  `${name}. ${MODEL_SILENCE}${VOICE}${OPERATING_RULES}`;
 
 const roster = (me: ProfileInfo, siblings: readonly ProfileInfo[]): string => {
   const others = siblings.filter(
@@ -46,7 +46,7 @@ const personaFor = (me: ProfileInfo): string => {
   const identity =
     `\n\nAsked who or what you are, answer as ${me.name} (plus your role in a sentence, ` +
     `if useful). ${MODEL_SILENCE}`;
-  return `${intro}${description}${persona}${zone}${identity}${OPERATING_RULES}`;
+  return `${intro}${description}${persona}${zone}${identity}${VOICE}${OPERATING_RULES}`;
 };
 
 /** The identity extension: profile persona + roster, or the substrate baseline. */
