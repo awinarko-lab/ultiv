@@ -423,7 +423,7 @@ export function RoutinesPanel({ profiles }: { profiles: ProfileInfo[] }) {
       />
       <DialogContent>
         <DialogTitle>Routines</DialogTitle>
-        <div className="mt-3 max-h-[70vh] overflow-y-auto">
+        <div className="mt-3 max-h-[70dvh] overflow-y-auto">
           <RoutinesContent profiles={profiles} />
         </div>
       </DialogContent>

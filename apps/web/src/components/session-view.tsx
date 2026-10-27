@@ -93,6 +93,9 @@ function SessionMeta({
   );
 }
 
+const coarsePointer = (): boolean =>
+  typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+
 /** The link label, shown only when the chat is not connected. */
 const linkLabel = { connecting: "connecting…", live: "live", lost: "disconnected" } as const;
 
@@ -241,10 +244,12 @@ export function SessionView({
               value={draft}
               disabled={link !== "live"}
               rows={2}
-              className="min-h-16 resize-none"
+              className="max-h-[40dvh] min-h-16 resize-none overflow-y-auto"
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
+                // Touch keyboards have no Shift+Enter: there Enter is a newline
+                // and the arrow button sends. Desktop keeps Enter-to-send.
+                if (event.key === "Enter" && !event.shiftKey && !coarsePointer()) {
                   event.preventDefault();
                   void run();
                 }

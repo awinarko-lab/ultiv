@@ -62,7 +62,7 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
 
   return (
     <div className="mt-3 flex flex-col gap-3">
-      <div className="bg-background max-h-[45vh] overflow-y-auto rounded-md border p-3 text-sm">
+      <div className="bg-background max-h-[45dvh] overflow-y-auto rounded-md border p-3 text-sm">
         {detail.timeline.length === 0 ? (
           <p className="text-muted-foreground text-xs">(no messages yet)</p>
         ) : (
