@@ -59,13 +59,13 @@ Not run automatically (long-running or live):
 
 ## Web UI
 
-- **Routing: TanStack Router, file-based.** Routes live in `apps/web/src/routes/` (`__root.tsx`, `index.tsx`, `chat.$conversationId.tsx`). The router plugin regenerates `src/routeTree.gen.ts` on `vp dev` / `vp build`. It is committed, never hand-edited, and excluded from oxfmt. `src/router.ts` creates the router and registers its type.
-- **Components: shadcn, style `base-nova`, on Base UI (`@base-ui/react`), not Radix.** Config is `apps/web/components.json`; add components with `vp -C apps/web exec shadcn add <name>`. Primitives live in `src/components/ui/` (badge, button, card, input, scroll-area, separator, textarea). Icons: `lucide-react`.
+- **Routing: TanStack Router, file-based.** Routes live in `apps/web/src/routes/`; `__root.tsx` is the one layout (desktop side nav `components/app-nav.tsx` + phone tab bar, `main` sets `--chat-bottom` for the floating composer). Routes: `/` (chat with the current bot, `?bot=<id>`; onboarding when there are no bots), `/c/$sessionId` (one chat), `/bots`, `/vault`, `/routines`, `/history`, `/rooms` ("Bot talks", `?bot=` + `?room=`; reached from the bot switcher and the desktop side nav, not a phone tab). `/sessions/$sessionId` only redirects to `/c/$sessionId`. Tabs are `Link`s with `aria-current`; the Chat tab returns to the last bot (`lastBot` in `lib/app-state.tsx`). The router plugin regenerates `src/routeTree.gen.ts` on `vp dev` / `vp build`. It is committed, never hand-edited, and excluded from oxfmt. `src/router.ts` creates the router and registers its type.
+- **Components: shadcn, style `base-nova`, on Base UI (`@base-ui/react`), not Radix.** Config is `apps/web/components.json`; add components with `vp -C apps/web exec shadcn add <name>`. Primitives live in `src/components/ui/` (badge, button, card, code-block, collapsible, dev-details, dialog, empty-state, input, input-group, list-row, scroll-area, section-header, select, separator, spinner, textarea, trace) — reuse them (Select, SectionHeader, EmptyState/ErrorState, ListRow, DevDetails) instead of one-off markup. Dialogs are bottom sheets on phones and centred on `sm+`. Markdown goes through `LazyMarkdown` (react-markdown + shiki in a lazy chunk). Icons: `lucide-react`.
 - Base UI composes with the **`render` prop, not `asChild`**. When a `Button` renders a non-button element (e.g. a router `Link`), also pass `nativeButton={false}` — see `routes/index.tsx`.
 - **Styling: Tailwind 4, CSS-first** — no `tailwind.config`; theme tokens and the `dark` variant live in `src/index.css` (imports `tailwindcss`, `tw-animate-css`, `shadcn/tailwind.css`, Geist variable font). Use the semantic tokens (`bg-background`, `text-muted-foreground`, …), not raw colors.
 - `cn()` comes from the `cn` package (`src/lib/utils.ts` re-exports it), not clsx + tailwind-merge.
 - Alias `@/*` → `apps/web/src/*`, declared in both `vite.config.ts` (`resolve.alias`) and `tsconfig.json` (`paths`) — keep them in sync.
-- Current state: the chat route is a static scaffold on local `useState`; chord/pi-durable wiring to the server is not done yet.
+- Chat chrome (header pill = bot switcher, composer, tab bar) floats translucent over the transcript; keep text sizes ≥ `text-xs`, radii 6/10/14, border-only cards.
 
 ## AI providers
 
