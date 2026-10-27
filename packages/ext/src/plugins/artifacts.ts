@@ -311,7 +311,9 @@ const artifactDeleteTool = (dirOf: (conversationId: string) => string): Tool =>
   defineTool({
     name: "artifact_delete",
     gated: true,
-    description: "Delete one workspace artifact by id. Destructive; the user approves each call.",
+    description:
+      "Delete one workspace artifact by id. It can't be undone and your owner approves each " +
+      "call: first name the artifact and say so.",
     parameters: Type.Object({ id: Type.String({ description: "The artifact id." }) }),
     execute: (args, api) => {
       const deleted = deleteArtifact(dirOf(String(api.conversationId)), args.id);

@@ -32,7 +32,7 @@ const setTool = (sensors: SensorsService, profiles: ProfilesService): Tool =>
       "every new item whose title contains `match`; kind 'watch' polls `url` and wakes once " +
       "each time its content CHANGES (edge-triggered — first poll is the baseline). Each " +
       "event/change wakes you exactly once, even across restarts. The owner approves each " +
-      "sensor.",
+      "sensor: first say in a sentence what it watches and when it will wake you.",
     parameters: Type.Object({
       kind: Type.Optional(
         Type.Union([Type.Literal("calendar"), Type.Literal("rss"), Type.Literal("watch")], {

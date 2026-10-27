@@ -62,7 +62,7 @@ const setTool = (schedules: SchedulesService, profiles: ProfilesService): Tool =
       "Schedule a future wake-up for yourself: a recurring cron schedule or a one-shot time. " +
       "When it fires, `prompt` arrives in your main chat as an input and you act on it. Use " +
       "`now` to ground times; cron renders in the profile's timezone. The owner approves " +
-      "each schedule.",
+      "each schedule: first say in a sentence when it fires and what it will make you do.",
     parameters: SetParams,
     structuredOutputSchema: Type.Object({ id: Type.String(), next: Type.Array(Type.Number()) }),
     execute: async (args, api) => {

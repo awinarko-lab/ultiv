@@ -75,8 +75,9 @@ const bashTool = (
       " is an " +
       "artifact: it persists across restarts and the user can see it. Working directory " +
       "carries over between calls. Each call waits for your owner's approval (unless they " +
-      "chose always-allow), so batch work into few scripts; still never delete or overwrite " +
-      "files you did not create for the current task without asking.",
+      "chose always-allow): batch work into few scripts, and first say in a sentence what " +
+      "the script will change. Never delete or overwrite files you did not create for the " +
+      "current task without asking.",
     parameters: Params,
     structuredOutputSchema: Type.Object({
       stdout: Type.String(),
