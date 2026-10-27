@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { TaskInfo } from "@ultiv/contracts";
 import { api } from "@/lib/api";
+import { pollFailed, pollRecovered } from "@/lib/notify";
 import { TaskActivityDialog } from "@/components/task-activity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,8 +29,10 @@ export function TasksPanel({ conversationId }: { conversationId: string | null }
     try {
       const all = await api.tasks();
       setTasks(all.filter((task) => task.conversationId === conversationId));
-    } catch {
-      // REST hiccup: keep the last known list.
+      pollRecovered("tasks-poll");
+    } catch (cause) {
+      // Keep the last known list, but say it may be stale (one toast, not one per poll).
+      pollFailed("tasks-poll", "Background tasks may be out of date", cause);
     }
   }, [conversationId]);
 

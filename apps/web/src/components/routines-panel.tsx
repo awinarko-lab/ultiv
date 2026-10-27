@@ -21,7 +21,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/notify";
 
 const when = (at: number | null): string => (at === null ? "never" : new Date(at).toLocaleString());
 
@@ -213,7 +215,12 @@ function WebhookRow({
   const rejected = hook.rejectedAuth + hook.rejectedSchema + hook.rejectedRate + hook.rejectedSize;
 
   const copy = async (text: string): Promise<void> => {
-    await navigator.clipboard.writeText(text);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Copied");
+    } catch (cause) {
+      notifyError("Couldn't copy", cause);
+    }
   };
 
   const runTest = async (): Promise<void> => {

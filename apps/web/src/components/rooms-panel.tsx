@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { api, type RoomDetail } from "@/lib/api";
+import { notifyError } from "@/lib/notify";
 
 function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void> }) {
   const [detail, setDetail] = useState<RoomDetail | null>(null);
@@ -32,7 +33,7 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
   }, [room.id]);
 
   useEffect(() => {
-    void load();
+    load().catch((cause: unknown) => notifyError("Couldn't load the room", cause, "room-load"));
   }, [load]);
 
   useEffect(() => {
@@ -49,6 +50,8 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
       setSay("");
       await load();
       await reload();
+    } catch (cause) {
+      notifyError("Message not sent", cause);
     } finally {
       setBusy(false);
     }
@@ -143,13 +146,16 @@ export function RoomsPanel({
   reload?: () => Promise<void>;
 }) {
   const [rooms, setRooms] = useState<RoomInfo[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [open, setOpen] = useState<RoomInfo | null>(null);
 
   const load = useCallback(async () => {
     try {
       setRooms(await api.rooms(botId));
+      setLoadFailed(false);
     } catch {
-      setRooms([]);
+      // A failed load is not an empty list: say so and offer a retry.
+      setLoadFailed(true);
     }
   }, [botId]);
 
@@ -173,7 +179,14 @@ export function RoomsPanel({
         <DialogTitle>
           {botId === undefined ? "Bot-to-bot chats" : `Chats of ${nameOf(botId)}`}
         </DialogTitle>
-        {rooms.length === 0 ? (
+        {loadFailed && rooms.length === 0 ? (
+          <p className="text-destructive mt-2 flex items-center gap-2 text-sm">
+            Couldn't load rooms.
+            <Button variant="link" size="xs" className="h-auto p-0" onClick={() => void load()}>
+              Retry
+            </Button>
+          </p>
+        ) : rooms.length === 0 ? (
           <p className="text-muted-foreground mt-2 text-sm">
             No rooms yet — bots open them by messaging each other (each topic is its own thread).
           </p>

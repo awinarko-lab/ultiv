@@ -28,6 +28,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/notify";
 import { useSessions } from "@/lib/use-sessions";
 
 type MobileTab = "chat" | "bots" | "vault" | "history" | "routines";
@@ -53,8 +54,9 @@ function HomePage() {
   const reloadMain = useCallback(async () => {
     try {
       setMainId((await api.main()).profileId);
-    } catch {
+    } catch (cause) {
       setMainId(null);
+      notifyError("Couldn't load the main bot", cause, "main-load");
     }
   }, []);
 

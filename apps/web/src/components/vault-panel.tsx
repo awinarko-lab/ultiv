@@ -22,6 +22,7 @@ const KINDS: VaultKind[] = ["login", "card", "key", "note", "contact"];
 export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
   const [items, setItems] = useState<VaultItemInfo[]>([]);
   const [configured, setConfigured] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [kind, setKind] = useState<VaultKind>("login");
   const [name, setName] = useState("");
   const [scope, setScope] = useState("");
@@ -31,18 +32,28 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
 
   const load = useCallback(async () => {
     try {
-      const list = await api.vault();
-      setItems(Array.isArray(list) ? list : []);
-      setConfigured(true);
-    } catch {
-      setItems([]);
+      // Without VAULT_KEY the server answers { items: [], configured: false }
+      // instead of an array — that shape is what drives the warning.
+      const list = (await api.vault()) as unknown;
+      if (Array.isArray(list)) {
+        setItems(list as VaultItemInfo[]);
+        setConfigured(true);
+      } else {
+        setItems([]);
+        setConfigured(
+          !(typeof list === "object" && list !== null && "configured" in list) ||
+            list.configured !== false,
+        );
+      }
+      setLoadFailed(false);
+    } catch (cause) {
+      setLoadFailed(true);
+      if (cause instanceof ApiError && cause.status === 503) setConfigured(false);
     }
   }, []);
 
   useEffect(() => {
-    void load().catch(() => {
-      setConfigured(false);
-    });
+    void load();
   }, [load]);
 
   const set = (key: string, value: string): void => setFields({ ...fields, [key]: value });
@@ -134,7 +145,14 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
         </p>
       )}
       <div className="mt-3 flex flex-col gap-2">
-        {items.length === 0 ? (
+        {loadFailed && items.length === 0 ? (
+          <p className="text-destructive flex items-center gap-2 text-sm">
+            Couldn't load the vault.
+            <Button variant="link" size="xs" className="h-auto p-0" onClick={() => void load()}>
+              Retry
+            </Button>
+          </p>
+        ) : items.length === 0 ? (
           <p className="text-muted-foreground text-sm">No items yet.</p>
         ) : (
           items.map((item, index) => (

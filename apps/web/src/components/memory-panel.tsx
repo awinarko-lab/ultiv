@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { api, type ArtifactRow } from "@/lib/api";
+import { notifyError } from "@/lib/notify";
 
 const formatBytes = (n: number): string =>
   n >= 1_048_576
@@ -160,9 +161,10 @@ export function MemoryPanel({
                   size="icon"
                   aria-label={`Delete state ${row.key}`}
                   onClick={() => {
-                    void api.removeState(profileId, row.key).then(() => {
-                      void load();
-                    });
+                    api
+                      .removeState(profileId, row.key)
+                      .then(load)
+                      .catch((cause: unknown) => notifyError("Couldn't delete that state", cause));
                   }}
                 >
                   <Trash2Icon />

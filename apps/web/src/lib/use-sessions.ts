@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ModelInfo, ProfileInfo, SessionInfo } from "@ultiv/contracts";
 import { api } from "./api";
+import { notifyError, pollRecovered } from "./notify.ts";
 
 export function useSessions(): {
   phase: "connecting" | "live" | "lost";
@@ -31,8 +32,10 @@ export function useSessions(): {
       setModels(modelList);
       setProfiles(profileList);
       setPhase("live");
-    } catch {
+      pollRecovered("sessions-load");
+    } catch (cause) {
       setPhase("lost");
+      notifyError("Couldn't reach the server", cause, "sessions-load");
     }
   }, []);
 
@@ -60,7 +63,8 @@ export function useSessions(): {
         await refresh(created.id);
         setSelected(created.id);
         return created;
-      } catch {
+      } catch (cause) {
+        notifyError("Couldn't create the bot", cause);
         return undefined;
       }
     },
@@ -73,7 +77,8 @@ export function useSessions(): {
         const created = await api.create(title, selected);
         await refresh(selected);
         return created;
-      } catch {
+      } catch (cause) {
+        notifyError("Couldn't start a session", cause);
         return undefined;
       }
     },

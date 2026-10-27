@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { pollFailed, pollRecovered } from "@/lib/notify";
 import type { ModelInfo, ProfileInfo } from "@ultiv/contracts";
 
 interface BotForm {
@@ -332,8 +333,10 @@ export function BotsPanel({
       try {
         const pending = await api.pendingApprovals();
         if (alive) setAttention(new Set(pending.map((row) => row.profile)));
-      } catch {
-        // REST hiccup: keep the last known set.
+        pollRecovered("approvals-poll");
+      } catch (cause) {
+        // Keep the last known set, but say the "needs you" badges may be stale.
+        pollFailed("approvals-poll", "Approval badges may be out of date", cause);
       }
     };
     void load();
