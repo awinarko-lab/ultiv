@@ -116,7 +116,7 @@ function BotMenu({ bot, mainId, deletable, models, act, refresh }: BotRowProps) 
                 What {bot.name} remembers
               </Menu.Item>
               <Menu.Item className={item} onClick={() => setOpen("edit")}>
-                Edit details and model
+                Edit role, personality and model
               </Menu.Item>
               {!isMain && (
                 <Menu.Item className={item} onClick={() => void act(() => api.setMain(bot.id))}>

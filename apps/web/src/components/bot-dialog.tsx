@@ -279,8 +279,9 @@ export function EditBotDialog({
         // Throws on failure, so the form stays open with the reason.
         await api.updateProfile(bot.id, {
           name: form.name.trim(),
-          ...(form.description !== "" ? { description: form.description } : {}),
-          ...(form.persona !== "" ? { persona: form.persona } : {}),
+          // Always sent on edit, so an emptied field clears.
+          description: form.description,
+          persona: form.persona,
           ...modelPayload(form),
         });
         await refresh();
