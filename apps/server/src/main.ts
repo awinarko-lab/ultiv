@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { httpPlugin } from "@ultiv/ext";
 import { closeWebhookPump } from "./webhooks.ts";
 import { startSensorLoop, type SensorLoop } from "./sensors.ts";
+import { startMemoryTidy } from "./memory-tidy.ts";
 import { wireEscalationPager } from "./attention.ts";
 import { startPush } from "./push/index.ts";
 import { openMind } from "@ultiv/mind";
@@ -63,6 +64,19 @@ export async function buildStack(options?: {
   // Calendar sensors: the poll loop is server-side (clock + network); the
   // registry and the dedup rings are durable mind docs.
   const sensorLoop: SensorLoop = await startSensorLoop(mind);
+  // The weekly memory tidy (Sundays 09:00 WIB; catches up on boot).
+  const memoryTidy = startMemoryTidy({
+    mind,
+    notify: (owner, text) =>
+      push.notifier
+        .notify(owner, {
+          title: text,
+          body: "Open the Memory panel to review.",
+          url: "/bots",
+          tag: "memory-tidy",
+        })
+        .then(() => undefined),
+  });
   const host = createHost<Principal>({ name: "server", self: { kind: "server" } });
   host.serve(Ping, (_input, _principal, self) => {
     const count = self.state("count", Type.Number(), 0);
@@ -84,6 +98,7 @@ export async function buildStack(options?: {
 
   const close = async () => {
     push.stop();
+    memoryTidy.stop();
     scheduler.stop();
     sensorLoop.stop();
     // Pending webhook windows first: a flush racing the mind's teardown
