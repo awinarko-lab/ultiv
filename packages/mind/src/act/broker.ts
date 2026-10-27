@@ -7,7 +7,7 @@ import { Effect } from "effect";
 import {
   brokerPlugin,
   createBrokerHooks,
-  makeBindingStore,
+  type BindingStore,
   type Plugin,
   type ScopeHolder,
   type VaultStore,
@@ -17,7 +17,7 @@ import { Audit } from "../audit/audit.ts";
 
 export const brokerFor = (
   vault: VaultStore | null,
-  vaultRoot: string | null,
+  bindings: BindingStore | null,
   holder: ScopeHolder,
 ): Effect.Effect<Plugin, never, Approvals | Audit> =>
   Effect.gen(function* () {
@@ -32,7 +32,7 @@ export const brokerFor = (
     });
     return brokerPlugin({
       vault,
-      bindings: vaultRoot === null ? null : makeBindingStore(vaultRoot),
+      bindings,
       holder,
       hooks,
     });

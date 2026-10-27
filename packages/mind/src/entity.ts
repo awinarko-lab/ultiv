@@ -9,7 +9,7 @@
  */
 import { Context, Effect, Layer } from "effect";
 import { ConfigError } from "effect/Config";
-import { defineExtension, type Storage } from "@earendil-works/pi-durable";
+import { type Storage } from "@earendil-works/pi-durable";
 import { openRuntime, Duplicate, External, Unavailable, type Runtime } from "@ultiv/core";
 import {
   artifactsPlugin,
@@ -27,41 +27,32 @@ import {
   vaultDir,
   makeVaultStore,
   vaultPlugin,
+  makeBindingStore,
+  type BindingStore,
   type Plugin,
   type VaultStore,
 } from "@ultiv/ext";
 import { Approvals, approvalsLayer, type ApprovalsService } from "./approvals.ts";
 import { actService } from "./act/act.ts";
-import { codemodeExtension } from "./act/codemode.ts";
-import { taskTools } from "./act/task-tools.ts";
-import { ENTITY_NAME } from "./act/identity.ts";
 import type { ScopeHolder } from "@ultiv/ext";
 import { decisionPlugin } from "./act/decision-tools.ts";
 import { brokerFor } from "./act/broker.ts";
+import { describeMind, installFaculties, routineServices, wirePolicies } from "./entity-parts.ts";
 import { temporalPlugin } from "./act/temporal.ts";
 import { Audit, auditLayer, type AuditService } from "./audit/audit.ts";
 import { Converse, converseLayer, type ConverseService } from "./converse/converse.ts";
 import { PiRegistry, piRegistryLayer } from "./converse/pi-registry.ts";
-import { runningTasksSection } from "./act/task-live.ts";
 import { Tasks, tasksLayer, type TasksService } from "./tasks/tasks.ts";
 import { profilesService, type ProfilesService } from "./profiles/profiles.ts";
-import { profilesExtension } from "./profiles/section.ts";
 import { roomsService, type RoomsService } from "./profiles/rooms.ts";
 import { mailboxService, type MailboxService } from "./mailbox/mailbox.ts";
-import { messageTools } from "./mailbox/tools.ts";
-import { memoryService, type MemoryService } from "./memory/memory.ts";
-import { memoryTools } from "./memory/tools.ts";
-import { historyService, type HistoryService } from "./history/history.ts";
-import { historyTools } from "./history/tools.ts";
-import { schedulesService, type SchedulesService } from "./schedules/schedules.ts";
-import { scheduleTools } from "./schedules/tools.ts";
-import { receiptsService, type ReceiptsService } from "./routines/receipts.ts";
-import { webhooksService, type WebhooksService } from "./webhooks/webhooks.ts";
-import { webhookTools } from "./webhooks/tools.ts";
-import { kvService, type KvService } from "./state/kv.ts";
-import { stateTools } from "./state/tools.ts";
-import { sensorsService, type SensorsService } from "./sensors/sensors.ts";
-import { sensorTools } from "./sensors/tools.ts";
+import { type MemoryService } from "./memory/memory.ts";
+import { type HistoryService } from "./history/history.ts";
+import { type SchedulesService } from "./schedules/schedules.ts";
+import { type ReceiptsService } from "./routines/receipts.ts";
+import { type WebhooksService } from "./webhooks/webhooks.ts";
+import { type KvService } from "./state/kv.ts";
+import { type SensorsService } from "./sensors/sensors.ts";
 import {
   Generate,
   generateLayer,
@@ -113,6 +104,8 @@ export interface MindService {
   readonly sensors: SensorsService;
   /** The credential vault, when VAULT_KEY is configured; else null. */
   readonly vault: VaultStore | null;
+  /** Credential-broker bindings (null without a vault). */
+  readonly bindings: BindingStore | null;
   /** The append-only trail of the mind's acts. */
   readonly audit: AuditService;
   readonly describe: () => MindDescription;
@@ -149,6 +142,7 @@ export type MindError = External | ConfigError | Unavailable | Duplicate;
 interface MindWiring {
   readonly holder: ScopeHolder;
   readonly vaultStore: VaultStore | null;
+  readonly bindings: BindingStore | null;
   /** Materializes mailbox envelope artifact grants (server copies files). */
   readonly grantArtifacts?: (
     owner: string,
@@ -205,98 +199,26 @@ const mindLayerRaw = (
       void mailbox.recover().catch((cause) => console.error("mailbox recovery failed:", cause));
       // Tasks run as their bot: bind (and resume) only once the index exists.
       void tasks.attach(profiles.bindTask);
-      const memory = memoryService({ converse, profiles });
-      const history = historyService({ converse, profiles });
-      const schedules = schedulesService({
-        converse,
-        profiles,
-        ...(wiring.onSchedulesChanged !== undefined
-          ? { onChanged: wiring.onSchedulesChanged }
-          : {}),
-      });
-      const receipts = receiptsService({ converse });
-      const webhooks = webhooksService({ converse, profiles });
-      const state = kvService({ converse });
-      const sensors = sensorsService({ converse, profiles });
-      // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
-      // through the holder the registry was built with — set now that the
-      // conversation→profile index exists.
-      wiring.holder.set({
-        scopeOf: (conversationId) => {
-          const scope = profiles.scopeOf(conversationId);
-          return scope === undefined ? undefined : { owner: scope.owner, profile: scope.profileId };
-        },
-      });
-      // Per-profile approval policy (auto-approve lists, timeout escalation).
-      approvals.setHooks({
-        autoApprove: (conversationId, request) =>
-          profiles.profileOf(conversationId)?.policies.autoApprove.includes(request.name) === true,
-        onExpire: (conversationId, request) => {
-          audit.record({
-            at: Date.now(),
-            kind: "escalation",
-            conversationId,
-            profile: profiles.profileOf(conversationId)?.id ?? null,
-            callId: request.callId,
-            name: request.name,
-            durationMs: null,
-            ok: false,
-            error: "approval timed out",
-          });
-        },
-      });
+      const routines = routineServices(converse, profiles, wiring.onSchedulesChanged);
+      const { memory, history, schedules, receipts, webhooks, state, sensors } = routines;
+      wirePolicies(wiring.holder, approvals, audit, profiles);
       // Everything rides one pi-durable registry; late installs are legal —
       // the harness reconsiders its tools as the registry changes.
       const piRegistry = yield* PiRegistry;
-      piRegistry.install(act.extension());
-      piRegistry.install(codemodeExtension());
-      piRegistry.install(profilesExtension(profiles, ENTITY_NAME));
-      piRegistry.install(
-        defineExtension({
-          name: "ultius.mind.tasks",
-          tools: taskTools(tasks, profiles),
-          sections: [runningTasksSection(tasks, profiles)],
-        }),
-      );
-      piRegistry.install(
-        defineExtension({
-          name: "ultius.mind.mailbox",
-          tools: messageTools(mailbox, profiles, rooms),
-        }),
-      );
-      piRegistry.install(
-        defineExtension({ name: "ultius.mind.memory", tools: memoryTools(memory, profiles) }),
-      );
-      piRegistry.install(
-        defineExtension({
-          name: "ultius.mind.schedules",
-          tools: scheduleTools(schedules, profiles),
-        }),
-      );
-      piRegistry.install(
-        defineExtension({
-          name: "ultius.mind.webhooks",
-          tools: webhookTools(webhooks, receipts, profiles),
-        }),
-      );
-      piRegistry.install(
-        defineExtension({
-          name: "ultius.mind.state",
-          tools: stateTools(state, profiles),
-        }),
-      );
-      piRegistry.install(
-        defineExtension({
-          name: "ultius.mind.sensors",
-          tools: sensorTools(sensors, profiles),
-        }),
-      );
-      piRegistry.install(
-        defineExtension({
-          name: "ultius.mind.history",
-          tools: historyTools(history, profiles),
-        }),
-      );
+      installFaculties(piRegistry, {
+        act,
+        tasks,
+        profiles,
+        rooms,
+        mailbox,
+        memory,
+        schedules,
+        receipts,
+        webhooks,
+        state,
+        sensors,
+        history,
+      });
       return {
         converse,
         decide,
@@ -315,22 +237,9 @@ const mindLayerRaw = (
         sensors,
         history,
         vault: wiring.vaultStore,
+        bindings: wiring.bindings,
         audit,
-        describe: () => ({
-          entity: ENTITY_NAME,
-          decide: decide.available,
-          // The truth: registry plugins AND the late pi-registry installs
-          // (memory, schedules, history, tasks, mailbox) that act.tools() misses.
-          tools: [
-            ...new Set([
-              ...act.tools().map((tool) => tool.name),
-              ...piRegistry
-                .snapshot()
-                .tools()
-                .map(({ tool }) => tool.name),
-            ]),
-          ],
-        }),
+        describe: () => describeMind(act, decide, piRegistry),
       };
     }),
   );
@@ -354,9 +263,11 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
   const holder = createScopeHolder();
   const vaultRoot = vaultConfigured() ? (options.vault?.dir ?? vaultDir()) : null;
   const vaultStore = vaultRoot !== null ? makeVaultStore(vaultRoot) : null;
+  const bindings = vaultRoot !== null ? makeBindingStore(vaultRoot) : null;
   const wiring: MindWiring = {
     holder,
     vaultStore,
+    bindings,
     ...(options.mailbox?.grantArtifacts !== undefined
       ? { grantArtifacts: options.mailbox.grantArtifacts }
       : {}),
@@ -369,7 +280,7 @@ export const mindLayer = (options: MindOptions): Layer.Layer<Mind, MindError> =>
     Effect.gen(function* () {
       const decideService = yield* Decide;
       // http_request rides always (credential-less calls need no vault).
-      const broker = yield* brokerFor(vaultStore, vaultRoot, holder);
+      const broker = yield* brokerFor(vaultStore, bindings, holder);
       // First-party faculties ride always (temporal, artifacts); the vault and
       // TinyFish live-web egress and Jev install only when keys are present.
       const base = [
