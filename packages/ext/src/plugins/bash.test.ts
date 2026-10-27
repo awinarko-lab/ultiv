@@ -15,6 +15,8 @@ describe("bash tool (durable workspace)", () => {
     if (capability?.kind !== "tool") throw new Error("missing bash tool");
     const bash = capability.tool;
     expect(bash.name).toBe("bash");
+    // Destructive by reach (rm/mv over artifacts): the act gates it.
+    expect(bash.gated).toBe(true);
 
     const write = await bash.execute(
       { script: 'echo "hello durable" > greeting.txt && mkdir -p src && date > src/when.txt' },

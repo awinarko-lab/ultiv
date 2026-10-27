@@ -3,8 +3,9 @@
  * just-bash (no VM, no network, no python/js) against a DurableFs mounted at
  * `/home` — pipes, grep, jq, sqlite3, coreutils — and every file they touch
  * IS an artifact: visible in `artifact_list`, served by the web UI, kept
- * across restarts. Not gated: writes land in the entity's own workspace,
- * exactly like artifact_write.
+ * across restarts. Gated as a whole: a script can delete or overwrite any file
+ * in the profile's tree (artifact_delete's gate would otherwise be bypassed),
+ * so each call waits for approval unless policies.autoApprove lists `bash`.
  */
 import { Bash, InMemoryFs, MountableFs, type BashExecResult } from "just-bash";
 import { Type } from "typebox";
@@ -65,6 +66,7 @@ const bashTool = (
 ): Tool =>
   defineTool({
     name: "bash",
+    gated: true,
     description:
       `Run a bash script in your durable workspace, mounted at ${HOME} (the working ` +
       "directory). Real coreutils — pipes, grep, sed, awk, jq, sqlite3, tar — but NO " +
@@ -72,8 +74,9 @@ const bashTool = (
       HOME +
       " is an " +
       "artifact: it persists across restarts and the user can see it. Working directory " +
-      "carries over between calls. Not approval-gated: do not delete or overwrite files " +
-      "you did not create for the current task without your owner's go-ahead.",
+      "carries over between calls. Each call waits for your owner's approval (unless they " +
+      "chose always-allow), so batch work into few scripts; still never delete or overwrite " +
+      "files you did not create for the current task without asking.",
     parameters: Params,
     structuredOutputSchema: Type.Object({
       stdout: Type.String(),
