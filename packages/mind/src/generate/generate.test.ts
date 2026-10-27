@@ -20,7 +20,7 @@ const gatewayFrom = (
 ): CompletionGateway & { readonly calls: () => number } => {
   let count = 0;
   return {
-    complete: async (_model: Model<Api>, _context: Context) => {
+    complete: async (_model: Model<Api>, _context: Context, _maxTokens: number) => {
       const next = replies[count] ?? replies[0] ?? "";
       count += 1;
       return reply(next);

@@ -26,7 +26,11 @@ import { MindModels } from "../providers/models.ts";
 
 /** The seam to one model completion; tests substitute it. */
 export interface CompletionGateway {
-  readonly complete: (model: Model<Api>, context: PiContext) => Promise<AssistantMessage>;
+  readonly complete: (
+    model: Model<Api>,
+    context: PiContext,
+    maxTokens: number,
+  ) => Promise<AssistantMessage>;
 }
 
 export type GenerateError = Unavailable | External | InvalidInput;
@@ -74,6 +78,7 @@ export const generateService = (
   models: Models,
   defaultModelId: string,
   gateway: CompletionGateway,
+  defaultMaxTokens = 1_024,
 ): GenerateService => {
   const ask = (
     model: Model<Api>,
@@ -91,7 +96,17 @@ export const generateService = (
       timestamp: Date.now(),
     };
     return Effect.tryPromise({
-      try: () => gateway.complete(model, { messages: [message] }),
+      // A caller-supplied system prompt rides the context's leading system
+      // message; per-request maxTokens override the faculty default.
+      try: () =>
+        gateway.complete(
+          model,
+          {
+            ...(request.system !== undefined ? { systemPrompt: request.system } : {}),
+            messages: [message],
+          },
+          request.maxTokens ?? defaultMaxTokens,
+        ),
       catch: (cause) => new External({ op: "generate", cause }),
     }).pipe(Effect.map(textOf));
   };
@@ -125,8 +140,8 @@ export const generateService = (
 };
 
 /** The real gateway: pi-ai `Models.complete`, the one call this faculty makes. */
-export const modelsGateway = (models: Models, maxTokens: number): CompletionGateway => ({
-  complete: (model, context) => models.complete(model, context, { maxTokens }),
+export const modelsGateway = (models: Models): CompletionGateway => ({
+  complete: (model, context, maxTokens) => models.complete(model, context, { maxTokens }),
 });
 
 export interface GenerateOptions {
@@ -145,7 +160,8 @@ export const generateLayer = (
       return generateService(
         models,
         wiring.modelId,
-        modelsGateway(models, options.maxTokens ?? 1_024),
+        modelsGateway(models),
+        options.maxTokens ?? 1_024,
       );
     }),
   );
