@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import type { FactKind, FactTrust, MemoryFact } from "@ultiv/contracts";
 import { Effect } from "effect";
+import { InvalidInput } from "@ultiv/core";
 import type { ConverseService } from "../converse/converse.ts";
 import type { DecideService } from "../decide/decide.ts";
 import type { GenerateService } from "../generate/generate.ts";
@@ -113,6 +114,13 @@ export const writeFactV2 = async (
     ...(input.replaces !== undefined ? { replaces: input.replaces } : {}),
     current,
   });
+  // Retention: the hard cap refuses only LOW-importance bot writes; the
+  // owner (human) and importance ≥3 writes still land, so review never loses.
+  if (current.length >= LIMITS.hardFacts && input.writer !== null && (input.importance ?? 3) <= 2) {
+    throw new InvalidInput({
+      reason: "memory is full; ask Harry to review the tidy list",
+    });
+  }
   const now = Date.now();
   const kind = input.kind ?? extracted.kind;
   const confidence =

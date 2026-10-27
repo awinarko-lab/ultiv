@@ -200,6 +200,9 @@ export const routineServices = (
     /** The extraction/decision models for the memory v2 write pipeline. */
     readonly generate?: GenerateService;
     readonly decide?: DecideService;
+    /** Taint sources for the memory write/forget guard. */
+    readonly audit?: AuditService;
+    readonly untrustedTool?: (name: string) => boolean;
   } = {},
 ) => ({
   memory: memoryService({ converse, profiles, ...models }),

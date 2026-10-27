@@ -29,6 +29,7 @@ export * from "./memory/stopwords.ts";
 export * from "./memory/search-index.ts";
 export * from "./memory/recall.ts";
 export * from "./memory/tools.ts";
+export * from "./memory/tools-lifecycle.ts";
 export * from "./schedules/schedules.ts";
 export * from "./schedules/tools.ts";
 export * from "./routines/receipts.ts";

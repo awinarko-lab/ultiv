@@ -225,6 +225,9 @@ const mindLayerRaw = (
       const routines = routineServices(converse, profiles, wiring.onSchedulesChanged, {
         generate,
         decide,
+        audit,
+        untrustedTool: (name) =>
+          mcpRef?.wiring.allowlistTools().some((tool) => tool.name === name) ?? false,
       });
       wirePolicies(wiring.holder, approvals, audit, profiles);
       // Everything rides one pi-durable registry; late installs are legal —

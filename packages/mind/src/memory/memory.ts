@@ -17,12 +17,21 @@ import { Effect } from "effect";
 import { InvalidInput, NotFound } from "@ultiv/core";
 import type { FactKind, FactTrust, MemoryFact, MemoryRecord } from "@ultiv/contracts";
 import type { ConverseService } from "../converse/converse.ts";
+import type { AuditService } from "../audit/audit.ts";
 import type { ProfilesService } from "../profiles/profiles.ts";
 import type { DecideService } from "../decide/decide.ts";
 import type { GenerateService } from "../generate/generate.ts";
 import { ensureMigrated } from "./migrate.ts";
 import { writeFactV2, type WriteFactResult } from "./consolidate.ts";
 import { coreService, type CoreService } from "./core.ts";
+import {
+  forgetFact,
+  historyOf,
+  purgeForgotten,
+  restoreFact,
+  type ForgetResult,
+  type HistoryEntry,
+} from "./forget.ts";
 import {
   ArchiveDoc,
   CoreDoc,
@@ -113,6 +122,24 @@ export interface MemoryService {
   }) => Promise<WriteFactResult>;
   /** The always-on core block: read/add/replace/remove with budgets. */
   readonly core: CoreService;
+  /** Tombstone a fact (restorable; text survives until the owner purges). */
+  readonly forget: (
+    owner: string,
+    profileId: string,
+    factId: string,
+    reason: string,
+    conversationId: string | null,
+  ) => Promise<ForgetResult>;
+  /** One fact's version chain with validity, change type and source. */
+  readonly history: (
+    owner: string,
+    profileId: string | null,
+    factId: string,
+  ) => Promise<readonly HistoryEntry[]>;
+  /** The owner's undo of a tombstone. */
+  readonly restore: (owner: string, profileId: string | null, factId: string) => Promise<void>;
+  /** The owner's irreversible purge of forgotten facts' text. */
+  readonly purge: (owner: string, profileId: string | null) => Promise<number>;
 }
 
 export const memoryService = (deps: {
@@ -121,6 +148,9 @@ export const memoryService = (deps: {
   /** The extraction/decision models; absent ⇒ deterministic fallbacks. */
   readonly generate?: GenerateService;
   readonly decide?: DecideService;
+  /** The write guard's taint sources (audit trail + installed MCP tools). */
+  readonly audit?: AuditService;
+  readonly untrustedTool?: (name: string) => boolean;
 }): MemoryService => {
   const { converse, profiles } = deps;
 
@@ -367,6 +397,25 @@ export const memoryService = (deps: {
       return writeFactV2(deps, (owner, profileId) => service.readFacts(owner, profileId), input);
     },
     core: coreService({ converse, profiles }),
+    forget: (owner, profileId, factId, reason, conversationId) =>
+      forgetFact(
+        {
+          converse,
+          profiles,
+          guard: {
+            ...(deps.audit !== undefined ? { audit: deps.audit } : {}),
+            ...(deps.untrustedTool !== undefined ? { untrustedTool: deps.untrustedTool } : {}),
+          },
+        },
+        owner,
+        profileId,
+        factId,
+        reason,
+        conversationId,
+      ),
+    history: (owner, profileId, factId) => historyOf({ converse }, owner, profileId, factId),
+    restore: (owner, profileId, factId) => restoreFact({ converse }, owner, profileId, factId),
+    purge: (owner, profileId) => purgeForgotten({ converse }, owner, profileId),
   };
   return service;
 };
