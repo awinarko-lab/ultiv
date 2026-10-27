@@ -121,6 +121,7 @@ function HomePage() {
     <BotsPanel
       profiles={sessions.profiles}
       models={sessions.models}
+      activeId={chatBotId ?? null}
       mainId={mainId}
       refresh={refreshAll}
       onOpenMain={(id) => {
@@ -134,7 +135,6 @@ function HomePage() {
     <div className="flex h-dvh w-full">
       {/* Desktop: the bots sidebar is persistent (pattern 2's profile sidebar). */}
       <aside className="hidden w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r p-4 lg:flex">
-        <h2 className="text-muted-foreground text-xs font-semibold uppercase">Bots</h2>
         {botsPanel}
       </aside>
       <main className="flex min-w-0 flex-1 flex-col gap-3 p-4 pb-24 sm:p-8 sm:pb-8">
@@ -179,7 +179,7 @@ function HomePage() {
                     }
                   />
                   <DialogContent>
-                    <DialogTitle>Bots</DialogTitle>
+                    <DialogTitle className="sr-only">Bots</DialogTitle>
                     <div className="mt-3">{botsPanel}</div>
                   </DialogContent>
                 </Dialog>
@@ -348,19 +348,26 @@ function HistoryList({
 
   return (
     <div className="flex flex-col gap-3">
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={sessions.phase !== "live" || sessions.profiles.length === 0}
+      {/* Disabled buttons swallow hover, so the reason sits on a wrapper. */}
+      <span
+        className="flex flex-col"
         title={
           sessions.profiles.length === 0
             ? "Spawn a bot first — sessions attach to a bot"
-            : undefined
+            : sessions.phase !== "live"
+              ? "Waiting for the server"
+              : undefined
         }
-        onClick={() => void create()}
       >
-        New session
-      </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={sessions.phase !== "live" || sessions.profiles.length === 0}
+          onClick={() => void create()}
+        >
+          New session
+        </Button>
+      </span>
       <div className="flex flex-col gap-1">
         {ordered.length === 0 && (
           <p className="text-muted-foreground text-sm">

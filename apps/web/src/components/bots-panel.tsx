@@ -128,7 +128,10 @@ function BotDialog({
                 ))}
               </select>
             </label>
-            <label className="flex flex-1 flex-col gap-1 text-sm">
+            <label
+              className="flex flex-1 flex-col gap-1 text-sm"
+              title={efforts.length === 0 ? "Pick a model with effort levels first" : undefined}
+            >
               Effort
               <select
                 className="bg-background rounded-md border px-2 py-2 text-sm"
@@ -147,13 +150,16 @@ function BotDialog({
           </div>
           {error !== null && <p className="text-destructive text-sm">{error}</p>}
           <div className="flex justify-end gap-2">
-            <Button
-              variant="default"
-              disabled={busy || form.name.trim() === ""}
-              onClick={() => void submit()}
-            >
-              {busy ? "Working…" : "Save"}
-            </Button>
+            {/* Disabled buttons swallow hover, so the reason sits on a wrapper. */}
+            <span title={form.name.trim() === "" ? "Give the bot a name first" : undefined}>
+              <Button
+                variant="default"
+                disabled={busy || form.name.trim() === ""}
+                onClick={() => void submit()}
+              >
+                {busy ? "Working…" : "Save"}
+              </Button>
+            </span>
           </div>
           <p className="text-muted-foreground text-xs">
             A new bot introduces itself in its main chat from these details; the persona applies to
@@ -169,6 +175,7 @@ function BotDialog({
 /** One bot's row: open main chat, set-main, edit, hide, delete. */
 function BotRow({
   bot,
+  active,
   mainId,
   deletable,
   needsYou,
@@ -178,6 +185,8 @@ function BotRow({
   onOpenMain,
 }: {
   bot: ProfileInfo;
+  /** The bot whose chat is on screen — highlighted. */
+  active: boolean;
   mainId: string | null;
   deletable: boolean;
   needsYou: boolean;
@@ -187,6 +196,12 @@ function BotRow({
   onOpenMain: (profileId: string) => void;
 }) {
   const archived = bot.archivedAt !== null;
+  // Mirrors the server's 409s, so the reason shows before the click.
+  const deleteBlocked = !deletable
+    ? "You need at least one bot"
+    : bot.id === mainId
+      ? "The main bot can't be removed — make another bot main first"
+      : null;
   // Two-line row: the name opens the bot's main chat; the actions live under
   // the name, so they never fight the text for width. The row is its own
   // container: secondary info yields before anything overlaps.
@@ -197,8 +212,9 @@ function BotRow({
       }
     >
       <Button
-        variant="ghost"
+        variant={active ? "secondary" : "ghost"}
         className="min-w-0 flex-1 justify-start"
+        aria-current={active ? "true" : undefined}
         onClick={() => void onOpenMain(bot.id)}
       >
         <span className="truncate font-medium">{bot.name}</span>
@@ -274,26 +290,39 @@ function BotRow({
             {archived ? <EyeIcon /> : <EyeOffIcon />}
           </Button>
         )}
-        <ConfirmDialog
-          title={`Delete ${bot.name}?`}
-          warning="This permanently removes the bot with all of their chats, memory and artifacts. It cannot be undone."
-          typed={bot.name}
-          confirmLabel="Delete bot"
-          onConfirm={async () => {
-            await api.deleteProfile(bot.id);
-            await refresh();
-          }}
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            className="shrink-0"
-            aria-label={`Remove ${bot.name}`}
-            disabled={!deletable}
+        {deleteBlocked !== null ? (
+          <span title={deleteBlocked}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              aria-label={`Remove ${bot.name} (${deleteBlocked})`}
+              disabled
+            >
+              <Trash2Icon />
+            </Button>
+          </span>
+        ) : (
+          <ConfirmDialog
+            title={`Delete ${bot.name}?`}
+            warning="This permanently removes the bot with all of their chats, memory and artifacts. It cannot be undone."
+            typed={bot.name}
+            confirmLabel="Delete bot"
+            onConfirm={async () => {
+              await api.deleteProfile(bot.id);
+              await refresh();
+            }}
           >
-            <Trash2Icon />
-          </Button>
-        </ConfirmDialog>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              aria-label={`Remove ${bot.name}`}
+            >
+              <Trash2Icon />
+            </Button>
+          </ConfirmDialog>
+        )}
       </div>
     </div>
   );
@@ -313,12 +342,15 @@ function modelPayload(form: BotForm) {
 export function BotsPanel({
   profiles,
   models,
+  activeId,
   mainId,
   refresh,
   onOpenMain,
 }: {
   profiles: ProfileInfo[];
   models: ModelInfo[];
+  /** The bot whose chat is on screen (null = none). */
+  activeId: string | null;
   mainId: string | null;
   refresh: () => Promise<void>;
   onOpenMain: (profileId: string) => void;
@@ -399,6 +431,7 @@ export function BotsPanel({
               )}
               <BotRow
                 bot={bot}
+                active={bot.id === activeId}
                 mainId={mainId}
                 deletable={ordered.length > 1}
                 needsYou={attention.has(bot.id)}
