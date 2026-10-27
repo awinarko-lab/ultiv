@@ -75,6 +75,14 @@ const capText = (text: string, budget: { left: number }): { text: string; cut: b
   return { text: `${kept}\n[… cut: ${text.length - kept.length} more characters]`, cut: true };
 };
 
+const scrubJson = (value: unknown, scrub: (text: string) => string): unknown => {
+  try {
+    return JSON.parse(scrub(JSON.stringify(value))) as unknown;
+  } catch {
+    return undefined;
+  }
+};
+
 /** Convert one tool result; `scrub` removes the server's secret forms. */
 export const convertToolResult = (
   source: string,
@@ -105,10 +113,7 @@ export const convertToolResult = (
   const capped = capText(scrub(texts.join("\n\n")), budget);
   truncated ||= capped.cut;
   const body = capped.text === "" ? "(no text content)" : capped.text;
-  const safeStructured =
-    structured === undefined
-      ? undefined
-      : (JSON.parse(scrub(JSON.stringify(structured))) as unknown);
+  const safeStructured = structured === undefined ? undefined : scrubJson(structured, scrub);
   return {
     output: [{ type: "text", text: fenceUntrusted(source, body) }, ...images],
     isError: result.isError === true,
