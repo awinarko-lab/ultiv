@@ -102,3 +102,29 @@ export type { SensorInfo, SensorList } from "./sensors.ts";
 export { AuditEventSchema, AuditListSchema } from "./audit.ts";
 export type { AuditEvent, AuditList } from "./audit.ts";
 export { Ping } from "./ping.ts";
+export {
+  McpAuthSchema,
+  McpCommandSchema,
+  McpConnectReplySchema,
+  McpEnvRefSchema,
+  McpHeaderRefSchema,
+  McpServerInfoSchema,
+  McpServerInputSchema,
+  McpServerListSchema,
+  McpStateSchema,
+  McpToolInfoSchema,
+  McpTransportSchema,
+} from "./mcp.ts";
+export type {
+  McpAuth,
+  McpCommand,
+  McpConnectReply,
+  McpEnvRef,
+  McpHeaderRef,
+  McpServerInfo,
+  McpServerInput,
+  McpServerList,
+  McpState,
+  McpToolInfo,
+  McpTransport,
+} from "./mcp.ts";
