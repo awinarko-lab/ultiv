@@ -52,9 +52,7 @@ export function HistoryList({
       </span>
       <div className="flex flex-col gap-1">
         {ordered.length === 0 && (
-          <p className="text-muted-foreground text-sm">
-            No other chats yet. Each bot's main chat is on the Chat tab.
-          </p>
+          <p className="text-muted-foreground text-sm">No other chats yet.</p>
         )}
         {ordered.map((session, index) => (
           <Fragment key={session.id}>

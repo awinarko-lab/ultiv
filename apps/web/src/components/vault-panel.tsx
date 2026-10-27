@@ -202,59 +202,65 @@ export function VaultContent({ profiles }: { profiles: ProfileInfo[] }) {
           if (!busy && name.trim() !== "") void create();
         }}
       >
-        <div className="flex flex-wrap gap-2">
-          <Select
-            aria-label="Item type"
-            className="min-w-32 flex-1"
-            value={kind}
-            onChange={(event) => {
-              setKind(event.target.value as VaultKind);
-              setFields({});
-            }}
-          >
-            {KINDS.map((candidate) => (
-              <option key={candidate} value={candidate}>
-                {candidate.charAt(0).toUpperCase() + candidate.slice(1)}
-              </option>
-            ))}
-          </Select>
-          <Input
-            className="min-w-32 flex-1"
-            aria-label="Item name"
-            autoComplete="off"
-            placeholder="Name (e.g. Gmail)"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <Select
-            aria-label="Which bots can use it"
-            className="min-w-32 flex-1"
-            value={scope}
-            onChange={(event) => setScope(event.target.value)}
-          >
-            <option value="">Shared (all bots)</option>
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name} only
-              </option>
-            ))}
-          </Select>
-        </div>
-        {inputs[kind].map((field) => (
-          <Input
-            key={field.key}
-            type={field.secret ? "password" : "text"}
-            aria-label={field.label}
-            autoComplete={field.secret ? "new-password" : "off"}
-            placeholder={field.label}
-            value={fields[field.key] ?? ""}
-            onChange={(event) => set(field.key, event.target.value)}
-          />
-        ))}
-        {error !== null && <p className="text-destructive text-sm">{error}</p>}
-        <Button type="submit" disabled={busy || name.trim() === ""}>
-          {busy ? "Saving…" : "Add item"}
-        </Button>
+        {/* Nothing can be saved without VAULT_KEY, so the fields say so by being off. */}
+        <fieldset
+          disabled={!configured}
+          className="flex min-w-0 flex-col gap-2 disabled:opacity-60"
+        >
+          <div className="flex flex-wrap gap-2">
+            <Select
+              aria-label="Item type"
+              className="min-w-32 flex-1"
+              value={kind}
+              onChange={(event) => {
+                setKind(event.target.value as VaultKind);
+                setFields({});
+              }}
+            >
+              {KINDS.map((candidate) => (
+                <option key={candidate} value={candidate}>
+                  {candidate.charAt(0).toUpperCase() + candidate.slice(1)}
+                </option>
+              ))}
+            </Select>
+            <Input
+              className="min-w-32 flex-1"
+              aria-label="Item name"
+              autoComplete="off"
+              placeholder="Name (e.g. Gmail)"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <Select
+              aria-label="Which bots can use it"
+              className="min-w-32 flex-1"
+              value={scope}
+              onChange={(event) => setScope(event.target.value)}
+            >
+              <option value="">Shared (all bots)</option>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name} only
+                </option>
+              ))}
+            </Select>
+          </div>
+          {inputs[kind].map((field) => (
+            <Input
+              key={field.key}
+              type={field.secret ? "password" : "text"}
+              aria-label={field.label}
+              autoComplete={field.secret ? "new-password" : "off"}
+              placeholder={field.label}
+              value={fields[field.key] ?? ""}
+              onChange={(event) => set(field.key, event.target.value)}
+            />
+          ))}
+          {error !== null && <p className="text-destructive text-sm">{error}</p>}
+          <Button type="submit" disabled={busy || name.trim() === ""}>
+            {busy ? "Saving…" : "Add item"}
+          </Button>
+        </fieldset>
         <p className="text-muted-foreground text-xs">
           Saved items are encrypted on the server. Bots only see a masked stand-in and use it for
           you without reading the secret, and this screen won't show it again.
