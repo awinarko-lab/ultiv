@@ -405,30 +405,29 @@ export const memoryService = (deps: {
       return run(converse.docs.snapshotKeyed(FactsDoc, key)).then((store) => store?.facts ?? []);
     },
     recallV2: async (owner, profileId, opts = {}) => {
-      // An entity recalls its own store plus the owner store — never a sibling's.
-      const [own, ownerStore, entities] = await Promise.all([
+      // An entity recalls its own store plus the owner store — never a
+      // sibling's. ONE ranking over the combined pool, so the limit and the
+      // token budget hold across the merge and owner facts compete on score
+      // instead of being appended after the profile's (they crowded out).
+      const [own, ownerStore, ownEntities, ownerEntities] = await Promise.all([
         service.readFacts(owner, profileId),
         service.readFacts(owner, null),
         run(converse.docs.snapshotKeyed(GraphDoc, profileKey(owner, profileId))).then(
           (store) => store?.entities ?? [],
         ),
+        run(converse.docs.snapshotKeyed(GraphDoc, ownerKey(owner))).then(
+          (store) => store?.entities ?? [],
+        ),
       ]);
-      const rankOne = (facts: readonly MemoryFact[]) =>
-        recall({
-          facts,
-          entities,
-          ...(opts.query !== undefined ? { query: opts.query } : {}),
-          ...(opts.includeHistory !== undefined ? { includeHistory: opts.includeHistory } : {}),
-          ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
-          ...(opts.budgetTokens !== undefined ? { budgetTokens: opts.budgetTokens } : {}),
-        });
-      const merged = [rankOne(own), rankOne(ownerStore)];
-      return {
-        core: [],
-        facts: merged.flatMap((entry) => entry.facts).slice(0, opts.limit ?? 10),
-        lines: merged.flatMap((entry) => entry.lines),
-        tokens: merged.reduce((sum, entry) => sum + entry.tokens, 0),
-      };
+      const result = recall({
+        facts: [...own, ...ownerStore],
+        entities: [...ownEntities, ...ownerEntities],
+        ...(opts.query !== undefined ? { query: opts.query } : {}),
+        ...(opts.includeHistory !== undefined ? { includeHistory: opts.includeHistory } : {}),
+        ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+        ...(opts.budgetTokens !== undefined ? { budgetTokens: opts.budgetTokens } : {}),
+      });
+      return { core: [], facts: result.facts, lines: result.lines, tokens: result.tokens };
     },
     writeV2: async (input) => {
       if (input.scope === "owner") await requireKeeper(input.owner, input.writer);

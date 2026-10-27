@@ -149,4 +149,51 @@ describe("Memory seam (offline, MemoryStorage)", () => {
     ]);
     await handle.close();
   });
+
+  it("ranks own + owner recall in ONE merged list (limit and budget hold)", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const { memory, profiles } = handle.mind;
+    const keeper = await profiles.create("harry", {
+      name: "Keeper",
+      policies: {
+        canInitiate: [],
+        autoApprove: [],
+        approvalTimeout: "deny",
+        dailyTurnBudget: null,
+        memoryKeeper: true,
+      },
+    });
+    const bot = await profiles.create("harry", { name: "Researcher" });
+    // Owner-store fact: the strongest match for the query below.
+    await memory.write({
+      owner: "harry",
+      writer: keeper.id,
+      scope: "owner",
+      text: "kucing oren tidur siang di sofa every day",
+    });
+    // Profile facts also matching, so the old concatenate-then-slice would
+    // fill the limit with profile rows alone.
+    for (const text of [
+      "kucing oren makan pagi",
+      "kucing oren main malam",
+      "kucing tetangga hitam",
+    ]) {
+      await memory.writeV2({
+        owner: "harry",
+        profileId: bot.id,
+        scope: "profile",
+        writer: bot.id,
+        text,
+      });
+    }
+    const ranked = await memory.recallV2("harry", bot.id, {
+      query: "kucing oren tidur",
+      limit: 2,
+      budgetTokens: 300,
+    });
+    expect(ranked.facts.length).toBeLessThanOrEqual(2);
+    expect(ranked.tokens).toBeLessThanOrEqual(300);
+    expect(ranked.facts[0]?.scope).toBe("owner");
+    await handle.close();
+  });
 });
