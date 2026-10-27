@@ -55,7 +55,10 @@ export async function vaultRoutes(
     return true;
   }
   if (path.startsWith("/api/vault/") && method === "DELETE") {
-    const deleted = mind.vault?.remove(args.owner, segment("/api/vault/")) ?? false;
+    const id = segment("/api/vault/");
+    const deleted = mind.vault?.remove(args.owner, id) ?? false;
+    // A deleted secret's binding goes with it (a new item never inherits it).
+    if (deleted) mind.bindings?.remove(args.owner, id);
     if (deleted) json(200, { ok: true });
     else json(404, { error: "unknown vault item" });
     return true;

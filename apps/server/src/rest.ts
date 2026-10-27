@@ -17,6 +17,7 @@ import { mailboxRoutes } from "./rest/mailbox.ts";
 import { memoryRoutes, profileRoutes } from "./rest/profiles.ts";
 import { roomRoutes } from "./rest/rooms.ts";
 import { taskRoutes } from "./rest/tasks.ts";
+import { bindingRoutes } from "./rest/bindings.ts";
 import { vaultRoutes } from "./rest/vault.ts";
 import { webhookRoutes } from "./rest/webhooks.ts";
 import { sensorRoutes } from "./rest/sensors.ts";
@@ -162,6 +163,7 @@ async function route(args: RouteArgs): Promise<void> {
   if (await webhookRoutes(args, segment)) return;
   if (await cronRoutes(args, segment)) return;
   if (await sensorRoutes(args, segment)) return;
+  if (await bindingRoutes(args, segment)) return;
   if (await vaultRoutes(args, segment)) return;
   if (await approvalRoutes(args)) return;
   if (path === "/" || path === "/api/health") return json(200, { app: "ultiv", ok: true });
