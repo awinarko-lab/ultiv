@@ -89,7 +89,9 @@ const contactsTool = (store: VaultStore, holder: ScopeHolder): Tool =>
     name: "vault_contacts",
     description:
       "Search the vault's contacts (reference class): who to email or call, with the " +
-      "address the user stored. Use it to resolve 'email Mom' into a real address.",
+      "address the user stored. Use it to resolve 'email Mom' into a real address. Contacts " +
+      "are your owner's personal data: use them for the task at hand, and never pass them to " +
+      "other bots, rooms or webhooks unless your owner asked.",
     parameters: Type.Object({
       query: Type.Optional(Type.String({ description: "Name or email substring." })),
     }),
