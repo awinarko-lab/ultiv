@@ -27,7 +27,7 @@ function SessionPage() {
   };
 
   return (
-    <main className="mx-auto flex h-dvh w-full max-w-5xl flex-col gap-3 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6">
+    <main className="mx-auto flex h-dvh w-full max-w-5xl flex-col gap-3 px-3 pt-3 [--chat-bottom:env(safe-area-inset-bottom)] sm:p-6">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <h1 className="font-heading text-xl font-semibold tracking-tight">

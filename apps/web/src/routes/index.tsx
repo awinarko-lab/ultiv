@@ -113,8 +113,10 @@ function HomePage() {
       <aside className="hidden w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r p-4 lg:flex">
         {botsPanel}
       </aside>
-      {/* Phones: ~12px side gutters and room for the tab bar + home indicator. */}
-      <main className="flex min-w-0 flex-1 flex-col gap-3 px-3 pt-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-6">
+      {/* Phones: ~12px side gutters. The chat runs to the screen edge and
+          scrolls under the translucent tab bar; --chat-bottom lifts its composer
+          above the bar (and the home indicator). Panels pad themselves. */}
+      <main className="flex min-w-0 flex-1 flex-col gap-3 px-3 [--chat-bottom:calc(4rem+env(safe-area-inset-bottom))] sm:p-6 sm:[--chat-bottom:0px]">
         {/* The bot switcher lives in the chat's header pill. Desktop keeps the
             panels here until they get their own pages; phones use the bottom bar. */}
         <header className="mx-auto hidden w-full max-w-4xl items-center justify-end gap-2 sm:flex">
@@ -177,28 +179,26 @@ function HomePage() {
           )}
         </div>
 
-        {tab === "bots" && sessions.profiles.length > 0 && (
-          <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">{botsPanel}</div>
-        )}
+        {tab === "bots" && sessions.profiles.length > 0 && <div className={panel}>{botsPanel}</div>}
         {tab === "vault" && (
-          <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
+          <div className={panel}>
             <VaultContent profiles={sessions.profiles} />
           </div>
         )}
         {tab === "routines" && (
-          <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
+          <div className={panel}>
             <RoutinesContent profiles={sessions.profiles} />
           </div>
         )}
         {tab === "history" && (
-          <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
+          <div className={panel}>
             <HistoryList sessions={sessions} onSelect={pinSession} />
           </div>
         )}
 
         <nav
           aria-label="Sections"
-          className="bg-card fixed inset-x-0 bottom-0 z-40 flex border-t pb-[env(safe-area-inset-bottom)] sm:hidden"
+          className="bg-background/65 border-border/60 fixed inset-x-0 bottom-0 z-40 flex h-[calc(4rem+env(safe-area-inset-bottom))] border-t pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden"
         >
           <TabButton
             icon={MessagesSquareIcon}
@@ -240,6 +240,10 @@ function HomePage() {
     </div>
   );
 }
+
+/** A phone panel: its own scroll, clear of the translucent tab bar. */
+const panel =
+  "min-h-0 flex-1 overflow-y-auto pt-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:hidden";
 
 /** One bottom-bar tab: a ~48px tap target with icon + label. */
 function TabButton({

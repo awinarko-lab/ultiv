@@ -53,7 +53,8 @@ export function Composer({
         onSend();
       }}
     >
-      <div className="bg-muted/60 focus-within:ring-ring/40 flex items-end gap-1.5 rounded-[1.75rem] p-1.5 ring-1 ring-border/60 focus-within:ring-2 dark:ring-0">
+      {/* Translucent and blurred: the transcript scrolls underneath it. */}
+      <div className="bg-background/65 border-border/70 focus-within:ring-ring/40 flex items-end gap-1.5 rounded-[1.75rem] border p-1.5 shadow-lg shadow-black/5 backdrop-blur-xl focus-within:ring-2">
         <Popover.Root>
           <Popover.Trigger
             disabled={!live}
@@ -62,7 +63,7 @@ export function Composer({
                 type="button"
                 variant="ghost"
                 size="icon-lg"
-                className={`${round} bg-background/70`}
+                className={`${round} bg-muted/70`}
                 aria-label="Quick prompts"
               >
                 <PlusIcon />
@@ -131,7 +132,10 @@ export function Composer({
         </Button>
       </div>
       {sendFailed && (
-        <p className="text-destructive flex items-center gap-2 px-3 text-sm" role="alert">
+        <p
+          className="bg-background/70 text-destructive flex w-fit items-center gap-2 rounded-lg px-3 py-1 text-sm backdrop-blur-md"
+          role="alert"
+        >
           Not sent.
           <Button type="submit" variant="link" size="xs" className="h-auto p-0">
             Retry
