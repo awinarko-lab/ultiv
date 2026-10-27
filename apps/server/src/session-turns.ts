@@ -7,11 +7,17 @@
  */
 import type { Cell, Host } from "@earendil-works/chord";
 import { isChordError } from "@earendil-works/chord";
-import type { Conversation, Submission } from "@earendil-works/pi-durable";
+import type {
+  Conversation,
+  ConversationView,
+  InboxState,
+  Submission,
+} from "@earendil-works/pi-durable";
 import { Effect } from "effect";
 import type {
   PendingApproval,
   Phase,
+  QueuedInput,
   ThinkingLevel,
   TranscriptEntry,
   UsageSummary,
@@ -28,6 +34,7 @@ export type SessionCells = {
   model: Cell<string | null>;
   effort: Cell<ThinkingLevel | null>;
   conversationId: Cell<string | null>;
+  queued: Cell<QueuedInput[]>;
 };
 
 /** Cell write that survives object disposal: background turns may outlive the last reference. */
@@ -95,4 +102,41 @@ export function settle(args: SettleArgs): void {
       safeChange(cells.phase, ctx, () => "error");
     }
   });
+}
+
+/** The attachment block `withAttachments` appends; chips show only the typed text. */
+const ATTACHMENTS_MARK = "\n\nAttached artifacts:";
+
+/** The plain text of a queued input: a string, or the text blocks of a content array. */
+function textOf(content: unknown): string {
+  const full =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .map((block: { type?: unknown; text?: unknown }) =>
+              block?.type === "text" && typeof block.text === "string" ? block.text : "",
+            )
+            .join("")
+        : "";
+  const cut = full.indexOf(ATTACHMENTS_MARK);
+  return cut === -1 ? full : full.slice(0, cut);
+}
+
+/** Inputs waiting in the engine inbox for the running turn, oldest first (queued writes left out). */
+export function queuedOf(view: ConversationView): QueuedInput[] {
+  const inbox = view.docs["pi.inbox"] as InboxState | undefined;
+  const queued: QueuedInput[] = [];
+  for (const item of inbox?.items ?? []) {
+    if (item.mode === "write") continue;
+    queued.push({ id: String(item.id), text: textOf(item.content), mode: item.mode });
+  }
+  return queued;
+}
+
+/** Same queue, same order: skip the publish when nothing changed. */
+export function sameQueue(a: readonly QueuedInput[], b: readonly QueuedInput[]): boolean {
+  return (
+    a.length === b.length && a.every((item, i) => item.id === b[i]?.id && item.mode === b[i]?.mode)
+  );
 }

@@ -3,6 +3,7 @@ import type {
   ModelInfo,
   PendingApproval,
   Phase,
+  QueuedInput,
   ThinkingLevel,
   TranscriptEntry,
   UsageSummary,
@@ -13,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ApprovalCard, type Decide } from "@/components/approval-card";
 import { ChatSkeleton, EmptyChat, StatusRow } from "@/components/chat-states";
 import { Composer } from "@/components/composer";
+import { QueuedChips } from "@/components/queued-chips";
 import { ChatHeader, type ChatBot, type LinkState } from "@/components/chat-header";
 import { TranscriptItems } from "@/components/transcript-items";
 import { describeTool } from "@/lib/approval-text";
@@ -93,7 +95,9 @@ export function SessionView({
   model,
   effort,
   models,
+  queued = [],
   onInput,
+  onWithdraw,
   onDecide,
   onConfigure,
   onInterrupt,
@@ -111,7 +115,10 @@ export function SessionView({
   model: string | null;
   effort: ThinkingLevel | null;
   models: ModelInfo[];
+  /** Messages waiting for the running turn, shown as chips above the composer. */
+  queued?: readonly QueuedInput[];
   onInput: (text: string) => Promise<void>;
+  onWithdraw?: (id: string) => Promise<void>;
   onDecide: Decide;
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => Promise<void>;
   onInterrupt: () => Promise<void>;
@@ -199,6 +206,13 @@ export function SessionView({
         {lastError !== null && <p className={floatingError}>{lastError}</p>}
         {controlError !== null && (
           <p className={floatingError}>Couldn't apply that: {controlError}</p>
+        )}
+        {onWithdraw !== undefined && (
+          <QueuedChips
+            queued={queued}
+            approvalPending={pending !== null}
+            onWithdraw={(id) => control(() => onWithdraw(id))}
+          />
         )}
         <Composer
           botName={bot?.name}

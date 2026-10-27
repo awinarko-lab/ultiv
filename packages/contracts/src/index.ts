@@ -6,6 +6,7 @@ export {
   ThinkingLevelSchema,
   UsageSummarySchema,
   PhaseSchema,
+  QueuedInputSchema,
   PendingApprovalSchema,
   SessionConversationIdSchema,
   SessionErrorSchema,
@@ -13,6 +14,7 @@ export {
   TranscriptEntrySchema,
   TranscriptSchema,
   WhenBusySchema,
+  WithdrawStatusSchema,
 } from "./session.ts";
 export type {
   ModelInfo,
@@ -20,9 +22,11 @@ export type {
   UsageSummary,
   PendingApproval,
   Phase,
+  QueuedInput,
   ToolStep,
   TranscriptEntry,
   WhenBusy,
+  WithdrawStatus,
 } from "./session.ts";
 export {
   ModelListSchema,

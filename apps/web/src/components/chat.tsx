@@ -36,7 +36,9 @@ export function Chat({
         model={session.model}
         effort={session.effort}
         models={models}
+        queued={session.queued}
         onInput={session.input}
+        onWithdraw={session.withdraw}
         onDecide={session.decide}
         onConfigure={session.configure}
         onInterrupt={session.interrupt}

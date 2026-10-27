@@ -1,6 +1,7 @@
 import type { Host } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationView, LiveState } from "@earendil-works/pi-durable";
+import { Type } from "typebox";
 import { Effect } from "effect";
 import { artifactsDir, readArtifact } from "@ultiv/ext";
 import {
@@ -11,13 +12,21 @@ import {
   SessionErrorSchema,
   PendingApprovalSchema,
   PhaseSchema,
+  QueuedInputSchema,
   TranscriptSchema,
   UsageSummarySchema,
   type ThinkingLevel,
 } from "@ultiv/contracts";
 import { projectTranscript, usageOf, type MindService } from "@ultiv/mind";
 import { ownerOf, type Principal } from "./identity.ts";
-import { InFlight, safeChange, settle, type SessionCells } from "./session-turns.ts";
+import {
+  InFlight,
+  queuedOf,
+  safeChange,
+  sameQueue,
+  settle,
+  type SessionCells,
+} from "./session-turns.ts";
 
 /** The `pi.live` conversation doc from a structural view, typed. */
 function liveOf(view: ConversationView): LiveState | undefined {
@@ -56,6 +65,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         model: self.state("model", ModelIdSchema, null),
         effort: self.state("effort", EffortSchema, null),
         conversationId: self.state("conversationId", SessionConversationIdSchema, null),
+        queued: self.state("queued", Type.Array(QueuedInputSchema), []),
       };
       // Live replay: every committed publication of the durable transcript re-projects the
       // cell, whoever wrote it (this object's turns, tasks, tools, future code).
@@ -74,6 +84,8 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
           );
           const usage = usageOf(value.entries);
           if (usage !== undefined) safeChange(cells.usage, ctx, () => usage);
+          const queued = queuedOf(value);
+          if (!sameQueue(queued, cells.queued.value)) safeChange(cells.queued, ctx, () => queued);
         };
         const unsubscribe = view.subscribe((value) => apply(value));
         if (view.value !== undefined) apply(view.value);
@@ -117,6 +129,15 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
         model: cells.model,
         effort: cells.effort,
         conversationId: cells.conversationId,
+        queued: cells.queued,
+        withdraw: async ({ id }, ctx) => {
+          const chat = await conversation;
+          const status = await Effect.runPromise(mind.converse.withdraw(chat, id));
+          // Whatever the engine says, the chip goes: a withdrawn message left
+          // the inbox, and one already placed is part of the turn now.
+          safeChange(cells.queued, ctx, (queued) => queued.filter((item) => item.id !== id));
+          return { status };
+        },
         configure: async ({ model, effort }, ctx) => {
           const chat = await conversation;
           await Effect.runPromise(mind.converse.configure(chat, { model, effort }));
@@ -135,6 +156,7 @@ export function serveSession(host: Host<Principal>, mind: MindService): void {
             mind.approvals.decide(id, request.callId, false);
           }
           safeChange(cells.pending, ctx, () => null);
+          safeChange(cells.queued, ctx, () => []);
           safeChange(cells.phase, ctx, () => "idle");
           safeChange(cells.lastError, ctx, () => null);
           return { ok: true };

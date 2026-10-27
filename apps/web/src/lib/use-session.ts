@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   PendingApproval,
   Phase,
+  QueuedInput,
   ThinkingLevel,
   TranscriptEntry,
   UsageSummary,
+  WhenBusy,
 } from "@ultiv/contracts";
 import { openSession, type SessionRef } from "./chord.ts";
 
@@ -20,7 +22,12 @@ export function useSession(sessionId: string): {
   model: string | null;
   effort: ThinkingLevel | null;
   conversationId: string | null;
-  input: (text: string) => Promise<void>;
+  /** Messages waiting for the running turn, oldest first. */
+  queued: QueuedInput[];
+  /** Send; while the bot works, `whenBusy` picks steer (default) or followUp. */
+  input: (text: string, whenBusy?: WhenBusy) => Promise<void>;
+  /** Take back a queued message. */
+  withdraw: (id: string) => Promise<void>;
   decide: (
     callId: string,
     approved: boolean,
@@ -39,6 +46,7 @@ export function useSession(sessionId: string): {
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<ThinkingLevel | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [queued, setQueued] = useState<QueuedInput[]>([]);
   const [ref, setRef] = useState<SessionRef | undefined>(undefined);
 
   useEffect(() => {
@@ -62,6 +70,7 @@ export function useSession(sessionId: string): {
         unsubs.push(opened.model.subscribe(setModel));
         unsubs.push(opened.effort.subscribe(setEffort));
         unsubs.push(opened.conversationId.subscribe(setConversationId));
+        unsubs.push(opened.queued.subscribe(setQueued));
         unsubs.push(
           opened.onStatus((status) => {
             if (status === "gone") setLink("lost");
@@ -85,6 +94,7 @@ export function useSession(sessionId: string): {
       setModel(null);
       setEffort(null);
       setConversationId(null);
+      setQueued([]);
     };
   }, [sessionId]);
 
@@ -96,8 +106,15 @@ export function useSession(sessionId: string): {
   }, [ref]);
 
   const input = useCallback(
-    async (text: string): Promise<void> => {
-      await linked().input({ text });
+    async (text: string, whenBusy?: WhenBusy): Promise<void> => {
+      await linked().input({ text, ...(whenBusy !== undefined ? { whenBusy } : {}) });
+    },
+    [linked],
+  );
+
+  const withdraw = useCallback(
+    async (id: string): Promise<void> => {
+      await linked().withdraw({ id });
     },
     [linked],
   );
@@ -140,7 +157,9 @@ export function useSession(sessionId: string): {
     model,
     effort,
     conversationId,
+    queued,
     input,
+    withdraw,
     decide,
     configure,
     interrupt,

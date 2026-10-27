@@ -113,11 +113,30 @@ export const WhenBusySchema = Type.Union([Type.Literal("steer"), Type.Literal("f
 
 export type WhenBusy = Static<typeof WhenBusySchema>;
 
+/** A message waiting for the running turn: placed at its next step (steer) or after it (followUp). */
+export const QueuedInputSchema = Type.Object({
+  id: Type.String(),
+  text: Type.String(),
+  mode: WhenBusySchema,
+});
+
+export type QueuedInput = Static<typeof QueuedInputSchema>;
+
+/** What withdrawing a queued message found: removed, already in the turn, already answered, or unknown. */
+export const WithdrawStatusSchema = Type.Union([
+  Type.Literal("aborted"),
+  Type.Literal("already_placed"),
+  Type.Literal("settled"),
+  Type.Literal("not_found"),
+]);
+
+export type WithdrawStatus = Static<typeof WithdrawStatusSchema>;
+
 export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 10,
+  version: 11,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {
@@ -132,6 +151,8 @@ export const Session = remote("ultiv.session", {
         effort: EffortSchema,
         /** This session's durable conversation id; null until the harness maps it. */
         conversationId: Type.Union([Type.String(), Type.Null()]),
+        /** Messages (owner sends and wakes) waiting for the running turn, oldest first. */
+        queued: Type.Array(QueuedInputSchema),
       },
       methods: {
         input: method(
@@ -145,6 +166,11 @@ export const Session = remote("ultiv.session", {
              */
             whenBusy: Type.Optional(WhenBusySchema),
           }),
+        ),
+        /** Take back a queued message before the turn picks it up. */
+        withdraw: method(
+          Type.Object({ id: Type.String() }),
+          Type.Object({ status: WithdrawStatusSchema }),
         ),
         /** Stop the running turn: withdraw queued inputs, abort, go idle. */
         interrupt: method(Type.Object({}), Type.Object({ ok: Type.Boolean() })),

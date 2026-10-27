@@ -23,6 +23,7 @@ import {
   type SessionDocToken,
   type Storage,
   type Submission,
+  type SubmissionId,
   type Tx,
 } from "@earendil-works/pi-durable";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
@@ -69,6 +70,11 @@ export interface ConverseService {
   ) => Effect.Effect<Submission, External>;
   /** Stop the conversation's current turn: withdraw queued inputs, abort, wait for idle. */
   readonly interrupt: (conversation: Conversation) => Effect.Effect<void, External>;
+  /** Take back one queued submission before a boundary places it. */
+  readonly withdraw: (
+    conversation: Conversation,
+    submissionId: string,
+  ) => Effect.Effect<"aborted" | "already_placed" | "settled" | "not_found", External>;
   /** The app key -> conversation mapping, read-only: undefined when unmapped. */
   readonly conversationIdOf: (key: string) => Effect.Effect<string | undefined, External>;
   /** Settle an admitted submission: wait for the agent, commit the assistant entry. */
@@ -233,6 +239,15 @@ export const converseService = (harness: Harness, agent: AgentChange): ConverseS
       try: () => conversation.abort(BACKGROUND_CONTEXT),
       catch: (cause) => new External({ op: "conversation abort", cause }),
     }),
+  withdraw: (conversation, submissionId) =>
+    asEffect(
+      "submission withdraw",
+      harness.abortSubmission(
+        submissionId as unknown as SubmissionId,
+        BACKGROUND_CONTEXT,
+        conversation.id,
+      ),
+    ),
   conversationIdOf: (key) =>
     Effect.map(
       asEffect("session map read", harness.snapshot(SessionMapDoc, key, BACKGROUND_CONTEXT)),
