@@ -67,6 +67,8 @@ export interface ConverseService {
     content: string,
     /** When a turn is in flight: steer it at the next boundary, queue as follow-up, or reject. */
     whenBusy?: "steer" | "followUp" | "reject",
+    /** Idempotency key: a repeat with the same id returns the first submission. */
+    requestId?: string,
   ) => Effect.Effect<Submission, External>;
   /** Stop the conversation's current turn: withdraw queued inputs, abort, wait for idle. */
   readonly interrupt: (conversation: Conversation) => Effect.Effect<void, External>;
@@ -178,11 +180,17 @@ const submitOf = (
   conversation: Conversation,
   content: string,
   whenBusy?: "steer" | "followUp" | "reject",
+  requestId?: string,
 ): Effect.Effect<Submission, External> =>
   asEffect(
     "submit",
     conversation.submit(
-      { type: "input", content, ...(whenBusy !== undefined ? { whenBusy } : {}) },
+      {
+        type: "input",
+        content,
+        ...(whenBusy !== undefined ? { whenBusy } : {}),
+        ...(requestId !== undefined ? { requestId } : {}),
+      },
       BACKGROUND_CONTEXT,
     ),
   );
@@ -222,18 +230,34 @@ const modelIdOf = (agent: { readonly model?: unknown }): string | null => {
   return model.modelId ?? model.id ?? null;
 };
 
+/** Conversation ids are numeric today; accept any string form losslessly. */
+const conversationIdFrom = (id: string): ConversationId => {
+  const numeric = Number(id);
+  return (Number.isSafeInteger(numeric) && numeric >= 0
+    ? numeric
+    : id) as unknown as ConversationId;
+};
+
+/** An effort the model does not support (e.g. carried over from another model) snaps to its default. */
+const effortFor = <E extends string | null | undefined>(
+  model: string | null | undefined,
+  effort: E,
+) => {
+  const spec = KENARI_MODELS.find((candidate) => candidate.id === model);
+  return effort !== undefined &&
+    effort !== null &&
+    spec !== undefined &&
+    !(spec.efforts as readonly string[]).includes(effort)
+    ? spec.defaultEffort
+    : effort;
+};
+
 /** Exported for engine-level tests (faux models, MemoryStorage). */
 export const converseService = (harness: Harness, agent: AgentChange): ConverseService => ({
   root: () => asEffect("root conversation", harness.root(BACKGROUND_CONTEXT, { agent })),
   ensure: (key, agentOverride) => ensureConversation(harness, key, agent, agentOverride),
-  open: (id) => {
-    // Conversation ids are numeric today; accept any string form losslessly.
-    const numeric = Number(id);
-    const conversationId = (Number.isSafeInteger(numeric) && numeric >= 0
-      ? numeric
-      : id) as unknown as ConversationId;
-    return asEffect("conversation open", harness.conversation(conversationId, BACKGROUND_CONTEXT));
-  },
+  open: (id) =>
+    asEffect("conversation open", harness.conversation(conversationIdFrom(id), BACKGROUND_CONTEXT)),
   interrupt: (conversation) =>
     Effect.tryPromise({
       try: () => conversation.abort(BACKGROUND_CONTEXT),
@@ -257,12 +281,7 @@ export const converseService = (harness: Harness, agent: AgentChange): ConverseS
     Effect.flatMap(
       asEffect(
         "conversation open",
-        harness.conversation(
-          (Number.isSafeInteger(Number(conversationId)) && Number(conversationId) >= 0
-            ? Number(conversationId)
-            : conversationId) as unknown as ConversationId,
-          BACKGROUND_CONTEXT,
-        ),
+        harness.conversation(conversationIdFrom(conversationId), BACKGROUND_CONTEXT),
       ),
       (conversation) =>
         conversation === undefined
@@ -275,7 +294,8 @@ export const converseService = (harness: Harness, agent: AgentChange): ConverseS
               (page) => page.items,
             ),
     ),
-  submit: (conversation, content, whenBusy) => submitOf(conversation, content, whenBusy),
+  submit: (conversation, content, whenBusy, requestId) =>
+    submitOf(conversation, content, whenBusy, requestId),
   settle: (conversation, submission) => settleOf(conversation, submission),
   turn: (conversation, content, whenBusy) =>
     Effect.flatMap(submitOf(conversation, content, whenBusy), (submission) =>
@@ -284,34 +304,22 @@ export const converseService = (harness: Harness, agent: AgentChange): ConverseS
   agentOf: (conversation) =>
     Effect.flatMap(asEffect("agent read", conversation.agent(BACKGROUND_CONTEXT)), (resolved) => {
       const model = modelIdOf(resolved);
-      const rawEffort = (resolved.thinkingLevel ?? null) as ModelThinkingLevel | null;
       // A stored effort may predate the model it now runs on; surface the
       // model's own default instead of an out-of-list value.
-      const spec = KENARI_MODELS.find((candidate) => candidate.id === model);
-      const effort =
-        rawEffort !== null &&
-        spec !== undefined &&
-        !(spec.efforts as readonly string[]).includes(rawEffort)
-          ? spec.defaultEffort
-          : rawEffort;
+      const effort = effortFor(
+        model,
+        (resolved.thinkingLevel ?? null) as ModelThinkingLevel | null,
+      );
       return Effect.succeed({ model, effort });
     }),
   configure: (conversation, selection) => {
     // Effort must be one the TARGET model supports: an effort carried over
     // from another model (e.g. `off` on an always-reasoning model) degrades
     // it. Snap out-of-list efforts to the model's own default.
-    const spec =
-      selection.model !== undefined
-        ? KENARI_MODELS.find((candidate) => candidate.id === selection.model)
-        : undefined;
-    const requested = selection.effort;
     const effort =
-      requested !== undefined &&
-      requested !== null &&
-      spec !== undefined &&
-      !(spec.efforts as readonly string[]).includes(requested)
-        ? spec.defaultEffort
-        : requested;
+      selection.model !== undefined
+        ? effortFor(selection.model, selection.effort)
+        : selection.effort;
     const change: AgentChange = {
       ...(selection.model !== undefined
         ? {
