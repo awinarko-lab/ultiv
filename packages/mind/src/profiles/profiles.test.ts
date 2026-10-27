@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { MemoryStorage } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
+import type { SessionInfo } from "@ultiv/contracts";
 import { openMind } from "../entity.ts";
 
 describe("Profiles (offline, MemoryStorage)", () => {
@@ -43,6 +44,40 @@ describe("Profiles (offline, MemoryStorage)", () => {
     expect(scoped).toBeDefined();
     expect(profiles.profileOf(String(scoped))?.id).toBe(researcher.id);
     expect(profiles.scopeOf(String(scoped))?.kind).toBe("main");
+    await handle.close();
+  });
+
+  it("an edit reaches the main chat only; other sessions keep their copy", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const { profiles } = handle.mind;
+    const bot = await profiles.create("harry", {
+      name: "Editor",
+      description: "Old role",
+      persona: "Old persona.",
+      onboard: false,
+    });
+    const cidOf = async (row: SessionInfo): Promise<string> =>
+      String(
+        await Effect.runPromise(
+          handle.mind.converse.conversationIdOf(await profiles.keyOfRow(row)),
+        ),
+      );
+    const main = await cidOf(await profiles.ensureMain("harry", bot.id));
+    const other = await cidOf(await profiles.createSession("harry", bot.id, "side"));
+
+    const long = "x".repeat(9_000);
+    const updated = await profiles.update("harry", bot.id, { persona: long });
+    expect(updated.persona.length).toBe(8_000);
+    expect(profiles.profileOf(main)?.persona).toBe(updated.persona);
+    // Other sessions keep the snapshot they were registered with.
+    expect(profiles.profileOf(other)?.persona).toBe("Old persona.");
+
+    // Empty strings clear the role and persona.
+    await profiles.update("harry", bot.id, { description: "", persona: "" });
+    expect(profiles.profileOf(main)?.persona).toBe("");
+    expect(profiles.profileOf(main)?.description).toBe("");
+    expect((await profiles.get("harry", bot.id))?.description).toBe("");
+    expect(profiles.profileOf(other)?.description).toBe("Old role");
     await handle.close();
   });
 
