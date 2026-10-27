@@ -36,6 +36,21 @@ export function useChatScroll(changes: readonly unknown[]) {
     return () => observer.disconnect();
   }, []);
 
+  // Content that grows after render (lazy markdown, a card expanding, the
+  // task pill changing the padding) keeps a pinned transcript at the bottom.
+  useEffect(() => {
+    const viewport = viewportOf(transcriptRef.current);
+    const content = viewport?.firstElementChild;
+    if (viewport === null || viewport === undefined || content === null || content === undefined) {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      if (pinned.current) viewport.scrollTop = viewport.scrollHeight;
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+
   // Pin the transcript to the newest entry only while the owner is pinned there.
   useEffect(() => {
     const viewport = viewportOf(transcriptRef.current);
