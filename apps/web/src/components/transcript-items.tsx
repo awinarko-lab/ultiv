@@ -6,7 +6,7 @@ import { memo } from "react";
 import { formatDivider, formatFull } from "@/lib/format";
 import type { ToolStep, TranscriptEntry } from "@ultiv/contracts";
 import { BrainIcon, CircleAlertIcon, WrenchIcon } from "lucide-react";
-import { Markdown } from "@/components/markdown";
+import { LazyMarkdown } from "@/components/lazy-markdown";
 import {
   CodeBlock,
   CodeBlockContent,
@@ -46,7 +46,7 @@ const Output = memo(function Output({ text, streaming }: { text: string; streami
     <>
       <div className={roleStyles.agent}>
         <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1.5 [&_hr]:my-3 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_h1]:mt-3 [&_h2]:mt-3 [&_h3]:mt-2 [&_pre]:my-2">
-          <Markdown text={text} />
+          <LazyMarkdown text={text} />
           {streaming && (
             <span aria-hidden className="motion-safe:animate-pulse">
               ▍
@@ -135,7 +135,7 @@ const Note = memo(function Note({ text }: { text: string }) {
     <>
       <span className="text-foreground/70 text-xs font-medium">{noteHeader(text)}</span>
       <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
-        <Markdown text={noteBody(text)} />
+        <LazyMarkdown text={noteBody(text)} />
       </div>
     </>
   );

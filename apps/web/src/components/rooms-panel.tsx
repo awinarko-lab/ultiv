@@ -6,7 +6,7 @@
 import { ArrowLeftIcon, MessagesSquareIcon, SendIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ProfileInfo, RoomInfo } from "@ultiv/contracts";
-import { Markdown } from "@/components/markdown";
+import { LazyMarkdown } from "@/components/lazy-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState } from "@/components/ui/empty-state";
@@ -84,7 +84,7 @@ function RoomView({ room, reload }: { room: RoomInfo; reload: () => Promise<void
                       {formatWhen(line.at)}
                     </span>
                     <div className="max-h-64 overflow-y-auto break-words [&_p:first-child]:mt-1 [&_p:last-child]:mb-0">
-                      <Markdown text={body} />
+                      <LazyMarkdown text={body} />
                     </div>
                   </>
                 )}
