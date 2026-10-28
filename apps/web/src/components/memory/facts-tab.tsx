@@ -1,19 +1,18 @@
 /**
- * Facts tab: everything this bot's store holds, plus the shared (workspace)
- * facts, labelled — the footer's promise is only true if they show. Per-item
- * forget routes to the store the fact lives in.
+ * Facts tab: search, current/history toggle, this bot's facts plus the shared
+ * (workspace) ones labelled, the forgotten list with restore, and the add
+ * form. Forget/edit/restore route to the store the fact lives in.
  */
-import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/ui/section-header";
+import { FactRow, ForgottenList, HistoryView } from "@/components/memory/fact-views";
 import type { MemoryData } from "@/components/memory/memory-panel";
 import { api, type MemoryV2Fact } from "@/lib/api";
-import { formatWhen } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import * as t from "@/lib/memory-text";
 
 interface TabProps {
@@ -23,12 +22,22 @@ interface TabProps {
   reload: () => Promise<void>;
 }
 
+type View = "current" | "history";
+
+const matches = (fact: MemoryV2Fact, query: string): boolean =>
+  query === "" ||
+  fact.text.toLowerCase().includes(query) ||
+  fact.tags.some((tag) => tag.toLowerCase().includes(query));
+
 export function FactsTab({ data, profileId, name, reload }: TabProps) {
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<View>("current");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const facts = data.facts.filter((fact) => fact.status !== "forgotten");
-  const shared = data.sharedFacts.filter((fact) => fact.status !== "forgotten");
+  const needle = query.trim().toLowerCase();
+  const botFacts = data.facts.filter((fact) => fact.status !== "forgotten");
+  const sharedFacts = data.sharedFacts.filter((fact) => fact.status !== "forgotten");
 
   const add = async (): Promise<void> => {
     if (draft.trim() === "") return;
@@ -47,35 +56,35 @@ export function FactsTab({ data, profileId, name, reload }: TabProps) {
 
   return (
     <>
-      {facts.length === 0 && shared.length === 0 && <EmptyState>{t.factsEmpty(name)}</EmptyState>}
-      {facts.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <SectionHeader title={t.factsBotTitle} />
-          {facts.map((fact) => (
-            <FactRow
-              key={fact.id}
-              fact={fact}
-              shared={false}
-              profileId={profileId}
-              reload={reload}
-            />
-          ))}
-        </section>
-      )}
-      {shared.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <SectionHeader
-            title={t.factsSharedTitle}
-            action={
-              <Badge variant="outline" className="w-fit">
-                shared
-              </Badge>
-            }
+      <div className="flex items-center gap-2">
+        <Input
+          className="flex-1"
+          type="search"
+          aria-label={t.searchLabel}
+          placeholder={t.searchPlaceholder}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <ViewToggle view={view} onView={setView} />
+      </div>
+      {view === "history" ? (
+        needle === "" ? (
+          <HistoryView facts={botFacts} profileId={profileId} reload={reload} />
+        ) : (
+          <EmptyState>{t.noMatches}</EmptyState>
+        )
+      ) : (
+        <>
+          <CurrentView
+            botFacts={botFacts.filter((fact) => matches(fact, needle))}
+            sharedFacts={sharedFacts.filter((fact) => matches(fact, needle))}
+            needle={needle}
+            profileId={profileId}
+            name={name}
+            reload={reload}
           />
-          {shared.map((fact) => (
-            <FactRow key={fact.id} fact={fact} shared profileId={profileId} reload={reload} />
-          ))}
-        </section>
+          <ForgottenList facts={data.facts} profileId={profileId} reload={reload} />
+        </>
       )}
       <form
         className="mt-2 flex gap-2"
@@ -104,41 +113,82 @@ export function FactsTab({ data, profileId, name, reload }: TabProps) {
   );
 }
 
-function FactRow({
-  fact,
-  shared,
+function ViewToggle({ view, onView }: { view: View; onView: (next: View) => void }) {
+  return (
+    <div
+      role="group"
+      aria-label="Facts view"
+      className="border-border flex shrink-0 gap-0.5 rounded-lg border p-0.5"
+    >
+      {(["current", "history"] as const).map((option) => (
+        <button
+          key={option}
+          type="button"
+          aria-pressed={view === option}
+          onClick={() => onView(option)}
+          className={cn(
+            "focus-visible:ring-ring/50 pointer-coarse:min-h-11 rounded-md px-2 py-1 text-xs font-medium outline-none focus-visible:ring-3",
+            view === option
+              ? "bg-secondary text-secondary-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {option === "current" ? t.viewCurrent : t.viewHistory}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CurrentView({
+  botFacts,
+  sharedFacts,
+  needle,
   profileId,
+  name,
   reload,
 }: {
-  fact: MemoryV2Fact;
-  shared: boolean;
+  botFacts: MemoryV2Fact[];
+  sharedFacts: MemoryV2Fact[];
+  needle: string;
   profileId: string;
+  name: string;
   reload: () => Promise<void>;
 }) {
+  if (botFacts.length === 0 && sharedFacts.length === 0) {
+    return <EmptyState>{needle === "" ? t.factsEmpty(name) : t.noMatches}</EmptyState>;
+  }
   return (
-    <div className="flex items-start gap-2 rounded-lg border px-2.5 py-2 text-sm">
-      <div className="min-w-0 flex-1">
-        <p className="break-words">{fact.text}</p>
-        <p className="text-muted-foreground mt-1 text-xs">
-          {formatWhen(fact.createdAt)}
-          {fact.tags.length > 0 && ` · ${fact.tags.join(", ")}`}
-          {fact.status !== "current" && ` · ${fact.status}`}
-          {fact.trust === "untrusted" && " · unverified"}
-        </p>
-      </div>
-      <ConfirmDialog
-        title={t.forgetTitle}
-        warning={t.forgetWarning(shared ? "Every bot" : "The bot")}
-        confirmLabel="Forget"
-        onConfirm={async () => {
-          await api.memoryFactForget(fact.id, shared ? "owner" : profileId);
-          await reload();
-        }}
-      >
-        <Button variant="ghost" size="icon" aria-label={t.forgetAria(fact.text)}>
-          <Trash2Icon />
-        </Button>
-      </ConfirmDialog>
-    </div>
+    <>
+      {botFacts.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <SectionHeader title={t.factsBotTitle} />
+          {botFacts.map((fact) => (
+            <FactRow
+              key={fact.id}
+              fact={fact}
+              shared={false}
+              profileId={profileId}
+              reload={reload}
+            />
+          ))}
+        </section>
+      )}
+      {sharedFacts.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <SectionHeader
+            title={t.factsSharedTitle}
+            action={
+              <Badge variant="outline" className="w-fit">
+                shared
+              </Badge>
+            }
+          />
+          {sharedFacts.map((fact) => (
+            <FactRow key={fact.id} fact={fact} shared profileId={profileId} reload={reload} />
+          ))}
+        </section>
+      )}
+    </>
   );
 }

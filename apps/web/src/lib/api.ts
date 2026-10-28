@@ -170,13 +170,21 @@ export interface MemoryV2Line {
 }
 export interface MemoryV2Fact {
   id: string;
+  /** Which store the fact lives in: "owner" = workspace-wide. */
+  scope: "profile" | "owner";
   text: string;
   status: "current" | "superseded" | "archived" | "forgotten";
   kind: string;
   tags: string[];
+  /** Entity ids this fact is about (from the graph doc). */
+  entities: string[];
   importance: number;
   trust: string;
   createdAt: number;
+  expiredAt: number | null;
+  /** The fact that replaced this one (supersede chain). */
+  supersededBy: string | null;
+  supersedes: string[];
 }
 export interface MemoryV2State {
   facts: MemoryV2Fact[];
@@ -266,6 +274,11 @@ export const api = {
     send<{ ok: boolean }>(
       `/api/memory/v2/facts/${encodeURIComponent(id)}?profile=${encodeURIComponent(profile ?? "owner")}`,
       "DELETE",
+    ),
+  memoryFactRestore: (id: string, profile?: string): Promise<{ ok: boolean }> =>
+    send<{ ok: boolean }>(
+      `/api/memory/v2/facts/${encodeURIComponent(id)}/restore?profile=${encodeURIComponent(profile ?? "owner")}`,
+      "POST",
     ),
   artifacts: (profile: string): Promise<ArtifactRow[]> =>
     getJson<ArtifactRow[]>(`/api/artifacts?profile=${encodeURIComponent(profile)}`),

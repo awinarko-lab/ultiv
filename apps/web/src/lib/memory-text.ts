@@ -17,6 +17,27 @@ export const factsEmpty = (name: string): string =>
   `Nothing yet. Facts ${name} keeps about its work show up here, and you can edit or delete them.`;
 export const factsBotTitle = "This bot";
 export const factsSharedTitle = "Shared · the whole workspace";
+export const searchLabel = "Search facts";
+export const searchPlaceholder = "Search facts…";
+export const noMatches = "No facts match.";
+export const viewCurrent = "Current";
+export const viewHistory = "History";
+export const historyIntro =
+  "Superseded and archived facts, grouped under the fact that replaced them.";
+export const historyOrphans = "Earlier versions (their successor is gone)";
+export const historyArchived = "Archived";
+export const editLabel = "Edit";
+export const editNote =
+  "Saving tombstones the old fact and re-adds your version — the bot recalls only the new text.";
+export const editAria = (text: string): string => `Edit fact: ${text.slice(0, 40)}`;
+export const factTextLabel = "Fact text";
+export const savingLabel = "Saving…";
+export const forgottenTitle = "Forgotten";
+export const forgottenIntro =
+  "Forgotten facts keep their text until you purge — restore them, or purge from the Tidy tab.";
+export const restoreLabel = "Restore";
+export const restoringLabel = "Restoring…";
+export const forgottenEmpty = "Nothing forgotten.";
 export const addPlaceholder = (name: string): string => `Something ${name} should always know…`;
 export const addLabel = (name: string): string => `Something ${name} should always know`;
 
