@@ -51,6 +51,25 @@ export const McpAuthSchema = Type.Union([
     scope: Type.Optional(Type.String({ maxLength: 500 })),
     /** A pre-registered client id, for servers without dynamic registration. */
     clientId: Type.Optional(Type.String({ maxLength: 300 })),
+    /**
+     * Vault item holding the client secret, for confidential clients
+     * (e.g. Google "web application" keys). Never stored in clear here.
+     */
+    clientSecretItem: Type.Optional(ItemId),
+    /**
+     * Extra query parameters on the authorization redirect, for providers
+     * that need them (Google: access_type=offline for a refresh token).
+     * Values are plain settings, never secrets.
+     */
+    authParams: Type.Optional(
+      Type.Array(
+        Type.Object({
+          name: Type.String({ minLength: 1, maxLength: 100 }),
+          value: Type.String({ minLength: 1, maxLength: 200 }),
+        }),
+        { maxItems: 8 },
+      ),
+    ),
   }),
 ]);
 

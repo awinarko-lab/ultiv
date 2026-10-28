@@ -18,6 +18,8 @@ export interface HttpFakeOptions {
   readonly bearer?: string;
   /** Guard /mcp with the fake OAuth server. */
   readonly oauth?: boolean;
+  /** The token endpoint requires this client secret (confidential clients). */
+  readonly oauthRequireSecret?: string;
   /** Serve only legacy SSE: POST /sse answers 405 (as old servers do). */
   readonly sseOnly?: boolean;
 }
@@ -68,7 +70,7 @@ export const startHttpFake = async (options: HttpFakeOptions = {}): Promise<Http
   const servers: McpServer[] = [];
   let lastAuthorization = "";
   let base = "";
-  const auth = makeFakeAuth(() => base);
+  const auth = makeFakeAuth(() => base, options.oauthRequireSecret);
   const fresh = (): McpServer => {
     const server = makeFakeServer({ whoami: () => lastAuthorization });
     servers.push(server);

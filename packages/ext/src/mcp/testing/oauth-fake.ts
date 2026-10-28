@@ -16,6 +16,8 @@ export interface FakeAuth {
   readonly resources: string[];
   readonly expireAll: () => void;
   readonly counts: { registrations: number; refreshes: number };
+  /** Client secrets the token endpoint REQUIRES (confidential-client mode). */
+  readonly requireSecret?: string;
 }
 
 const json = (res: ServerResponse, status: number, body: unknown): void => {
@@ -33,13 +35,22 @@ const readForm = async (req: IncomingMessage): Promise<URLSearchParams> =>
 
 const token = (prefix: string): string => `${prefix}_${randomBytes(18).toString("hex")}`;
 
-export const makeFakeAuth = (baseOf: () => string): FakeAuth => {
+export const makeFakeAuth = (baseOf: () => string, requireSecret?: string): FakeAuth => {
   const codes = new Map<string, { challenge: string; redirect: string }>();
   const live = new Set<string>();
   const refresh = new Set<string>();
   const issued: string[] = [];
   const resources: string[] = [];
   const counts = { registrations: 0, refreshes: 0 };
+  /** Confidential clients must present the secret (Basic header or form). */
+  const secretOk = (_req: IncomingMessage, form: URLSearchParams): boolean => {
+    if (requireSecret === undefined) return true;
+    if (form.get("client_secret") === requireSecret) return true;
+    const header = _req.headers.authorization ?? "";
+    if (!header.startsWith("Basic ")) return false;
+    const decoded = Buffer.from(header.slice(6), "base64url").toString("utf8");
+    return decoded.split(":")[1] === requireSecret;
+  };
   const grant = (res: ServerResponse): void => {
     const access = token("at");
     const next = token("rt");
@@ -56,6 +67,9 @@ export const makeFakeAuth = (baseOf: () => string): FakeAuth => {
   const tokenRoute = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const form = await readForm(req);
     resources.push(form.get("resource") ?? "");
+    if (requireSecret !== undefined && !secretOk(req, form)) {
+      return json(res, 401, { error: "invalid_client" });
+    }
     if (form.get("grant_type") === "refresh_token") {
       if (!refresh.delete(form.get("refresh_token") ?? ""))
         return json(res, 400, { error: "invalid_grant" });
@@ -83,7 +97,8 @@ export const makeFakeAuth = (baseOf: () => string): FakeAuth => {
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported:
+      requireSecret === undefined ? ["none"] : ["none", "client_secret_basic"],
   });
   return {
     issued,

@@ -92,6 +92,10 @@ export interface ProviderOptions {
   readonly redirectUrl: string;
   readonly scope?: string;
   readonly clientId?: string;
+  /** Redeemed from the vault; turns the client confidential (secret_basic). */
+  readonly clientSecret?: string;
+  /** Extra query parameters on the authorization redirect (provider quirks). */
+  readonly authParams?: readonly { readonly name: string; readonly value: string }[];
   /** Where the SDK would send the browser: kept for the Connect button. */
   readonly onRedirect: (url: string) => void;
   /** New token material, for the redactor. */
@@ -117,7 +121,9 @@ export const makeOAuthProvider = (options: ProviderOptions): OAuthClientProvider
     redirect_uris: [options.redirectUrl],
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
-    token_endpoint_auth_method: "none",
+    ...(options.clientSecret !== undefined && options.clientSecret !== ""
+      ? { token_endpoint_auth_method: "client_secret_basic" as const }
+      : { token_endpoint_auth_method: "none" as const }),
     ...(options.scope !== undefined && options.scope !== "" ? { scope: options.scope } : {}),
   };
   return {
@@ -129,8 +135,12 @@ export const makeOAuthProvider = (options: ProviderOptions): OAuthClientProvider
     },
     state: () => options.pending.mint(owner, id),
     clientInformation: () => {
+      const secret =
+        options.clientSecret !== undefined && options.clientSecret !== ""
+          ? { client_secret: options.clientSecret }
+          : {};
       if (options.clientId !== undefined && options.clientId !== "") {
-        return { client_id: options.clientId };
+        return { client_id: options.clientId, ...secret };
       }
       const state = store.read(owner, id);
       // A client registered for another redirect URL cannot complete this flow.
@@ -148,7 +158,14 @@ export const makeOAuthProvider = (options: ProviderOptions): OAuthClientProvider
         state.tokens = tokens;
       });
     },
-    redirectToAuthorization: (url) => options.onRedirect(url.toString()),
+    redirectToAuthorization: (url) => {
+      // Provider quirks ride the redirect (e.g. Google's access_type=offline
+      // for a refresh token) — plain settings, appended last.
+      for (const { name, value } of options.authParams ?? []) {
+        url.searchParams.set(name, value);
+      }
+      options.onRedirect(url.toString());
+    },
     saveCodeVerifier: (verifier) =>
       update((state) => {
         state.verifier = verifier;

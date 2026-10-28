@@ -13,6 +13,8 @@ export interface OAuthWiring {
   /** The redirect URL each server's flow uses (fixed per sign-in). */
   readonly redirectFor: (owner: string, id: string) => string;
   readonly onSecretForms: (owner: string, id: string, forms: readonly string[]) => void;
+  /** Redeem the record's client secret (vault item); throws in plain words. */
+  readonly clientSecretFor: (record: McpServerRecord) => string | undefined;
 }
 
 export const providerFor = (
@@ -22,6 +24,11 @@ export const providerFor = (
 ) => {
   const scope = record.auth.kind === "oauth" ? record.auth.scope : undefined;
   const clientId = record.auth.kind === "oauth" ? record.auth.clientId : undefined;
+  const authParams = record.auth.kind === "oauth" ? record.auth.authParams : undefined;
+  const clientSecret =
+    record.auth.kind === "oauth" && record.auth.clientSecretItem !== undefined
+      ? wiring.clientSecretFor(record)
+      : undefined;
   return makeOAuthProvider({
     store: wiring.store,
     pending: wiring.pending,
@@ -30,6 +37,8 @@ export const providerFor = (
     redirectUrl: wiring.redirectFor(record.owner, record.id),
     ...(scope !== undefined ? { scope } : {}),
     ...(clientId !== undefined ? { clientId } : {}),
+    ...(clientSecret !== undefined && clientSecret !== "" ? { clientSecret } : {}),
+    ...(authParams !== undefined ? { authParams } : {}),
     onRedirect,
     onSecretForms: (forms) => wiring.onSecretForms(record.owner, record.id, forms),
   });

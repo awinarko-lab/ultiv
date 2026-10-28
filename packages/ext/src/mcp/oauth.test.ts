@@ -78,4 +78,65 @@ describe("MCP OAuth", () => {
     const out = await manager.signOut(OWNER, added.id);
     expect(out.signedIn).toBe(false);
   });
+
+  it("signs in a CONFIDENTIAL client: vault-held secret, auth params, refresh", async () => {
+    fake = await startHttpFake({
+      oauth: true,
+      // The token endpoint refuses any exchange without the secret.
+      oauthRequireSecret: "gocsp-test-secret-0123456789",
+    });
+    rig = makeRig();
+    const { manager, vault } = rig;
+    const item = vault.create(OWNER, {
+      kind: "key",
+      name: "Google client secret",
+      key: { secret: "gocsp-test-secret-0123456789" },
+    });
+    const added = manager.add(
+      OWNER,
+      remoteInput(`${fake.base}/mcp`, {
+        auth: {
+          kind: "oauth",
+          clientId: "my-client-id.apps.googleusercontent.com",
+          clientSecretItem: item.id,
+          authParams: [{ name: "access_type", value: "offline" }],
+        },
+      }),
+    );
+    await waitFor(manager, OWNER, added.id, "needs_sign_in");
+    const url = await manager.signIn(OWNER, added.id, CALLBACK);
+    const authorize = new URL(url ?? "");
+    expect(authorize.searchParams.get("client_id")).toBe("my-client-id.apps.googleusercontent.com");
+    // Provider quirks (e.g. Google's offline access) ride the redirect.
+    expect(authorize.searchParams.get("access_type")).toBe("offline");
+    // No dynamic client registration for a pre-registered client.
+    expect(fake.auth.counts.registrations).toBe(0);
+    const { code, state } = await approveAt(url ?? "");
+    const info = await manager.finishSignIn(state, code);
+    expect(info.signedIn).toBe(true);
+    await waitFor(manager, OWNER, added.id, "connected");
+    // Refresh keeps authenticating with the secret (the fake enforces it).
+    fake.auth.expireAll();
+    await manager.reconnect(OWNER, added.id);
+    await waitFor(manager, OWNER, added.id, "connected");
+    expect(fake.auth.counts.refreshes).toBeGreaterThanOrEqual(1);
+  });
+
+  it("surfaces a broken client-secret vault item as a plain Connect error", async () => {
+    fake = await startHttpFake({ oauth: true, oauthRequireSecret: "x".repeat(20) });
+    rig = makeRig();
+    const { manager } = rig;
+    const added = manager.add(
+      OWNER,
+      remoteInput(`${fake.base}/mcp`, {
+        auth: { kind: "oauth", clientId: "c", clientSecretItem: "gone-item" },
+      }),
+    );
+    await waitFor(manager, OWNER, added.id, "failed");
+    const cause = await manager.signIn(OWNER, added.id, CALLBACK).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect((cause as { reason?: string }).reason ?? "").toContain("the vault item is gone");
+  });
 });

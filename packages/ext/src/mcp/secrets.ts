@@ -5,6 +5,7 @@
  */
 import type { McpServerRecord } from "./config.ts";
 import type { VaultStore } from "../vault.ts";
+import { InvalidInput } from "@ultiv/core";
 import { MIN_SECRET_LENGTH, materialOf } from "../broker/credential.ts";
 import { makeRedactor, materialForms, secretForms } from "../broker/redact.ts";
 
@@ -61,6 +62,21 @@ export const resolveSecrets = (
     forms.push(...got.forms);
   }
   return { ok: true, secrets: { headers, env, forms: [...new Set(forms)] } };
+};
+
+/**
+ * The OAuth client secret, redeemed from the vault at provider construction.
+ * Absent when the record has no `clientSecretItem`; throws in plain words
+ * when the item is gone or unusable (the Connect path surfaces it).
+ */
+export const clientSecretOf = (
+  vault: VaultStore | null,
+  record: McpServerRecord,
+): string | undefined => {
+  if (record.auth.kind !== "oauth" || record.auth.clientSecretItem === undefined) return undefined;
+  const got = redeem(vault, record.owner, record.auth.clientSecretItem, "OAuth client secret");
+  if (!got.ok) throw new InvalidInput({ reason: got.reason });
+  return got.value;
 };
 
 /** A scrubber over a growing set of forms (OAuth tokens join on refresh). */
