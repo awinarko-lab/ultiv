@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { Effect } from "effect";
 import { Type } from "typebox";
 import type { PromptSection } from "@earendil-works/pi-durable";
-import { bashPlugin, defineTool, type Tool, type RegistryService } from "@ultiv/ext";
+import {
+  bashPlugin,
+  defineTool,
+  localShellBackend,
+  type Tool,
+  type RegistryService,
+} from "@ultiv/ext";
 import { makeApprovals } from "../approvals.ts";
 import { makeAudit } from "../audit/audit.ts";
 import { actService } from "./act.ts";
@@ -70,7 +76,8 @@ describe("bash gating", () => {
   const dir = mkdtempSync(join(tmpdir(), "ultiv-act-bash-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
   const bashTool = (): Tool => {
-    const capability = bashPlugin({ root: dir }).capabilities[0];
+    const capability = bashPlugin({ root: dir, backend: (_d, home) => localShellBackend(home) })
+      .capabilities[0];
     if (capability?.kind !== "tool") throw new Error("missing bash tool");
     return capability.tool;
   };

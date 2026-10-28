@@ -1,5 +1,5 @@
 /**
- * DurableFs: a just-bash `IFileSystem` whose files ARE artifacts. One virtual
+ * DurableFs: the durable workspace tree whose files ARE artifacts. One virtual
  * tree per profile workspace, persisted write-through into the artifact store
  * (blob + sidecar per file, path→entry map in a reserved "vfs-index" pair) —
  * so bash-written files show up in `artifact_list`, the web UI, and survive
@@ -10,18 +10,34 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { posix, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import type {
-  BufferEncoding,
-  CpOptions,
-  CreateExclusiveOptions,
-  FileContent,
-  FsStat,
-  IFileSystem,
-  MkdirOptions,
-  RmOptions,
-} from "just-bash";
 import type { ArtifactInfo } from "@ultiv/contracts";
 import { mimeOfName, VFS_INDEX_ID } from "../plugins/artifacts.ts";
+
+/** Minimal fs-shape types, local since just-bash was replaced by microsandbox. */
+type BufferEncoding = "utf8" | "utf-8" | "latin1" | "binary";
+type FileContent = string | Uint8Array;
+interface FsStat {
+  readonly isFile: boolean;
+  readonly isDirectory: boolean;
+  readonly isSymbolicLink: boolean;
+  readonly mode: number;
+  readonly size: number;
+  readonly mtime: Date;
+}
+interface MkdirOptions {
+  readonly recursive?: boolean;
+}
+interface RmOptions {
+  readonly force?: boolean;
+  readonly recursive?: boolean;
+}
+interface CpOptions {
+  readonly recursive?: boolean;
+}
+interface CreateExclusiveOptions {
+  readonly directory?: boolean;
+  readonly mode: number;
+}
 
 /** The index is stored as a reserved artifact pair in the same directory. */
 
@@ -67,7 +83,7 @@ const enotempty = (value: string): Error =>
 const DEFAULT_MODE_FILE = 0o666;
 const DEFAULT_MODE_DIR = 0o777;
 
-/** Not exported from just-bash's root; defined here to match fs/interface. */
+/** Not exported by any dependency; defined here for callers' convenience. */
 interface ReadFileOptions {
   readonly encoding?: BufferEncoding | null;
 }
@@ -90,7 +106,7 @@ export interface DurableFsOptions {
   readonly profile?: string | null;
 }
 
-export class DurableFs implements IFileSystem {
+export class DurableFs {
   private readonly dir: string;
   private readonly conversationId: string | null;
   private readonly owner: string | null;
@@ -429,6 +445,14 @@ export class DurableFs implements IFileSystem {
 
   getAllPaths(): string[] {
     return Object.keys(this.index.paths).sort();
+  }
+
+  /** Every FILE path in the tree (dirs and symlinks excluded), sorted. */
+  allFilePaths(): readonly string[] {
+    return Object.entries(this.index.paths)
+      .filter(([, entry]) => entry.kind === "file")
+      .map(([path]) => path)
+      .sort();
   }
 
   async chmod(path: string, mode: number): Promise<void> {
