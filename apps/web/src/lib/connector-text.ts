@@ -29,6 +29,10 @@ export interface ConnectorForm {
   /** OAuth extras: requested scopes and a pre-registered client id (both optional). */
   oauthScope: string;
   oauthClientId: string;
+  /** The client secret's vault item — zero or one row (confidential clients). */
+  oauthSecret: SecretRow[];
+  /** Extra authorization-redirect parameters (e.g. Google: access_type=offline). */
+  oauthAuthParams: { name: string; value: string }[];
   /** null = every bot; else the chosen bot ids. */
   profiles: string[] | null;
   enabled: boolean;
@@ -47,6 +51,8 @@ export const emptyConnectorForm = (): ConnectorForm => ({
   env: [],
   oauthScope: "",
   oauthClientId: "",
+  oauthSecret: [],
+  oauthAuthParams: [],
   profiles: null,
   enabled: true,
   autoAllowReadOnly: false,
@@ -162,6 +168,10 @@ export const inputOfForm = (form: ConnectorForm): McpServerInput => {
   if (form.auth === "headers" && headers.length === 0) {
     throw new Error("Pick a header name and the vault item that holds its value.");
   }
+  const authParams = form.oauthAuthParams
+    .map((row) => ({ name: row.name.trim(), value: row.value.trim() }))
+    .filter((row) => row.name !== "" && row.value !== "");
+  const secretItem = filled(form.oauthSecret)[0]?.item ?? "";
   return {
     ...common,
     transport: form.transport === "stdio" ? "auto" : form.transport,
@@ -173,6 +183,8 @@ export const inputOfForm = (form: ConnectorForm): McpServerInput => {
             kind: "oauth",
             ...(form.oauthScope.trim() !== "" ? { scope: form.oauthScope.trim() } : {}),
             ...(form.oauthClientId.trim() !== "" ? { clientId: form.oauthClientId.trim() } : {}),
+            ...(secretItem !== "" ? { clientSecretItem: secretItem } : {}),
+            ...(authParams.length > 0 ? { authParams } : {}),
           }
         : form.auth === "headers"
           ? { kind: "headers", headers }
@@ -201,6 +213,11 @@ export const formOfInfo = (info: McpServerInfo): ConnectorForm => ({
   env: (info.command?.env ?? []).map((row) => ({ ...row, prefix: "" })),
   oauthScope: info.auth.kind === "oauth" ? (info.auth.scope ?? "") : "",
   oauthClientId: info.auth.kind === "oauth" ? (info.auth.clientId ?? "") : "",
+  oauthSecret:
+    info.auth.kind === "oauth" && info.auth.clientSecretItem !== undefined
+      ? [{ name: "client_secret", item: info.auth.clientSecretItem, prefix: "" }]
+      : [],
+  oauthAuthParams: info.auth.kind === "oauth" ? [...(info.auth.authParams ?? [])] : [],
   profiles: info.profiles,
   enabled: info.enabled,
   autoAllowReadOnly: info.autoAllowReadOnly,

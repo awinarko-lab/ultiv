@@ -96,6 +96,8 @@ export function SecretRows(props: {
   withPrefix: boolean;
   /** Names new vault items ("<connector> key"). */
   keyName?: string;
+  /** Show the name as a static label (one-row cases like the OAuth secret). */
+  hideName?: boolean;
 }) {
   const [pasting, setPasting] = useState<number | null>(null);
   const [added, setAdded] = useState<VaultItemInfo[]>([]);
@@ -109,13 +111,17 @@ export function SecretRows(props: {
     <div className="flex flex-col gap-2">
       {props.rows.map((row, index) => (
         <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border p-2">
-          <Input
-            className="min-w-28 flex-1"
-            aria-label="Name"
-            placeholder={props.namePlaceholder}
-            value={row.name}
-            onChange={(event) => set(index, { name: event.target.value })}
-          />
+          {props.hideName === true ? (
+            <span className="min-w-28 flex-1 truncate text-sm">{props.namePlaceholder}</span>
+          ) : (
+            <Input
+              className="min-w-28 flex-1"
+              aria-label="Name"
+              placeholder={props.namePlaceholder}
+              value={row.name}
+              onChange={(event) => set(index, { name: event.target.value })}
+            />
+          )}
           {props.withPrefix && (
             <Input
               className="w-24"
@@ -186,6 +192,61 @@ export function SecretRows(props: {
           Pick "Paste a new key…" to save one to your vault right here.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Plain name/value rows for provider sign-in quirks (no secrets here). */
+export function ParamRows(props: {
+  rows: { name: string; value: string }[];
+  onChange: (rows: { name: string; value: string }[]) => void;
+  addLabel: string;
+}) {
+  const set = (index: number, patch: Partial<{ name: string; value: string }>): void =>
+    props.onChange(props.rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
+  return (
+    <div className="flex flex-col gap-2">
+      {props.rows.map((row, index) => (
+        <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border p-2">
+          <Input
+            className="min-w-28 flex-1 font-mono"
+            aria-label="Parameter name"
+            placeholder="access_type"
+            autoComplete="off"
+            spellCheck={false}
+            value={row.name}
+            onChange={(event) => set(index, { name: event.target.value })}
+          />
+          <Input
+            className="min-w-28 flex-[2] font-mono"
+            aria-label="Parameter value"
+            placeholder="offline"
+            autoComplete="off"
+            spellCheck={false}
+            value={row.value}
+            onChange={(event) => set(index, { value: event.target.value })}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Remove parameter"
+            onClick={() => props.onChange(props.rows.filter((_, at) => at !== index))}
+          >
+            <XIcon />
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="self-start"
+        onClick={() => props.onChange([...props.rows, { name: "", value: "" }])}
+      >
+        <PlusIcon />
+        {props.addLabel}
+      </Button>
     </div>
   );
 }

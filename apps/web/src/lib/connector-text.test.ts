@@ -79,6 +79,36 @@ describe("connector text", () => {
     expect(back.url).toBe(saved.url);
     const oauth = info({ auth: { kind: "oauth", scope: "read", clientId: "abc" } });
     expect(inputOfForm(formOfInfo(oauth)).auth).toEqual(oauth.auth);
+    const confidential = info({
+      auth: {
+        kind: "oauth",
+        clientId: "abc.apps.googleusercontent.com",
+        clientSecretItem: "v9",
+        authParams: [{ name: "access_type", value: "offline" }],
+      },
+    });
+    expect(inputOfForm(formOfInfo(confidential)).auth).toEqual(confidential.auth);
+  });
+
+  it("maps the oauth secret and drops empty auth params", () => {
+    const form = { ...emptyConnectorForm(), name: "Google" };
+    expect(
+      inputOfForm({
+        ...form,
+        kind: "web",
+        url: "https://x.example/mcp",
+        auth: "oauth",
+        oauthSecret: [{ name: "client_secret", item: "v1", prefix: "" }],
+        oauthAuthParams: [
+          { name: "access_type", value: "offline" },
+          { name: "", value: "" },
+        ],
+      }).auth,
+    ).toEqual({
+      kind: "oauth",
+      clientSecretItem: "v1",
+      authParams: [{ name: "access_type", value: "offline" }],
+    });
   });
 
   it("describes state, target and tool kinds", () => {

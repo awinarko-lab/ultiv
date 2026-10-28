@@ -16,7 +16,7 @@ import {
   type ConnectorForm,
 } from "@/lib/connector-text";
 import type { McpServerInput } from "@ultiv/contracts";
-import { Chip, SecretRows, ToggleRow } from "./bits";
+import { Chip, ParamRows, SecretRows, ToggleRow } from "./bits";
 
 type Patch = (patch: Partial<ConnectorForm>) => void;
 
@@ -149,9 +149,27 @@ function AuthFields(props: { form: ConnectorForm; patch: Patch; items: VaultItem
               onChange={(event) => patch({ oauthClientId: event.target.value })}
             />
           </div>
+          <span className={fieldLabel}>Client secret (optional)</span>
+          <SecretRows
+            rows={form.oauthSecret}
+            onChange={(oauthSecret) => patch({ oauthSecret })}
+            items={items}
+            namePlaceholder="Client secret"
+            addLabel="Add a client secret"
+            withPrefix={false}
+            keyName={form.name}
+            hideName
+          />
+          <span className={fieldLabel}>Extra sign-in parameters (optional)</span>
+          <ParamRows
+            rows={form.oauthAuthParams}
+            onChange={(oauthAuthParams) => patch({ oauthAuthParams })}
+            addLabel="Add parameter"
+          />
           <p className="text-muted-foreground text-xs">
             After saving, press Connect to sign in on the provider's page. Leave Client ID empty
-            unless the provider gave you one.
+            unless the provider gave you one; add its secret when it did. Google also needs the
+            parameter access_type = offline, so the connection keeps a refresh token.
           </p>
         </>
       )}
