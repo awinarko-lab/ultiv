@@ -68,6 +68,13 @@ const KeyFields = {
         "Giving it means the provider needs your client secret too.",
     }),
   ),
+  clientIdItem: Type.Optional(
+    Type.String({
+      description:
+        "OAuth only: existing vault item (name or id) holding the client id — use this when " +
+        "the id came in through a secure field instead of passing it as plain clientId.",
+    }),
+  ),
   oauthScope: Type.Optional(
     Type.String({ description: "OAuth only: requested scopes, space-separated." }),
   ),
@@ -173,6 +180,7 @@ const nextInput = (
     auth?: "none" | "api_key" | "oauth";
     vaultItem?: string;
     clientId?: string;
+    clientIdItem?: string;
     oauthScope?: string;
     authParams?: { name: string; value: string }[];
   },
@@ -210,6 +218,7 @@ const nextInput = (
     args.auth !== undefined ||
     args.vaultItem !== undefined ||
     args.clientId !== undefined ||
+    args.clientIdItem !== undefined ||
     args.oauthScope !== undefined ||
     args.authParams !== undefined;
   if (local || !authTouched) return { input, slots: [] };

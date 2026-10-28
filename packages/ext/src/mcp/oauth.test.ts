@@ -79,7 +79,7 @@ describe("MCP OAuth", () => {
     expect(out.signedIn).toBe(false);
   });
 
-  it("signs in a CONFIDENTIAL client: vault-held secret, auth params, refresh", async () => {
+  it("signs in a CONFIDENTIAL client: vault-held id + secret, auth params, refresh", async () => {
     fake = await startHttpFake({
       oauth: true,
       // The token endpoint refuses any exchange without the secret.
@@ -87,7 +87,12 @@ describe("MCP OAuth", () => {
     });
     rig = makeRig();
     const { manager, vault } = rig;
-    const item = vault.create(OWNER, {
+    const idItem = vault.create(OWNER, {
+      kind: "note",
+      name: "Google client id",
+      note: { secret: "abc.apps.googleusercontent.com" },
+    });
+    const secretItem = vault.create(OWNER, {
       kind: "key",
       name: "Google client secret",
       key: { secret: "gocsp-test-secret-0123456789" },
@@ -97,8 +102,8 @@ describe("MCP OAuth", () => {
       remoteInput(`${fake.base}/mcp`, {
         auth: {
           kind: "oauth",
-          clientId: "my-client-id.apps.googleusercontent.com",
-          clientSecretItem: item.id,
+          clientIdItem: idItem.id,
+          clientSecretItem: secretItem.id,
           authParams: [{ name: "access_type", value: "offline" }],
         },
       }),
@@ -106,7 +111,8 @@ describe("MCP OAuth", () => {
     await waitFor(manager, OWNER, added.id, "needs_sign_in");
     const url = await manager.signIn(OWNER, added.id, CALLBACK);
     const authorize = new URL(url ?? "");
-    expect(authorize.searchParams.get("client_id")).toBe("my-client-id.apps.googleusercontent.com");
+    // The client id is REDEEMED from the vault item, not taken as a name.
+    expect(authorize.searchParams.get("client_id")).toBe("abc.apps.googleusercontent.com");
     // Provider quirks (e.g. Google's offline access) ride the redirect.
     expect(authorize.searchParams.get("access_type")).toBe("offline");
     // No dynamic client registration for a pre-registered client.

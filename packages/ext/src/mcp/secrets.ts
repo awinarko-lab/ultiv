@@ -79,6 +79,24 @@ export const clientSecretOf = (
   return got.value;
 };
 
+/**
+ * The OAuth client id, redeemed from the vault when the record references a
+ * `clientIdItem` (bots collect it through a secure field). Unlike the
+ * secret there is no minimum length — an id is public. Plain `clientId`
+ * wins when both are present.
+ */
+export const clientIdOf = (
+  vault: VaultStore | null,
+  record: McpServerRecord,
+): string | undefined => {
+  if (record.auth.kind !== "oauth" || record.auth.clientIdItem === undefined) return undefined;
+  if (vault === null) return undefined;
+  const info = vault.get(record.owner, record.auth.clientIdItem);
+  if (info === undefined) return undefined;
+  const material = materialOf(vault.resolve(record.owner, record.auth.clientIdItem));
+  return material?.secret;
+};
+
 /** A scrubber over a growing set of forms (OAuth tokens join on refresh). */
 export interface Scrubber {
   readonly add: (forms: readonly string[]) => void;

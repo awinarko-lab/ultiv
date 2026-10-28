@@ -51,6 +51,8 @@ export interface AddArgs {
   readonly vaultItem?: string;
   /** OAuth: a pre-registered client id (plain value, not a secret). */
   readonly clientId?: string;
+  /** OAuth: vault item holding the client id (bots collect it securely). */
+  readonly clientIdItem?: string;
   /** OAuth: requested scopes. */
   readonly oauthScope?: string;
   /** OAuth: extra authorization-redirect parameters (provider quirks). */
@@ -182,10 +184,17 @@ export const addAuth = (
     const scope = args.oauthScope ?? previous?.scope ?? preset?.oauth?.scope;
     const params = args.authParams ?? previous?.authParams ?? preset?.oauth?.authParams;
     const clientId = args.clientId ?? previous?.clientId;
+    let clientIdItem = previous?.clientIdItem;
+    if (args.clientIdItem !== undefined) {
+      const found = findNamed(items, args.clientIdItem);
+      if (found === undefined) return `no vault item "${args.clientIdItem}"`;
+      clientIdItem = found.id;
+    }
     const base = {
       kind: "oauth" as const,
       ...(scope !== undefined && scope !== "" ? { scope } : {}),
       ...(clientId !== undefined && clientId !== "" ? { clientId } : {}),
+      ...(clientIdItem !== undefined ? { clientIdItem } : {}),
       ...(params !== undefined && params.length > 0 ? { authParams: [...params] } : {}),
     };
     // A vault item named for the secret pins it; a client id without a
@@ -197,7 +206,7 @@ export const addAuth = (
     }
     const kept = previous?.clientSecretItem;
     if (kept !== undefined) return { auth: { ...base, clientSecretItem: kept }, slots: [] };
-    if (base.clientId !== undefined) {
+    if (base.clientId !== undefined || base.clientIdItem !== undefined) {
       return {
         auth: { ...base, clientSecretItem: "" },
         slots: [{ target: "oauthSecret", index: 0, label: `OAuth client secret for ${name}` }],

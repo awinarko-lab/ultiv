@@ -317,6 +317,29 @@ describe("planning a connector change", () => {
       scope: "https://www.googleapis.com/auth/drive.readonly",
     });
     expect(pinned.slots).toEqual([]);
+    // The client id can live in the vault too (secure-field collection).
+    const idFromVault = planAdd(
+      {
+        name: "gdrive",
+        url: "https://drivemcp.googleapis.com/mcp/v1",
+        auth: "oauth",
+        clientIdItem: "Google client id",
+        vaultItem: "Google client secret",
+      },
+      { items: [...items, { id: "v2", name: "Google client id" }], bots: "Eve", profiles: ["p1"] },
+    );
+    if (typeof idFromVault === "string") throw new Error(idFromVault);
+    expect(idFromVault.input.auth).toEqual({
+      kind: "oauth",
+      clientIdItem: "v2",
+      clientSecretItem: "v1",
+    });
+    expect(
+      planAdd(
+        { name: "x", url: "https://x.test", auth: "oauth", clientIdItem: "nope" },
+        { items: [], bots: "", profiles: null },
+      ),
+    ).toBe('no vault item "nope"');
     // Updates keep the previous scope and secret when only the id changes.
     const previous = pinned.input.auth as Extract<
       import("@ultiv/contracts").McpAuth,

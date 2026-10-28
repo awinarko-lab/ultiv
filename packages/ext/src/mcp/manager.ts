@@ -29,7 +29,13 @@ import {
 import { uniqueSlug } from "./names.ts";
 import { makeOAuthPending, makeOAuthStore, type OAuthStore } from "./oauth.ts";
 import { beginSignIn, completeSignIn, providerFor, type OAuthWiring } from "./oauth-flow.ts";
-import { clientSecretOf, makeScrubber, resolveSecrets, type Scrubber } from "./secrets.ts";
+import {
+  clientIdOf,
+  clientSecretOf,
+  makeScrubber,
+  resolveSecrets,
+  type Scrubber,
+} from "./secrets.ts";
 import { infoOf, viewOf, type McpServerView } from "./views.ts";
 
 export interface McpManagerOptions {
@@ -199,6 +205,7 @@ const makeCore = (options: McpManagerOptions): Core => {
               entry?.scrubber.add(forms);
             },
             clientSecretFor: (record) => clientSecretOf(options.vault, record),
+            clientIdFor: (record) => clientIdOf(options.vault, record),
           },
   };
   return core;

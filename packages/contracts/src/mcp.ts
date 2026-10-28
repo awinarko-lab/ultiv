@@ -52,6 +52,11 @@ export const McpAuthSchema = Type.Union([
     /** A pre-registered client id, for servers without dynamic registration. */
     clientId: Type.Optional(Type.String({ maxLength: 300 })),
     /**
+     * Vault item holding the client id (bots collect it through a secure
+     * field, same as the secret). A plain `clientId` wins when both are set.
+     */
+    clientIdItem: Type.Optional(ItemId),
+    /**
      * Vault item holding the client secret, for confidential clients
      * (e.g. Google "web application" keys). Never stored in clear here.
      */

@@ -15,6 +15,8 @@ export interface OAuthWiring {
   readonly onSecretForms: (owner: string, id: string, forms: readonly string[]) => void;
   /** Redeem the record's client secret (vault item); throws in plain words. */
   readonly clientSecretFor: (record: McpServerRecord) => string | undefined;
+  /** Redeem the record's client id (vault item) when it carries one. */
+  readonly clientIdFor: (record: McpServerRecord) => string | undefined;
 }
 
 export const providerFor = (
@@ -23,12 +25,13 @@ export const providerFor = (
   onRedirect: (url: string) => void = () => undefined,
 ) => {
   const scope = record.auth.kind === "oauth" ? record.auth.scope : undefined;
-  const clientId = record.auth.kind === "oauth" ? record.auth.clientId : undefined;
   const authParams = record.auth.kind === "oauth" ? record.auth.authParams : undefined;
   const clientSecret =
     record.auth.kind === "oauth" && record.auth.clientSecretItem !== undefined
       ? wiring.clientSecretFor(record)
       : undefined;
+  const clientId =
+    record.auth.kind === "oauth" ? (record.auth.clientId ?? wiring.clientIdFor(record)) : undefined;
   return makeOAuthProvider({
     store: wiring.store,
     pending: wiring.pending,
@@ -36,7 +39,7 @@ export const providerFor = (
     id: record.id,
     redirectUrl: wiring.redirectFor(record.owner, record.id),
     ...(scope !== undefined ? { scope } : {}),
-    ...(clientId !== undefined ? { clientId } : {}),
+    ...(clientId !== undefined && clientId !== "" ? { clientId } : {}),
     ...(clientSecret !== undefined && clientSecret !== "" ? { clientSecret } : {}),
     ...(authParams !== undefined ? { authParams } : {}),
     onRedirect,
