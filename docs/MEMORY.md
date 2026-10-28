@@ -125,6 +125,9 @@ owner's accept** — accept/reject is `POST /api/memory/v2/proposals/:id/accept|
 
 - `GET /api/memory/v2?profile=<id|owner>` — facts, entities, core, proposals
 - `POST /api/memory/v2/core[?profile=]` / `PATCH|DELETE /api/memory/v2/core/:lineId`
+- `DELETE /api/memory/v2/facts/:factId[?profile=]` — the owner's tombstone
+- `POST /api/memory/v2/facts/:factId/restore[?profile=]` — undo a tombstone
+  (the Memory panel's Forgotten list)
 - `POST /api/memory/v2/proposals/:id/accept|reject[?profile=]`
 - `POST /api/memory/tidy/run`
 - `POST /api/memory/purge[?profile=]` — irreversible: forgotten facts lose

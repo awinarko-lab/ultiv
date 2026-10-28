@@ -85,3 +85,16 @@ stable keys, a11y labels, empty/loading states.
 desktop layout — persistent Bots sidebar (lg+), capped chat center, History
 rail (xl+); header Bots/History dialog buttons appear only in the middle
 breakpoints; mobile keeps the bottom tab bar. Verified at 1440 / 800 / 390.
+
+**Memory panel tabs** (2026-10-28): "What X remembers" is now five tabs —
+Facts (search, current/history toggle, edit via tombstone+re-add, Forgotten
+list with restore), People & things (entity cards with alias chips; merge
+stays disabled until the entity-merge detector ships), Core (Shared/This-bot
+split with correct store ids, word meters, inline edit via the PATCH route;
+reorder/pin-toggle noted as no-API), Tidy (open badge, run feedback, proposal
+cards with affected facts, reject warning, edit & accept for merge/stale,
+purge confirm listing the lost facts + count echo), and Files. Loading and
+error states with retry; initial focus lands on the dialog title. DONE:
+everything above. Remaining: entity merge UI once the API exists, core
+reorder/pin-toggle routes if wanted, and folding the panel into profile tabs
+(pattern 1 leftover).
