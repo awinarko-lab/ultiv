@@ -10,7 +10,7 @@ import { useState } from "react";
 import { EditBotDialog } from "@/components/bot-dialog";
 import { BotAvatar } from "@/components/bot-avatar";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { MemoryPanel } from "@/components/memory-panel";
+import { MemoryPanel } from "@/components/memory/memory-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
