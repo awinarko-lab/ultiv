@@ -90,7 +90,16 @@ async function hydrate(
   const id = String(chat.id);
   while (!ctx.signal.aborted) {
     const [waiting] = mind.approvals.pendingFor(id);
-    safeChange(cells.pending, ctx, () => waiting ?? null);
+    safeChange(cells.pending, ctx, () =>
+      waiting === undefined
+        ? null
+        : {
+            callId: waiting.callId,
+            name: waiting.name,
+            input: waiting.input,
+            reason: waiting.reason ?? null,
+          },
+    );
     await new Promise<void>((resolve) => setTimeout(resolve, 250));
   }
 }

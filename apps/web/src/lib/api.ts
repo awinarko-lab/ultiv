@@ -121,6 +121,7 @@ export interface PendingApprovalRow {
   callId: string;
   name: string;
   input: unknown;
+  reason: string | null;
 }
 
 /** One row of GET /api/artifacts — a file a bot made (or the owner uploaded). */
@@ -138,7 +139,7 @@ export interface ArtifactRow {
 /** One row of GET /api/tasks/:id/activity — progress, waiting gate, conversation. */
 export interface TaskActivity {
   conversationId: string | null;
-  waiting: { callId: string; name: string; input: unknown } | null;
+  waiting: { callId: string; name: string; input: unknown; reason: string | null } | null;
   steps: {
     kind: string;
     at: number;

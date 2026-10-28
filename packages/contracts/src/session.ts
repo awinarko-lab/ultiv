@@ -56,6 +56,8 @@ export const PendingApprovalSchema = Type.Union([
     callId: Type.String(),
     name: Type.String(),
     input: Type.Unknown(),
+    /** Why the owner is being asked: Jev's read, or the model's one-liner. Null until it lands. */
+    reason: Type.Union([Type.String(), Type.Null()]),
   }),
 ]);
 
@@ -147,7 +149,7 @@ export const SessionErrorSchema = Type.Union([Type.String(), Type.Null()]);
 
 /** One agent session: durable, replayable transcript plus the agent's phase. */
 export const Session = remote("ultiv.session", {
-  version: 12,
+  version: 13,
   input: Type.Object({ id: Type.String() }),
   host: hostNamed("server"),
   variants: {

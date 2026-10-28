@@ -87,12 +87,22 @@ export async function taskRoutes(
     }
     const conversationId =
       (await Effect.runPromise(mind.converse.conversationIdOf(taskConversationKey(id)))) ?? null;
-    let waiting: { callId: string; name: string; input: unknown } | null = null;
+    let waiting: {
+      callId: string;
+      name: string;
+      input: unknown;
+      reason: string | null;
+    } | null = null;
     let steps: ActivityStep[] = [];
     if (conversationId !== null) {
       const pending = mind.approvals.pendingFor(conversationId)[0];
       if (pending !== undefined) {
-        waiting = { callId: pending.callId, name: pending.name, input: pending.input };
+        waiting = {
+          callId: pending.callId,
+          name: pending.name,
+          input: pending.input,
+          reason: pending.reason ?? null,
+        };
       }
       const chat = await Effect.runPromise(mind.converse.open(conversationId));
       if (chat !== undefined) {

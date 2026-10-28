@@ -20,6 +20,7 @@ export async function approvalRoutes(args: RouteArgs): Promise<boolean> {
           callId: entry.request.callId,
           name: entry.request.name,
           input: entry.request.input,
+          reason: entry.reason ?? null,
         },
       ];
     });

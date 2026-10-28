@@ -75,6 +75,7 @@ function SheetBody({ task, open }: { task: TaskInfo; open: boolean }) {
           <ApprovalCard
             name={activity.waiting.name}
             input={activity.waiting.input}
+            reason={activity.waiting.reason}
             who="This task"
             callId={activity.waiting.callId}
             onDecide={decide}

@@ -6,7 +6,8 @@
 import { Effect } from "effect";
 import { defineExtension, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { ScopeHolder } from "@ultiv/ext";
-import type { ApprovalsService } from "./approvals.ts";
+import type { TranscriptEntry } from "@ultiv/contracts";
+import type { ApprovalRequest, ApprovalsService } from "./approvals.ts";
 import { CONTEXT_ENTRIES, isApprovalFloor, makeAdjudicator } from "./jev-gate.ts";
 import { projectTranscript } from "./converse/steps.ts";
 import type { actService } from "./act/act.ts";
@@ -128,9 +129,58 @@ export const installFaculties = (
   );
 };
 
+/** Compact transcript tail for the reason prompt: what the bot was up to. */
+const reasonContext = (entries: readonly TranscriptEntry[]): string =>
+  entries
+    .slice(-6)
+    .map((entry) => {
+      if (entry.kind === "tool") {
+        return `tool ${entry.step.name}: ${JSON.stringify(entry.step.input).slice(0, 160)}`;
+      }
+      return `${entry.kind}: ${entry.text.slice(0, 200)}`;
+    })
+    .join("\n");
+
+/**
+ * The card's reason: one model sentence on what the parked call does and why.
+ * Best-effort by construction — any failure leaves the card without a reason.
+ */
+export const makeDescriber =
+  (
+    generate: GenerateService,
+    converse: ConverseService,
+    profiles: ProfilesService,
+  ): ((conversationId: string, request: ApprovalRequest) => Promise<string | undefined>) =>
+  async (conversationId, request) => {
+    const profile = profiles.profileOf(conversationId);
+    if (profile === undefined) return undefined;
+    const recent = await Effect.runPromise(
+      Effect.map(converse.entriesOf(conversationId, 6), (entries) =>
+        projectTranscript([...entries].reverse(), undefined, false),
+      ),
+    ).catch(() => []);
+    const context = reasonContext(recent);
+    const prompt = [
+      `A gated tool call is waiting for the owner's approval.`,
+      `Tool: ${request.name}`,
+      `Input: ${JSON.stringify(request.input).slice(0, 600)}`,
+      context !== "" ? `Recent transcript:\n${context}` : "No prior conversation.",
+      "Write ONE short sentence (max 25 words) for the approval card: what this call does and why the bot is doing it. Plain text, no quotes.",
+    ].join("\n\n");
+    const reason = await Effect.runPromise(
+      generate.complete({
+        system: "You write one-line reasons for approval cards. Plain text only.",
+        prompt,
+        maxTokens: 80,
+      }),
+    ).catch(() => undefined);
+    return reason === undefined ? undefined : reason.trim().slice(0, 200) || undefined;
+  };
+
 /**
  * Profile scoping for the ext plugins and the per-profile approval policy.
  * `decide` is the Jev faculty: it powers the 'jev' approval mode's gate.
+ * `generate`, when present, writes the reason line on pending approval cards.
  */
 export const wirePolicies = (
   holder: ScopeHolder,
@@ -139,6 +189,7 @@ export const wirePolicies = (
   profiles: ProfilesService,
   decide: DecideService,
   converse: ConverseService,
+  generate?: GenerateService,
 ): void => {
   // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
   // through the holder the registry was built with — set now that the
@@ -186,6 +237,7 @@ export const wirePolicies = (
         error: "approval timed out",
       });
     },
+    ...(generate !== undefined ? { describe: makeDescriber(generate, converse, profiles) } : {}),
   });
 };
 

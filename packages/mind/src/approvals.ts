@@ -55,9 +55,11 @@ export const adjudicationOf = (
  */
 export const ADJUDICATE_TIMEOUT = Duration.seconds(8);
 
-/** The verdict an adjudicate hook returns; undefined = no opinion (the owner decides). */
+/** The verdict an adjudicate hook returns: approve, deny, or — with neither — an opinion the owner's card shows. */
 export interface AdjudicationVerdict {
-  readonly approved: boolean;
+  /** undefined = no decision (the opinion in `note` rides the pending card); true/false decide outright. */
+  readonly approved?: boolean;
+  /** A deny note (via `noteFor`) or, with no decision, the reason the owner is being asked. */
   readonly note?: string;
 }
 
@@ -77,12 +79,26 @@ export interface ApprovalsHooks {
   ) => Effect.Effect<AdjudicationVerdict | undefined, unknown>;
   /** Called when the wait timed out (policies.approvalTimeout escalation). */
   readonly onExpire?: (conversationId: string, request: ApprovalRequest) => void;
+  /**
+   * Asked once when a call parks on the owner: returns the one-line reason the
+   * approval card shows (why the bot is doing this). Optional and best-effort —
+   * a failure or slowness just means a card without a reason.
+   */
+  readonly describe?: (
+    conversationId: string,
+    request: ApprovalRequest,
+  ) => Promise<string | undefined>;
 }
 
+/** A call parked on the owner; `reason` fills in async (Jev's opinion, then the model's). */
 interface PendingEntry {
   readonly conversationId: string;
   readonly request: ApprovalRequest;
+  reason?: string;
 }
+
+/** What surfaces read: the waiting call plus whatever reason is known. */
+export type PendingCall = ApprovalRequest & { readonly reason?: string };
 
 export interface ApprovalsService {
   /**
@@ -109,7 +125,7 @@ export interface ApprovalsService {
   /** The decision note for this call, if any — read-once (the tool consumes it). */
   readonly noteFor: (conversationId: string, callId: string) => string | undefined;
   /** Snapshot of what is waiting for this conversation (empty: nothing). */
-  readonly pendingFor: (conversationId: string) => readonly ApprovalRequest[];
+  readonly pendingFor: (conversationId: string) => readonly PendingCall[];
   /** Every pending approval across conversations — the cross-profile inbox. */
   readonly pendingAll: () => ReadonlyArray<PendingEntry>;
   /**
@@ -152,6 +168,7 @@ export const makeApprovals = (
     },
     request: (conversationId, callId, request, options) =>
       Effect.gen(function* () {
+        let opinion: string | undefined;
         if (hooks.autoApprove?.(conversationId, request) === true) return true;
         const k = key(conversationId, callId);
         notes.delete(k); // a stale note must not leak into this call's denial
@@ -165,16 +182,35 @@ export const makeApprovals = (
             onSuccess: (found) => found,
           });
           if (verdict !== undefined) {
-            if (verdict.approved) return true;
+            if (verdict.approved === true) return true;
             // Denied by the judge: no pending entry, the note rides noteFor.
-            if (verdict.note !== undefined) notes.set(k, verdict.note);
-            return false;
+            if (verdict.approved === false) {
+              if (verdict.note !== undefined) notes.set(k, verdict.note);
+              return false;
+            }
+            // No decision, just an opinion: park, and let the card show it.
+            opinion = verdict.note;
           }
         }
         const deferred = yield* Deferred.make<boolean>();
-        pending.set(k, { conversationId, request });
+        const entry: PendingEntry = {
+          conversationId,
+          request,
+          ...(opinion !== undefined ? { reason: opinion } : {}),
+        };
+        pending.set(k, entry);
         waiters.set(k, deferred);
         for (const fn of listeners) fn(conversationId, request);
+        // The card's reason fills in async: the poll loops re-read pendingFor,
+        // so the model's one-liner lands on the card as soon as it exists.
+        if (hooks.describe !== undefined && entry.reason === undefined) {
+          void hooks
+            .describe(conversationId, request)
+            .then((reason) => {
+              if (pending.get(k) === entry && reason !== undefined) entry.reason = reason;
+            })
+            .catch(() => {});
+        }
         const exit = yield* Effect.exit(
           Deferred.await(deferred).pipe(Effect.timeout(options?.timeout ?? timeout)),
         );
@@ -195,7 +231,12 @@ export const makeApprovals = (
     },
     pendingFor: (conversationId) => {
       const prefix = `${conversationId}:`;
-      return [...pending].filter(([k]) => k.startsWith(prefix)).map(([, entry]) => entry.request);
+      return [...pending]
+        .filter(([k]) => k.startsWith(prefix))
+        .map(([, entry]) => ({
+          ...entry.request,
+          ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
+        }));
     },
     pendingAll: () => [...pending.values()],
   };

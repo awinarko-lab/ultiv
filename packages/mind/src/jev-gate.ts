@@ -20,7 +20,13 @@ import type { AuditEvent, ProfileInfo, TranscriptEntry } from "@ultiv/contracts"
 import { FIRST_USE_APPROVAL } from "@ultiv/ext";
 import { isMcpFirstUse } from "./mcp/access.ts";
 import { isNeverAutoApproved } from "./mcp/manage.ts";
-import { adjudicationOf, type AdjudicationVerdict, type ApprovalRequest } from "./approvals.ts";
+import {
+  APPROVE_AT,
+  DENY_BELOW,
+  adjudicationOf,
+  type AdjudicationVerdict,
+  type ApprovalRequest,
+} from "./approvals.ts";
 import type { DecideService } from "./decide/decide.ts";
 
 /** The hard floors: always the owner's card in every mode except where yolo already decides. */
@@ -349,14 +355,20 @@ export const makeAdjudicator = (deps: AdjudicatorDeps) => {
 
       const complex = complexityOf(request.input);
       if (complex !== undefined) {
-        return mayReturn(key) ? verdict("split", complex) : undefined;
+        return mayReturn(key)
+          ? verdict("split", complex)
+          : { note: `Jev already sent this back as too complex (${complex}) — your call now` };
       }
       const transcript = yield* deps.transcript(conversationId);
       const context = buildContext(profile, transcript, request);
       const destructive = destructiveOf(request.name, request.input);
       const justified = destructive !== undefined && destructiveJustified(context);
       if (destructive !== undefined && !justified) {
-        return mayReturn(key) ? verdict("destructive", destructive) : undefined;
+        return mayReturn(key)
+          ? verdict("destructive", destructive)
+          : {
+              note: `Jev flagged this as destructive and not clearly justified (${destructive}) — your call`,
+            };
       }
 
       const state = safeJson(context);
@@ -367,7 +379,9 @@ export const makeAdjudicator = (deps: AdjudicatorDeps) => {
       if (complexity >= JEV_COMPLEX_AT) {
         return mayReturn(key)
           ? verdict("split", `Jev judged it too complex (${complexity.toFixed(2)})`)
-          : undefined;
+          : {
+              note: `Jev judged it too complex (${complexity.toFixed(2)}) and already sent it back — your call`,
+            };
       }
       if (justified) {
         // Asked for, but still destructive: only a very sure Jev runs it; never auto-denied.
@@ -379,7 +393,11 @@ export const makeAdjudicator = (deps: AdjudicatorDeps) => {
           : undefined;
       }
       const gate = adjudicationOf("jev", true, probability);
-      if (gate === "human") return undefined;
+      if (gate === "human") {
+        return {
+          note: `Jev scored it ${probability.toFixed(2)} — not confident enough to approve (≥ ${APPROVE_AT}) or deny (< ${DENY_BELOW})`,
+        };
+      }
       return gate === "approve"
         ? verdict(
             "approve",

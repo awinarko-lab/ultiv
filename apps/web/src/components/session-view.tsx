@@ -190,6 +190,7 @@ export function SessionView({
                 <ApprovalCard
                   name={pending.name}
                   input={pending.input}
+                  reason={pending.reason}
                   who={bot?.name}
                   callId={pending.callId}
                   onDecide={(approved, always, takeover) =>

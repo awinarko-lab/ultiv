@@ -26,6 +26,8 @@ export function ApprovalCard(props: {
   /** The tool's name. */
   name: string;
   input: unknown;
+  /** Why the owner is being asked (Jev's read, or the bot's own one-liner). */
+  reason?: string | null | undefined;
   who?: string | undefined;
   /** The waiting call; secure inputs post to it directly. */
   callId?: string | undefined;
@@ -40,11 +42,13 @@ export function ApprovalCard(props: {
 function DecisionCard({
   name,
   input,
+  reason,
   who,
   onDecide,
 }: {
   name: string;
   input: unknown;
+  reason?: string | null | undefined;
   /** Who is asking ("Eve"); defaults to "Your bot". */
   who?: string | undefined;
   onDecide: (approved: boolean, always?: boolean, takeover?: boolean) => Promise<void>;
@@ -97,6 +101,11 @@ function DecisionCard({
         <RiskIcon className="size-3.5 shrink-0" aria-hidden />
         {risk}
       </p>
+      {reason !== null && reason !== undefined && reason !== "" && (
+        <p className="text-muted-foreground border-l-2 border-border pl-2 text-xs italic">
+          {reason}
+        </p>
+      )}
       {change !== null && <ChangeDetails change={change} />}
       <button
         type="button"
