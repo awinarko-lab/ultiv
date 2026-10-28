@@ -1,100 +1,108 @@
 # Ultiv
 
-**A local-first home for AI bots.** One runtime, one entity per bot: each bot has its own persona, memory, durable files, vault scope, tools, schedules and audit trail — chatting with you, with each other, and acting on your machine under your approval. The default profile is **Ultius**; you create as many others as you want.
+Ultiv is a self-hosted web app for running AI bots on your own machine. Each bot gets its own persona, memory, files, tools, schedules and audit log. Bots can talk to you, talk to each other, and do things on your computer when you approve them.
 
-Ultiv is an Effect-first web app as a pnpm-workspace monorepo: a Node API server, a React client, and a mind that hosts the entities. Everything runs on your hardware; provider keys stay server-side in `.env`, and bot credentials live in a sealed local vault the model can never read.
+Ultiv is built with Hermes and Grok.
 
-## Highlights
+It's a pnpm monorepo with a Node API server, a React client, and a "mind" package that hosts the bots. It's written with Effect. Provider keys stay on the server in `.env`, and the credentials bots use live in a local encrypted vault that the model never reads.
 
-- **Entities, not chatbots** — per-profile persona, memory (v2), artifacts, tool allowlist, cron schedules, and audit. Bots discover each other, message each other over a mailbox with deadlines, and cooperate in contextual rooms.
-- **Two shells** — `bash` runs scripts in a hardware-isolated [microsandbox](https://microsandbox.dev) microVM (real Linux: python, network, `apt-get`) whose files sync into the durable artifact store; `bash_host` is a privileged shell on the host computer, always approval-gated.
-- **Credentials that can't leak** — a vault sealed with AES-256-GCM; bots see names and masked hints only. The credential broker spends a secret inside its binding (hosts, methods, path prefixes) via `http_request`; responses are scrubbed and audited without the secret.
-- **Routines** — cron schedules, self-set webhooks (schema-validated, write-ahead receipts, retries then dead-letter), and sensors (RSS, calendar ICS, watch URLs) wake bots on a timezone-aware schedule. Busy turns are steered, not queued blindly.
-- **Tasks** — background sub-agent turns in their own durable conversations that wake their parent with the outcome on settle; restarts resume them.
-- **Human in the loop** — side-effecting tools park on approval cards ("Always allow" is per tool and never covers the dangerous ones). Push notifications tell you when a bot needs you.
-- **MCP connectors** — streamable HTTP / SSE / stdio servers added live from the UI or by a bot (behind an approval card), with OAuth and vault-referenced headers. Presets included.
-- **PWA + Web Push** — install to a Home Screen; push on task completion, waiting approvals, and routine replies. The service worker caches only the offline shell.
+The default bot is called Ultius. You can add as many others as you like.
+
+## What it does
+
+- **Bots with their own state.** Each one has a persona, memory, files, a tool allowlist, cron schedules and an audit trail. Bots can find each other, send each other messages with deadlines, and work together in shared rooms.
+- **Two shells.** `bash` runs scripts in a [microsandbox](https://microsandbox.dev) microVM, which is a real Linux box with python, network access and `apt-get`. Files it writes end up in the bot's file store. `bash_host` runs directly on your computer and always asks first.
+- **A vault for credentials.** Items are sealed with AES-256-GCM, and bots only see names and masked hints. When a bot needs to use a secret, the credential broker makes the HTTP request itself, only to the hosts, methods and paths that secret is bound to. Responses are scrubbed before the bot sees them.
+- **Routines.** Bots can wake on cron schedules, on webhooks they set up themselves, or on sensors (RSS, a calendar ICS feed, watched URLs). Schedules respect time zones. Webhooks are validated against a schema, retried, and dead-lettered if they keep failing.
+- **Background tasks.** A bot can hand long work to a sub-agent and keep chatting. The task runs in its own conversation and reports back when it's done. If the server restarts, tasks pick up where they left off.
+- **Approvals.** Tools with side effects wait on an approval card. "Always allow" is per tool and never covers the dangerous ones. You get a push notification when a bot is waiting on you.
+- **MCP connectors.** Add HTTP, SSE or stdio MCP servers from the UI, or let a bot add one (that also goes through an approval card). OAuth and headers pulled from the vault are supported, and there are a few presets.
+- **Installable on your phone.** The web app is a PWA with Web Push for finished tasks, pending approvals and routine replies. The service worker only caches the offline shell.
 
 ## Requirements
 
-- **Node 24 LTS** (pinned in `mise.toml`) and **pnpm 12** — both reached through [Vite+](https://vite-plus.dev) (`vp`), the only toolchain this repo uses.
-- **macOS with Apple Silicon or Linux with KVM** for the `bash` microVM (microsandbox/libkrun). Everything else runs anywhere Node 24 runs; without virtualization the bash tool reports a clear error and the rest of the platform works.
+- Node 24 (pinned in `mise.toml`) and pnpm 12. You reach both through [Vite+](https://vite-plus.dev) (`vp`), which is the only toolchain this repo uses. Install it once with `npm i -g @voidzero-dev/vite-plus`.
+- For the `bash` microVM: an Apple Silicon Mac, or Linux with KVM. Everything else runs anywhere Node 24 does. Without virtualization, the `bash` tool reports an error and the rest of the app works fine.
 
-## Install & run
+## Install and run
 
 ```sh
 git clone https://github.com/orgrigami/ultiv.git && cd ultiv
-vp install                      # installs deps through pnpm (owned by vp)
-cp .env.example .env            # fill in the keys you actually use; every key is optional
-vp run dev                      # API on :8787, web on :5173
+vp install              # installs dependencies (vp runs pnpm for you)
+cp .env.example .env    # fill in the keys you want to use
+vp run dev              # API on :8787, web on :5173
 ```
 
-Open http://localhost:5173, create a bot, chat. `vp` itself: install once with `npm i -g @voidzero-dev/vite-plus` (or see `AGENTS.md` if it isn't on PATH).
+Then open http://localhost:5173, create a bot and start chatting. If `vp` isn't on your PATH, `AGENTS.md` has notes on that.
+
+Easier installation steps incoming™.
 
 ### Environment
 
-Copy `.env.example` and set what you use — features without their key report themselves as off:
+Every key in `.env` is optional. Features whose key is missing just show up as off. The ones you'll most likely care about:
 
-| Key | Purpose |
+| Key | What it's for |
 | --- | --- |
-| `KENARI_API_KEY` | LLM gateway (chat/generation) — required for conversations |
-| `KENARI_MODEL` | optional model override (default `deepseek-v4-1-flash`) |
-| `TYPESAFE_API_KEY` | Typesafe.AI decision model (Jev) for yes/no, pick, rate, ask |
-| `VAULT_KEY` | **turns the vault on** — long random secret, e.g. `printf 'VAULT_KEY=%s\n' "$(openssl rand -hex 32)" >> .env` |
+| `KENARI_API_KEY` | LLM gateway for chat and generation. You need this one to have conversations. |
+| `KENARI_MODEL` | Optional model override (default `deepseek-v4-1-flash`) |
+| `TYPESAFE_API_KEY` | Typesafe.AI decision model (Jev), used for yes/no, pick, rate and ask |
+| `VAULT_KEY` | Turns the vault on. Use a long random secret, e.g. `printf 'VAULT_KEY=%s\n' "$(openssl rand -hex 32)" >> .env` |
 | `MCP_OAUTH_CALLBACK_URL` | OAuth callback for connectors (default `http://localhost:8787/api/mcp/oauth/callback`) |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push; generate with `vpr @ultiv/server#push:keys` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push. Generate them with `vpr @ultiv/server#push:keys` |
 
-Back `VAULT_KEY` up outside this machine: losing or changing it makes every saved vault item unreadable, and there is no key rotation yet.
+`.env.example` lists the rest, with a comment on each.
+
+Back up `VAULT_KEY` somewhere other than this machine. If you lose it or change it, every saved vault item becomes unreadable, and there's no key rotation yet.
 
 ## The two shells
 
-| Tool | Where it runs | Has | Gating |
+| Tool | Where it runs | What it can reach | Approval |
 | --- | --- | --- | --- |
-| `bash` | a microsandbox microVM per workspace scope | full Linux: coreutils, pipes, python3, pip, network, `apt-get` | approval per call (auto-approvable) |
-| `bash_host` | **the host computer, directly** | the whole real filesystem, permanently | approval per call, **never auto-approve** |
+| `bash` | a microsandbox microVM per workspace | full Linux: coreutils, pipes, python3, pip, network, `apt-get` | asks per call (can be auto-approved) |
+| `bash_host` | **your computer, directly** | your whole real filesystem | asks per call, **never auto-approved** |
 
-Both carry the working directory across calls. Files a `bash` script writes under `/home` become **artifacts**: visible in `artifact_list`, served by the web UI, persisted across restarts (deletions sync too). The durable artifact store is the source of truth; each call pushes it into the VM and reconciles changes back, so a crashed VM loses nothing that was synced.
+Both keep the working directory between calls. Anything a `bash` script writes under `/home` becomes an artifact: it shows up in `artifact_list`, the web UI serves it, and it survives restarts. Deletions sync too. The file store is the source of truth. Each call copies it into the VM and copies changes back out, so if the VM crashes you don't lose anything that was already synced.
 
-`bash_host` is for tasks that genuinely need the host machine. It is deliberately excluded from always-allow policies — approval is the safety mechanism.
+Use `bash_host` only when a task really needs your actual machine. It's left out of "always allow" on purpose, because the approval is the safety check.
 
-## Architecture
+## Layout
 
 ```
-apps/server   Node 24 host: REST + chord replication + triggers (cron/webhooks/sensors), thin over the mind
-apps/web      React 19 + TanStack Router + shadcn (Base UI) + Tailwind 4 client
-packages/core       kernel: tagged errors + the promise↔Effect door
-packages/ext        extension platform: tools, plugins, registry, vault, credential broker, shells
-packages/mind       the entity substrate: converse, decide, act, generate, tasks, profiles, routines, memory
+apps/server         Node 24 server: REST, chord replication, triggers (cron/webhooks/sensors). Thin layer over the mind.
+apps/web            React 19 + TanStack Router + shadcn (Base UI) + Tailwind 4 client
+packages/core       tagged errors and the bridge between promises and Effect
+packages/ext        tools, plugins, registry, vault, credential broker, shells
+packages/mind       the bots themselves: converse, decide, act, generate, tasks, profiles, routines, memory
 packages/contracts  TypeBox chord contracts shared by server and web
 ```
 
-One runtime, one entity per profile. Sessions replicate over chord; registries (sessions, artifacts, webhooks, cron, audit) are plain REST. `AGENTS.md` is the full developer map: package-by-package layout, the `vp` command rules, conventions, and the repo's pitfalls.
+Each profile is one bot running in a shared runtime. Sessions replicate over chord. The registries (sessions, artifacts, webhooks, cron, audit) are plain REST. `AGENTS.md` is the full developer guide: what's in each package, how to use `vp`, conventions, and known pitfalls.
 
 ## Development
 
-Everything goes through `vp` — never raw `npm`/`pnpm`/`node`/`tsc`/`vitest`:
+Use `vp` for everything, not `npm`, `pnpm`, `node`, `tsc` or `vitest` directly:
 
 ```sh
-vp install                      # deps
-vp check --fix                  # format + lint
-vp exec tsc -p packages/ext/tsconfig.json   # typecheck (all six workspaces must pass)
-vp test                         # unit tests
-vp -C apps/web build            # production web build
-vp run smoke                    # boots the whole stack offline on an ephemeral port, exercises REST
+vp install                                  # dependencies
+vp check --fix                              # format and lint
+vp exec tsc -p packages/ext/tsconfig.json   # typecheck one workspace (all six have to pass)
+vp test                                     # unit tests
+vp -C apps/web build                        # production web build
+vp run smoke                                # starts the whole stack offline on a random port and hits the REST API
 ```
 
-The gate for every change: `vp check` → six typechecks → `vp test` → web build → `vp run smoke`. A live provider probe (needs real keys): `vp node --env-file=.env packages/mind/src/probe.ts`.
+Before a change goes in, I run `vp check`, the six typechecks, `vp test`, the web build and `vp run smoke`, in that order. To try a real provider (needs real keys): `vp node --env-file=.env packages/mind/src/probe.ts`.
 
-## Security model
+## Security
 
-- **Owner-scoped everything.** REST and replication resolve a principal (`x-ultiv-user`); unauthenticated traffic is `guest`. A real IdP replaces one module (`apps/server/src/identity.ts`).
-- **Secrets never reach a model.** Bots name vault items or file `secret_request`; values enter through an owner-checked REST endpoint and are stored sealed — they never appear in transcripts, audit logs, or notifications.
-- **Gates act, not ask.** Read-only tools run freely; side-effecting tools wait for approval. Destructive classes (artifact deletes, connector changes, first-time credential use per host, `bash_host`) can never be blanket-allowed.
-- **Egress is bounded.** `http_request` is https-only with an SSRF/DNS guard, host/method/path-prefix bindings, redirect and size caps, and scrubbed responses.
-- **`.env` never leaves the machine** — server-side only, never printed or shipped to the client.
+- **There's no login yet.** The server takes the user from the `x-ultiv-user` header, and requests without it count as `guest`. Data is partitioned by owner, and the identity code lives in one file (`apps/server/src/identity.ts`) so a real sign-in can replace it later. Until then, run Ultiv on a machine and network you control.
+- **Secrets don't reach the model.** Bots refer to vault items by name or ask for one with `secret_request`. You type the value into a masked field, it goes to the server, and it's stored sealed. It never shows up in transcripts, audit logs or notifications.
+- **Risky tools wait for you.** Read-only tools run freely. Tools with side effects wait for approval. Some can never be blanket-allowed: deleting artifacts, changing connectors, using a credential on a new host for the first time, and `bash_host`.
+- **Outbound requests are limited.** `http_request` only does https, has an SSRF/DNS guard, sticks to each secret's host/method/path bindings, caps redirects and response size, and scrubs responses.
+- **`.env` stays on the server.** It's never printed or sent to the client.
 
-## Documentation
+## More docs
 
-- `AGENTS.md` — the developer contract: layout, vp rules, gate, conventions, pitfalls.
-- `docs/ROUTINES.md` — the durability + delivery contract for cron/webhooks/sensors.
-- `docs/MEMORY.md` — the memory-faculty contract (tiers, recall, guard, tidy).
+- `AGENTS.md`: developer guide (layout, `vp` rules, the checks above, conventions, pitfalls)
+- `docs/ROUTINES.md`: how cron, webhooks and sensors stay durable and get delivered
+- `docs/MEMORY.md`: how memory works (tiers, recall, guard, tidy)
