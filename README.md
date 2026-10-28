@@ -41,14 +41,14 @@ Easier installation steps incoming™.
 
 Every key in `.env` is optional. Features whose key is missing just show up as off. The ones you'll most likely care about:
 
-| Key | What it's for |
-| --- | --- |
-| `KENARI_API_KEY` | LLM gateway for chat and generation. You need this one to have conversations. |
-| `KENARI_MODEL` | Optional model override (default `deepseek-v4-1-flash`) |
-| `TYPESAFE_API_KEY` | Typesafe.AI decision model (Jev), used for yes/no, pick, rate and ask |
-| `VAULT_KEY` | Turns the vault on. Use a long random secret, e.g. `printf 'VAULT_KEY=%s\n' "$(openssl rand -hex 32)" >> .env` |
-| `MCP_OAUTH_CALLBACK_URL` | OAuth callback for connectors (default `http://localhost:8787/api/mcp/oauth/callback`) |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push. Generate them with `vpr @ultiv/server#push:keys` |
+| Key                                      | What it's for                                                                                                  |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `KENARI_API_KEY`                         | LLM gateway for chat and generation. You need this one to have conversations.                                  |
+| `KENARI_MODEL`                           | Optional model override (default `deepseek-v4-1-flash`)                                                        |
+| `TYPESAFE_API_KEY`                       | Typesafe.AI decision model (Jev), used for yes/no, pick, rate and ask                                          |
+| `VAULT_KEY`                              | Turns the vault on. Use a long random secret, e.g. `printf 'VAULT_KEY=%s\n' "$(openssl rand -hex 32)" >> .env` |
+| `MCP_OAUTH_CALLBACK_URL`                 | OAuth callback for connectors (default `http://localhost:8787/api/mcp/oauth/callback`)                         |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push. Generate them with `vpr @ultiv/server#push:keys`                                                     |
 
 `.env.example` lists the rest, with a comment on each.
 
@@ -56,10 +56,10 @@ Back up `VAULT_KEY` somewhere other than this machine. If you lose it or change 
 
 ## The two shells
 
-| Tool | Where it runs | What it can reach | Approval |
-| --- | --- | --- | --- |
-| `bash` | a microsandbox microVM per workspace | full Linux: coreutils, pipes, python3, pip, network, `apt-get` | asks per call (can be auto-approved) |
-| `bash_host` | **your computer, directly** | your whole real filesystem | asks per call, **never auto-approved** |
+| Tool        | Where it runs                        | What it can reach                                              | Approval                               |
+| ----------- | ------------------------------------ | -------------------------------------------------------------- | -------------------------------------- |
+| `bash`      | a microsandbox microVM per workspace | full Linux: coreutils, pipes, python3, pip, network, `apt-get` | asks per call (can be auto-approved)   |
+| `bash_host` | **your computer, directly**          | your whole real filesystem                                     | asks per call, **never auto-approved** |
 
 Both keep the working directory between calls. Anything a `bash` script writes under `/home` becomes an artifact: it shows up in `artifact_list`, the web UI serves it, and it survives restarts. Deletions sync too. The file store is the source of truth. Each call copies it into the VM and copies changes back out, so if the VM crashes you don't lose anything that was already synced.
 
