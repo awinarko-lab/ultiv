@@ -43,6 +43,17 @@ export const APPROVAL_MODE_OPTIONS: readonly {
   { value: "yolo", label: "Fully automatic" },
 ];
 
+/** What each approval mode means, in one line (shown under the select). */
+export const APPROVAL_MODE_HELP: Record<ProfileApprovalMode, string> = {
+  manual: "You approve every action the bot wants to take.",
+  jev:
+    "Jev handles low-risk calls and tells you in the chat what it approved or declined. " +
+    "Credentials, connectors, secrets and the host shell always ask you.",
+  yolo:
+    "Actions run without asking. A credential's or connector's first use, connector " +
+    "changes and secret requests still ask you.",
+};
+
 /** Model and effort: side by side only when both selects have room for their labels. */
 function ModelFields({
   form,
@@ -221,7 +232,7 @@ export function BotDialog({
               ))}
             </Select>
             <span className="text-muted-foreground text-xs">
-              Who answers when the bot wants to act: you each time, its own judgment, or nobody.
+              {APPROVAL_MODE_HELP[form.approvalMode]}
             </span>
           </label>
           {error !== null && <p className="text-destructive text-sm">{error}</p>}
