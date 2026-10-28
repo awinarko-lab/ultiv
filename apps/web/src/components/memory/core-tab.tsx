@@ -4,7 +4,7 @@
  * line lives in. Server word budgets (120 shared / 80 per bot, 25 per line)
  * are mirrored as meters so the owner sees the limit before the 400.
  */
-import { PinIcon, Trash2Icon } from "lucide-react";
+import { PinIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState, ErrorState } from "@/components/ui/empty-state";
@@ -36,6 +36,9 @@ export function CoreTab({ data, profileId, name, reload }: TabProps) {
   return (
     <>
       <p className="text-muted-foreground text-xs">{t.coreIntro}</p>
+      <p className="text-muted-foreground text-xs">
+        {t.reorderNote} {t.pinNote}
+      </p>
       {empty && <EmptyState>{t.coreEmpty(name)}</EmptyState>}
       {data.core.owner.length > 0 && (
         <CoreSection
@@ -112,28 +115,83 @@ function CoreLineRow({
   profileId: string;
   reload: () => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(line.text);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async (): Promise<void> => {
+    const next = draft.trim();
+    if (next === "" || next === line.text) {
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.memoryCoreUpdate(line.id, next, storeParam(shared, profileId));
+      setEditing(false);
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className="flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-sm">
-      <div className="min-w-0 flex-1">
-        <p className="break-words">{line.text}</p>
-        {line.pinned && (
-          <span className="text-muted-foreground mt-1 flex items-center gap-1 text-xs">
-            <PinIcon className="size-3" /> {t.pinnedLabel}
-          </span>
-        )}
-      </div>
-      <ConfirmDialog
-        title={t.coreRemoveTitle}
-        warning={t.coreRemoveWarning}
-        onConfirm={async () => {
-          await api.memoryCoreRemove(line.id, storeParam(shared, profileId));
-          await reload();
-        }}
-      >
-        <Button variant="ghost" size="icon" aria-label={t.coreRemoveAria(line.text)}>
-          <Trash2Icon />
+    <div className="flex flex-col gap-1 rounded-lg border px-2.5 py-1.5 text-sm">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="break-words">{line.text}</p>
+          {line.pinned && (
+            <span className="text-muted-foreground mt-1 flex items-center gap-1 text-xs">
+              <PinIcon className="size-3" /> {t.pinnedLabel}
+            </span>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t.coreEditAria(line.text)}
+          onClick={() => {
+            setDraft(line.text);
+            setEditing((current) => !current);
+          }}
+        >
+          <PencilIcon />
         </Button>
-      </ConfirmDialog>
+        <ConfirmDialog
+          title={t.coreRemoveTitle}
+          warning={t.coreRemoveWarning}
+          onConfirm={async () => {
+            await api.memoryCoreRemove(line.id, storeParam(shared, profileId));
+            await reload();
+          }}
+        >
+          <Button variant="ghost" size="icon" aria-label={t.coreRemoveAria(line.text)}>
+            <Trash2Icon />
+          </Button>
+        </ConfirmDialog>
+      </div>
+      {error !== null && <ErrorState message={error} />}
+      {editing && (
+        <div>
+          <Input
+            aria-label={t.coreEditTextLabel}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <div className="mt-1 flex gap-2">
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => void save()}>
+              {busy ? t.coreSavingLabel : "Save"}
+            </Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(false)}>
+              {t.cancelLabel}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -149,6 +207,7 @@ function AddCoreForm({
 }) {
   const [draft, setDraft] = useState("");
   const [shared, setShared] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const budget = shared ? t.SHARED_CORE_BUDGET : t.BOT_CORE_BUDGET;
@@ -162,8 +221,9 @@ function AddCoreForm({
     setBusy(true);
     setError(null);
     try {
-      await api.memoryCoreAdd(draft.trim(), storeParam(shared, profileId));
+      await api.memoryCoreAdd(draft.trim(), storeParam(shared, profileId), pinned);
       setDraft("");
+      setPinned(false);
       await reload();
     } catch (cause) {
       // The draft stays so a rejected line (25-word limit, budget) is fixable.
@@ -223,6 +283,15 @@ function AddCoreForm({
           {draftWords > 0 && ` · line ${t.lineWords(draftWords)}`}
         </span>
       </div>
+      <label className="text-muted-foreground flex w-fit items-center gap-1.5 text-xs">
+        <input
+          type="checkbox"
+          checked={pinned}
+          onChange={(event) => setPinned(event.target.checked)}
+          className="accent-[var(--color-primary)] size-3.5"
+        />
+        {t.pinOnAddLabel}
+      </label>
       {hint !== null && (
         <p role="alert" className="text-destructive text-xs">
           {hint}

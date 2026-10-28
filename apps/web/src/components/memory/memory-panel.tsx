@@ -1,9 +1,9 @@
 /**
- * What a bot remembers, in tabs: Facts, Core, Tidy, Files (spec §13.2 adds
- * People & things once the entity list lands). The shell owns loading and
- * refresh; each tab owns its own writes and their errors.
+ * What a bot remembers, in tabs: Facts, People & things, Core, Tidy, Files
+ * (spec §13.2). The shell owns loading and refresh; each tab owns its own
+ * writes and their errors.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -11,11 +11,12 @@ import { api, type ArtifactRow, type MemoryV2Fact, type MemoryV2State } from "@/
 import { cn } from "@/lib/utils";
 import * as t from "@/lib/memory-text";
 import { FactsTab } from "@/components/memory/facts-tab";
+import { EntitiesTab } from "@/components/memory/entities-tab";
 import { CoreTab } from "@/components/memory/core-tab";
 import { TidyTab } from "@/components/memory/tidy-tab";
 import { FilesTab } from "@/components/memory/files-tab";
 
-export type MemoryTabId = "facts" | "core" | "tidy" | "files";
+export type MemoryTabId = "facts" | "people" | "core" | "tidy" | "files";
 
 export interface MemoryData {
   /** This bot's store, raw: current, superseded, archived AND forgotten. */
@@ -37,6 +38,7 @@ export interface MemoryData {
 function tabItems(openCount: number): { id: MemoryTabId; label: string; badge?: number }[] {
   return [
     { id: "facts", label: t.TABS.facts },
+    { id: "people", label: t.TABS.people },
     { id: "core", label: t.TABS.core },
     { id: "tidy", label: t.TABS.tidy, ...(openCount > 0 ? { badge: openCount } : {}) },
     { id: "files", label: t.TABS.files },
@@ -121,6 +123,7 @@ function MemoryBody({
         className="mt-3 flex flex-col gap-2"
       >
         {tab === "facts" && <FactsTab {...tabProps} />}
+        {tab === "people" && <EntitiesTab data={data} name={name} />}
         {tab === "core" && <CoreTab {...tabProps} />}
         {tab === "tidy" && <TidyTab {...tabProps} />}
         {tab === "files" && <FilesTab {...tabProps} />}
@@ -154,6 +157,16 @@ export function MemoryPanel({
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<MemoryTabId>("facts");
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
+
+  // Focus the title, not the first fact's Forget button.
+  useEffect(() => {
+    if (open) {
+      const id = window.setTimeout(() => titleRef.current?.focus(), 50);
+      return () => window.clearTimeout(id);
+    }
+    return undefined;
+  }, [open]);
 
   const load = useCallback(async (): Promise<void> => {
     setStatus((current) => (current === "ready" ? "ready" : "loading"));
@@ -190,7 +203,9 @@ export function MemoryPanel({
     <Dialog open={open} onOpenChange={setOpen}>
       {children !== undefined && <DialogTrigger render={children} />}
       <DialogContent>
-        <DialogTitle>{t.panelTitle(name)}</DialogTitle>
+        <DialogTitle ref={titleRef} tabIndex={-1} className="outline-none">
+          {t.panelTitle(name)}
+        </DialogTitle>
         {status === "loading" && (
           <p className="text-muted-foreground mt-4 flex items-center gap-2 text-sm">
             <Spinner /> Loading memory…

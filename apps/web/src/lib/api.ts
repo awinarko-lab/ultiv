@@ -168,6 +168,16 @@ export interface MemoryV2Line {
   pinned: boolean;
   at: number;
 }
+export interface MemoryV2Entity {
+  id: string;
+  name: string;
+  type: string;
+  aliases: string[];
+  summary: string;
+  createdAt: number;
+  /** Set when this entity was merged into another; the id stays a redirect. */
+  mergedInto: string | null;
+}
 export interface MemoryV2Fact {
   id: string;
   /** Which store the fact lives in: "owner" = workspace-wide. */
@@ -188,7 +198,7 @@ export interface MemoryV2Fact {
 }
 export interface MemoryV2State {
   facts: MemoryV2Fact[];
-  entities: { id: string; name: string; type: string; aliases: string[] }[];
+  entities: MemoryV2Entity[];
   core: { owner: MemoryV2Line[]; profile: MemoryV2Line[] };
   proposals: MemoryV2Proposal[];
   openCount: number;
@@ -250,17 +260,21 @@ export const api = {
       `/api/memory/v2/proposals/${encodeURIComponent(id)}/${verdict}?profile=${encodeURIComponent(profile ?? "owner")}`,
       "POST",
     ),
-  memoryCoreAdd: (text: string, profile?: string): Promise<MemoryV2Line> =>
+  memoryCoreAdd: (text: string, profile?: string, pinned?: boolean): Promise<MemoryV2Line> =>
     send<MemoryV2Line>(
       `/api/memory/v2/core?profile=${encodeURIComponent(profile ?? "owner")}`,
       "POST",
-      {
-        text,
-      },
+      { text, ...(pinned === true ? { pinned: true } : {}) },
     ),
   memoryCoreRemove: (lineId: string, profile?: string): Promise<boolean> =>
     drop(
       `/api/memory/v2/core/${encodeURIComponent(lineId)}?profile=${encodeURIComponent(profile ?? "owner")}`,
+    ),
+  memoryCoreUpdate: (lineId: string, text: string, profile?: string): Promise<MemoryV2Line> =>
+    send<MemoryV2Line>(
+      `/api/memory/v2/core/${encodeURIComponent(lineId)}?profile=${encodeURIComponent(profile ?? "owner")}`,
+      "PATCH",
+      { text },
     ),
   memoryPurge: (profile?: string, confirm?: number): Promise<{ purged: number }> =>
     send<{ purged: number }>(

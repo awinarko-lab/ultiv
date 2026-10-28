@@ -38,6 +38,36 @@ export const forgottenIntro =
 export const restoreLabel = "Restore";
 export const restoringLabel = "Restoring…";
 export const forgottenEmpty = "Nothing forgotten.";
+
+export const entitiesIntro =
+  "People, pets, places and projects the bot resolved from its facts. Tap one for its card.";
+export const entitiesEmpty = "No entities yet — they appear as facts resolve.";
+export const ENTITY_TYPES: Record<string, string> = {
+  person: "Person",
+  pet: "Pet",
+  place: "Place",
+  org: "Org",
+  project: "Project",
+  thing: "Thing",
+  concept: "Concept",
+  event: "Event",
+  self: "The bot itself",
+};
+export const aliasesLabel = "Also known as";
+export const factsAboutLabel = "Facts about";
+export const mergeWithLabel = "Merge with…";
+export const mergeNote =
+  "Merging needs the entity-merge detector — it isn't wired to the API yet, so this stays disabled.";
+export const mergedNote = (target: string): string => `Merged into ${target}.`;
+export const entityAria = (name: string): string => `Open ${name}`;
+export const summaryLabel = "Summary";
+
+export const coreEditAria = (text: string): string => `Edit core line: ${text.slice(0, 40)}`;
+export const coreEditTextLabel = "Core line text";
+export const coreSavingLabel = "Saving…";
+export const reorderNote = "Order is the server's — drag-to-reorder isn't in the API yet.";
+export const pinNote = "Pin is set when a line is added; toggling isn't in the API yet.";
+export const pinOnAddLabel = "Pin";
 export const addPlaceholder = (name: string): string => `Something ${name} should always know…`;
 export const addLabel = (name: string): string => `Something ${name} should always know`;
 
