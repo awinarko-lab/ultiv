@@ -4,6 +4,8 @@
  * and Save spans the sheet.
  */
 import { useMemo, useState } from "react";
+import { XIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -108,6 +110,61 @@ function ModelFields({
   );
 }
 
+/**
+ * The bot's always-allowed tools: entries skip the approval gate entirely —
+ * each got there when an approval card was answered with "Always allow".
+ * Removing one returns the tool to the bot's approval mode immediately.
+ */
+function AutoApproveField({ bot, refresh }: { bot: ProfileInfo; refresh: () => Promise<void> }) {
+  const tools = bot.policies.autoApprove;
+  const [busyTool, setBusyTool] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const remove = async (tool: string): Promise<void> => {
+    setBusyTool(tool);
+    setError(null);
+    try {
+      // The policies patch merges per key, so send the whole shrunken list.
+      await api.updateProfile(bot.id, {
+        policies: { ...bot.policies, autoApprove: tools.filter((name) => name !== tool) },
+      });
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusyTool(null);
+    }
+  };
+  if (tools.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      <span>Always allowed</span>
+      <div className="flex flex-wrap gap-1">
+        {tools.map((tool) => (
+          <Badge key={tool} variant="secondary" className="h-6 pr-1">
+            {tool}
+            <button
+              type="button"
+              aria-label={`Stop always allowing ${tool}`}
+              disabled={busyTool !== null}
+              className="rounded-full p-0.5 hover:bg-foreground/10 disabled:opacity-50"
+              onClick={() => {
+                void remove(tool);
+              }}
+            >
+              <XIcon className="size-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <span className="text-muted-foreground text-xs">
+        Tools approved with "Always allow" skip the approval gate. Removing one puts it back under
+        this bot's approval mode.
+      </span>
+      {error !== null && <p className="text-destructive text-sm">{error}</p>}
+    </div>
+  );
+}
+
 /** Save (full width on phones) and what saving changes. */
 function SaveRow({ busy, unnamed }: { busy: boolean; unnamed: boolean }) {
   return (
@@ -136,6 +193,8 @@ export function BotDialog({
   initial,
   models,
   confirm,
+  /** Edit-only fields (e.g. the always-allowed tool list); rendered before Save. */
+  extra,
   children,
   open: controlledOpen,
   onOpenChange,
@@ -144,6 +203,7 @@ export function BotDialog({
   initial: BotForm;
   models: ModelInfo[];
   confirm: (form: BotForm) => Promise<void>;
+  extra?: React.ReactNode | undefined;
   /** The trigger; omit it and drive `open` instead. */
   children?: React.ReactElement | undefined;
   open?: boolean | undefined;
@@ -235,6 +295,7 @@ export function BotDialog({
               {APPROVAL_MODE_HELP[form.approvalMode]}
             </span>
           </label>
+          {extra}
           {error !== null && <p className="text-destructive text-sm">{error}</p>}
           <SaveRow busy={busy} unnamed={form.name.trim() === ""} />
         </form>
@@ -312,6 +373,7 @@ export function EditBotDialog({
       models={models}
       open={open}
       onOpenChange={onOpenChange}
+      extra={<AutoApproveField bot={bot} refresh={refresh} />}
       initial={{
         name: bot.name,
         description: bot.description,
