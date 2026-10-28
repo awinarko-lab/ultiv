@@ -52,6 +52,8 @@ export const checkInput = (input: McpServerInput, slots: readonly SecretSlot[]):
   if (slots.length > 0 && filled.auth.kind === "headers")
     filled.auth.headers.forEach((ref) => Object.assign(ref, { item: ref.item || "pending" }));
   filled.command?.env.forEach((ref) => Object.assign(ref, { item: ref.item || "pending" }));
+  if (slots.some((slot) => slot.target === "oauthSecret") && filled.auth.kind === "oauth")
+    filled.auth.clientSecretItem = "pending";
   if (!Value.Check(McpServerInputSchema, filled)) {
     const first = [...Value.Errors(McpServerInputSchema, filled)][0];
     return `invalid connector: ${first?.instancePath || "input"} ${first?.message ?? ""}`.trim();

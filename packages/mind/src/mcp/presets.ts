@@ -15,6 +15,11 @@ export interface McpPreset {
   readonly key: PresetKey;
   /** Where an optional key goes. */
   readonly header?: { readonly name: string; readonly prefix: string };
+  /** OAuth sign-in defaults (scopes, provider quirks) applied unless overridden. */
+  readonly oauth?: {
+    readonly scope?: string;
+    readonly authParams?: readonly { readonly name: string; readonly value: string }[];
+  };
 }
 
 export const MCP_PRESETS: readonly McpPreset[] = [
@@ -46,6 +51,25 @@ export const MCP_PRESETS: readonly McpPreset[] = [
     url: "https://mcp.notion.com/mcp",
     about: "Notion pages and databases. The owner signs in on the Connectors screen.",
     key: "oauth",
+  },
+  {
+    id: "google-drive",
+    name: "google-drive",
+    url: "https://drivemcp.googleapis.com/mcp/v1",
+    about:
+      "Google Drive files (official remote server; needs the Drive MCP API enabled and an OAuth " +
+      'client with "Use this client for an AI-powered agent"). The owner signs in; the client ' +
+      "id and secret must be pre-registered — register this workspace's sign-in return address " +
+      "on the OAuth client. Its return address shows on the Connectors screen.",
+    key: "oauth",
+    oauth: {
+      // Google issues a refresh token only for access_type=offline; prompt=consent
+      // re-issues one on re-connect (developers.google.com Drive MCP guide).
+      authParams: [
+        { name: "access_type", value: "offline" },
+        { name: "prompt", value: "consent" },
+      ],
+    },
   },
 ];
 

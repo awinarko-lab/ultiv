@@ -30,8 +30,8 @@ afterEach(async () => {
 
 type Answer = boolean | { values: Record<string, string> } | "cancel" | "ignore";
 
-const setUp = async (secretTimeoutMs = 5_000) => {
-  fake = await startHttpFake({ bearer: TOKEN });
+const setUp = async (secretTimeoutMs = 5_000, fakeOpts?: Parameters<typeof startHttpFake>[0]) => {
+  fake = await startHttpFake(fakeOpts ?? { bearer: TOKEN });
   rig = makeRig();
   const registry = createRegistry();
   const approvals = makeApprovals();
@@ -146,6 +146,49 @@ describe("bot-managed connectors", () => {
     expect(readFileSync(auditPath, "utf8")).not.toContain(TOKEN);
   });
 
+  it("adds a confidential OAuth connector with the client secret in a secure field", async () => {
+    const SECRET = ["gocsp", "e2e", "secret", "0987654321"].join("-");
+    // The fake token endpoint refuses any exchange without the secret.
+    const { run, manager, auditPath, url } = await setUp(5_000, {
+      oauth: true,
+      oauthRequireSecret: SECRET,
+    });
+    const flow = await run(
+      "connector_add",
+      {
+        name: "gd",
+        url,
+        auth: "oauth",
+        clientId: "abc.apps.googleusercontent.com",
+        authParams: [{ name: "access_type", value: "offline" }],
+      },
+      (card) => (card === "secret_request" ? { values: { f0: SECRET } } : card === "connector_add"),
+    );
+    expect(flow.cards.map((card) => card.name)).toEqual(["connector_add", "secret_request"]);
+    expect(flow.cards[0]?.input).toMatchObject({
+      auth: expect.stringMatching(
+        /^Sign in \(OAuth\) as client abc\.apps.* you type its client secret in a secure field next/,
+      ),
+    });
+    expect(flow.text).toContain("It needs sign-in");
+    const list = manager.list(OWNER);
+    expect(list.length).toBe(1);
+    const auth = list[0]?.auth;
+    expect(auth).toMatchObject({
+      kind: "oauth",
+      clientId: "abc.apps.googleusercontent.com",
+      authParams: [{ name: "access_type", value: "offline" }],
+    });
+    const secretItem = (auth as { clientSecretItem?: string }).clientSecretItem ?? "";
+    expect(secretItem).not.toBe("");
+    // The secret lives only in the vault; replies, config and audit are clean.
+    const visible = JSON.stringify([flow.text, flow.cards, list]);
+    expect(visible).not.toContain(SECRET);
+    expect(readFileSync(auditPath, "utf8")).not.toContain(SECRET);
+    // The vault item redeems to the real secret (so sign-in can use it).
+    expect(rig?.vault.resolve(OWNER, secretItem)).toBeDefined();
+  });
+
   it("changes nothing when the owner denies the card or cancels the secure field", async () => {
     const { run, manager, url } = await setUp();
     const denied = await run("connector_add", { name: "fake", url, auth: "api_key" }, () => false);
@@ -230,5 +273,70 @@ describe("planning a connector change", () => {
     for (const name of [...CONNECTOR_CHANGES, "secret_request"])
       expect(isNeverAutoApproved(name)).toBe(true);
     expect(isNeverAutoApproved("connector_list")).toBe(false);
+  });
+
+  it("plans confidential OAuth: client id, preset params, secure secret slot", () => {
+    const items = [{ id: "v1", name: "Google client secret" }];
+    const context = { items, bots: "Eve", profiles: ["p1"] };
+    // Preset carries Google's redirect quirks; the client id queues the secret.
+    const planned = planAdd(
+      { preset: "google-drive", clientId: "abc.apps.googleusercontent.com" },
+      context,
+    );
+    if (typeof planned === "string") throw new Error(planned);
+    expect(planned.input.auth).toEqual({
+      kind: "oauth",
+      clientId: "abc.apps.googleusercontent.com",
+      clientSecretItem: "",
+      authParams: [
+        { name: "access_type", value: "offline" },
+        { name: "prompt", value: "consent" },
+      ],
+    });
+    expect(planned.slots).toEqual([
+      { target: "oauthSecret", index: 0, label: "OAuth client secret for google-drive" },
+    ]);
+    expect(planned.card.auth).toContain("secure field");
+    // An existing vault item pins the secret instead of asking.
+    const pinned = planAdd(
+      {
+        name: "gdrive",
+        url: "https://drivemcp.googleapis.com/mcp/v1",
+        auth: "oauth",
+        clientId: "abc",
+        vaultItem: "Google client secret",
+        oauthScope: "https://www.googleapis.com/auth/drive.readonly",
+      },
+      context,
+    );
+    if (typeof pinned === "string") throw new Error(pinned);
+    expect(pinned.input.auth).toEqual({
+      kind: "oauth",
+      clientId: "abc",
+      clientSecretItem: "v1",
+      scope: "https://www.googleapis.com/auth/drive.readonly",
+    });
+    expect(pinned.slots).toEqual([]);
+    // Updates keep the previous scope and secret when only the id changes.
+    const previous = pinned.input.auth as Extract<
+      import("@ultiv/contracts").McpAuth,
+      { kind: "oauth" }
+    >;
+    const updated = planAdd(
+      {
+        name: "gdrive",
+        url: "https://drivemcp.googleapis.com/mcp/v1",
+        clientId: "new-id",
+        previousOAuth: previous,
+        auth: "oauth",
+      },
+      context,
+    );
+    if (typeof updated === "string") throw new Error(updated);
+    expect(updated.input.auth).toMatchObject({ clientId: "new-id", clientSecretItem: "v1" });
+    expect(updated.input.auth).toMatchObject({
+      scope: "https://www.googleapis.com/auth/drive.readonly",
+    });
+    expect(updated.slots).toEqual([]);
   });
 });

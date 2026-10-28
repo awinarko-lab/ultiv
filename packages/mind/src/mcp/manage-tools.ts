@@ -52,12 +52,32 @@ const Bots = Type.Array(Type.String(), {
 const KeyFields = {
   auth: Type.Optional(Auth),
   vaultItem: Type.Optional(
-    Type.String({ description: "Existing vault item (name or id) holding the key." }),
+    Type.String({
+      description:
+        "Existing vault item (name or id): the API key for header sign-in, or the OAuth client secret.",
+    }),
   ),
   header: Type.Optional(
     Type.String({ description: "Header for the key (default Authorization)." }),
   ),
   prefix: Type.Optional(Type.String({ description: 'Prefix before the key (default "Bearer ").' })),
+  clientId: Type.Optional(
+    Type.String({
+      description:
+        "OAuth only: the provider's pre-registered client id (plain value, never a secret). " +
+        "Giving it means the provider needs your client secret too.",
+    }),
+  ),
+  oauthScope: Type.Optional(
+    Type.String({ description: "OAuth only: requested scopes, space-separated." }),
+  ),
+  authParams: Type.Optional(
+    Type.Array(Type.Object({ name: Type.String(), value: Type.String() }), {
+      description:
+        "OAuth only: extra authorization-redirect parameters, e.g. Google needs " +
+        "access_type=offline (plus prompt=consent on re-connect) for a refresh token.",
+    }),
+  ),
 };
 
 const listTool = (deps: ManageDeps) =>
@@ -149,7 +169,13 @@ const nextInput = (
   deps: ManageDeps,
   owner: string,
   info: ReturnType<ManageDeps["manager"]["list"]>[number],
-  args: Record<string, unknown> & { auth?: "none" | "api_key" | "oauth"; vaultItem?: string },
+  args: Record<string, unknown> & {
+    auth?: "none" | "api_key" | "oauth";
+    vaultItem?: string;
+    clientId?: string;
+    oauthScope?: string;
+    authParams?: { name: string; value: string }[];
+  },
   profiles: string[] | null,
 ): { input: ReturnType<typeof inputOf>; slots: SecretSlot[] } | string => {
   const before = inputOf(info);
@@ -180,9 +206,24 @@ const nextInput = (
         args: (args.args as string[]) ?? input.command.args,
       },
     };
-  if (local || (args.auth === undefined && args.vaultItem === undefined))
-    return { input, slots: [] };
-  const auth = addAuth(args, itemsOf(deps, owner), input.name);
+  const authTouched =
+    args.auth !== undefined ||
+    args.vaultItem !== undefined ||
+    args.clientId !== undefined ||
+    args.oauthScope !== undefined ||
+    args.authParams !== undefined;
+  if (local || !authTouched) return { input, slots: [] };
+  const auth = addAuth(
+    {
+      ...args,
+      // An explicit auth choice replaces; otherwise keep a previous oauth.
+      ...(args.auth === undefined && before.auth.kind === "oauth"
+        ? { auth: "oauth" as const, previousOAuth: before.auth }
+        : {}),
+    },
+    itemsOf(deps, owner),
+    input.name,
+  );
   return typeof auth === "string"
     ? auth
     : { input: { ...input, auth: auth.auth }, slots: auth.slots };

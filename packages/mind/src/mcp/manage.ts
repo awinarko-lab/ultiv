@@ -49,12 +49,20 @@ export interface AddArgs {
   readonly header?: string;
   readonly prefix?: string;
   readonly vaultItem?: string;
+  /** OAuth: a pre-registered client id (plain value, not a secret). */
+  readonly clientId?: string;
+  /** OAuth: requested scopes. */
+  readonly oauthScope?: string;
+  /** OAuth: extra authorization-redirect parameters (provider quirks). */
+  readonly authParams?: readonly { readonly name: string; readonly value: string }[];
+  /** OAuth only: the connector's current oauth auth, when updating one. */
+  readonly previousOAuth?: Extract<import("@ultiv/contracts").McpAuth, { kind: "oauth" }>;
   readonly bots?: readonly string[];
 }
 
 /** A slot the owner fills in a secure field before the server is saved. */
 export interface SecretSlot {
-  readonly target: "header" | "env";
+  readonly target: "header" | "env" | "oauthSecret";
   readonly index: number;
   readonly label: string;
 }
@@ -111,7 +119,18 @@ export const botsWords = (ids: readonly string[] | null, bots: readonly Named[])
 
 const authWords = (input: McpServerInput, items: readonly Named[], asked: boolean): string => {
   const auth = input.auth;
-  if (auth.kind === "oauth") return "Sign in (OAuth) - you press Connect on the Connectors screen";
+  if (auth.kind === "oauth") {
+    const client = auth.clientId !== undefined ? ` as client ${auth.clientId.slice(0, 24)}…` : "";
+    const secret =
+      auth.clientSecretItem !== undefined
+        ? items.find((entry) => entry.id === auth.clientSecretItem) !== undefined
+          ? " with its client secret from the vault"
+          : asked
+            ? " - you type its client secret in a secure field next"
+            : " with its client secret"
+        : "";
+    return `Sign in (OAuth)${client}${secret} - you press Connect on the Connectors screen`;
+  }
   if (auth.kind === "none")
     return input.command !== null && input.command.env.length > 0
       ? "Keys as environment variables"
@@ -158,7 +177,34 @@ export const addAuth = (
   const kind =
     args.auth ??
     (args.vaultItem !== undefined ? "api_key" : preset?.key === "oauth" ? "oauth" : "none");
-  if (kind === "oauth") return { auth: { kind: "oauth" }, slots: [] };
+  if (kind === "oauth") {
+    const previous = args.previousOAuth;
+    const scope = args.oauthScope ?? previous?.scope ?? preset?.oauth?.scope;
+    const params = args.authParams ?? previous?.authParams ?? preset?.oauth?.authParams;
+    const clientId = args.clientId ?? previous?.clientId;
+    const base = {
+      kind: "oauth" as const,
+      ...(scope !== undefined && scope !== "" ? { scope } : {}),
+      ...(clientId !== undefined && clientId !== "" ? { clientId } : {}),
+      ...(params !== undefined && params.length > 0 ? { authParams: [...params] } : {}),
+    };
+    // A vault item named for the secret pins it; a client id without a
+    // secret yet queues a secure field so the owner types the secret next.
+    if (args.vaultItem !== undefined) {
+      const found = findNamed(items, args.vaultItem);
+      if (found === undefined) return `no vault item "${args.vaultItem}"`;
+      return { auth: { ...base, clientSecretItem: found.id }, slots: [] };
+    }
+    const kept = previous?.clientSecretItem;
+    if (kept !== undefined) return { auth: { ...base, clientSecretItem: kept }, slots: [] };
+    if (base.clientId !== undefined) {
+      return {
+        auth: { ...base, clientSecretItem: "" },
+        slots: [{ target: "oauthSecret", index: 0, label: `OAuth client secret for ${name}` }],
+      };
+    }
+    return { auth: base, slots: [] };
+  }
   if (kind === "none") return { auth: { kind: "none" }, slots: [] };
   const header = args.header ?? preset?.header?.name ?? "Authorization";
   const prefix =
@@ -237,6 +283,9 @@ export const fillSlots = (
         index === slot.index ? { ...ref, item } : ref,
       );
       next = { ...next, auth: { kind: "headers", headers } };
+    }
+    if (slot.target === "oauthSecret" && next.auth.kind === "oauth") {
+      next = { ...next, auth: { ...next.auth, clientSecretItem: item } };
     }
     if (slot.target === "env" && next.command !== null) {
       const env = next.command.env.map((ref, index) =>
