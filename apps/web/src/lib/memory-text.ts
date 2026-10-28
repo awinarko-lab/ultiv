@@ -61,6 +61,33 @@ export const tidyIntro = "The Sunday tidy proposes; nothing changes until you ac
 export const tidyEmpty = "No suggestions right now.";
 export const tidyOpenBadge = (count: number): string => `${count} open`;
 export const tidyRunLabel = "Run tidy now";
+export const tidyRunning = "Running tidy…";
+export const tidyResult = (count: number): string =>
+  count === 0 ? "0 suggestions" : `${count} new suggestion${count === 1 ? "" : "s"}`;
+export const tidyRunError = "The tidy run failed.";
+
+export const PROPOSAL_KINDS: Record<string, string> = {
+  merge: "Merge",
+  conflict: "Conflict",
+  stale: "Stale",
+  "entity-merge": "Entity merge",
+  secret: "Secret",
+  "core-fix": "Core fix",
+  archive: "Archive",
+  backfill: "Backfill",
+};
+export const affectedTitle = "Affected facts:";
+export const willForget =
+  "Accepting forgets these facts — they become restorable tombstones, but the bot stops recalling them.";
+export const acceptLabel = "Accept";
+export const acceptingLabel = "Accepting…";
+export const rejectLabel = "Not now";
+export const rejectingLabel = "Dismissing…";
+export const rejectNote = "Permanent: a dismissed suggestion never comes back.";
+export const editAcceptLabel = "Edit & accept";
+export const saveAcceptLabel = "Save & accept";
+export const cancelLabel = "Cancel";
+
 export const purgeLabel = "Purge forgotten";
 export const purgeTitle = "Purge forgotten facts?";
 export const purgeWarning =

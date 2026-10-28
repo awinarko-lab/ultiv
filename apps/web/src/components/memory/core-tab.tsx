@@ -112,7 +112,6 @@ function CoreLineRow({
   profileId: string;
   reload: () => Promise<void>;
 }) {
-  const [error, setError] = useState<string | null>(null);
   return (
     <div className="flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-sm">
       <div className="min-w-0 flex-1">
@@ -122,7 +121,6 @@ function CoreLineRow({
             <PinIcon className="size-3" /> {t.pinnedLabel}
           </span>
         )}
-        {error !== null && <ErrorState message={error} className="mt-1" />}
       </div>
       <ConfirmDialog
         title={t.coreRemoveTitle}
