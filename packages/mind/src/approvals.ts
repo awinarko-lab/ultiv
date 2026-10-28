@@ -48,6 +48,13 @@ export const adjudicationOf = (
   return "human";
 };
 
+/**
+ * How long the gate waits for the adjudicate hook (Jev) before giving up and
+ * parking the normal owner card. No card is pending during the call, so this
+ * is what keeps a hung judge from stalling the gate.
+ */
+export const ADJUDICATE_TIMEOUT = Duration.seconds(8);
+
 /** The verdict an adjudicate hook returns; undefined = no opinion (the owner decides). */
 export interface AdjudicationVerdict {
   readonly approved: boolean;
@@ -120,6 +127,7 @@ export class Approvals extends Context.Service<Approvals, ApprovalsService>()(
 
 export const makeApprovals = (
   timeout: Duration.Duration = Duration.seconds(120),
+  adjudicateTimeout: Duration.Duration = ADJUDICATE_TIMEOUT,
 ): ApprovalsService => {
   const pending = new Map<string, PendingEntry>();
   const waiters = new Map<string, Deferred.Deferred<boolean>>();
@@ -148,8 +156,11 @@ export const makeApprovals = (
         const k = key(conversationId, callId);
         notes.delete(k); // a stale note must not leak into this call's denial
         if (hooks.adjudicate !== undefined) {
-          // A failing judge is no verdict: fall through to the owner.
-          const verdict = yield* Effect.match(hooks.adjudicate(conversationId, request), {
+          // A failing or slow judge is no verdict: fall through to the owner.
+          const judged = hooks
+            .adjudicate(conversationId, request)
+            .pipe(Effect.timeout(adjudicateTimeout));
+          const verdict = yield* Effect.match(judged, {
             onFailure: () => undefined,
             onSuccess: (found) => found,
           });

@@ -229,7 +229,7 @@ const mindLayerRaw = (
         untrustedTool: (name) =>
           mcpRef?.wiring.allowlistTools().some((tool) => tool.name === name) ?? false,
       });
-      wirePolicies(wiring.holder, approvals, audit, profiles, decide);
+      wirePolicies(wiring.holder, approvals, audit, profiles, decide, converse);
       // Everything rides one pi-durable registry; late installs are legal —
       // the harness reconsiders its tools as the registry changes.
       const piRegistry = yield* PiRegistry;
