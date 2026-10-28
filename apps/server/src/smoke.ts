@@ -231,6 +231,45 @@ expect(
     modelPatched.json.model?.id === "glm-5-3-flash" &&
     modelPatched.json.model?.effort === "high",
 );
+// Approval mode: a per-key policies patch (what the chat-box switcher sends)
+// flips the mode without clobbering the other policy keys.
+const yoloPatched = await call(
+  "PATCH",
+  `/api/profiles/${rid}`,
+  { policies: { approvalMode: "yolo" } },
+  headers,
+);
+const yoloPolicies = yoloPatched.json?.policies;
+expect(
+  "approval mode patch to yolo keeps other policy keys",
+  yoloPatched.status === 200 &&
+    yoloPolicies?.approvalMode === "yolo" &&
+    Array.isArray(yoloPolicies?.canInitiate) &&
+    yoloPolicies.canInitiate.length > 0 &&
+    typeof yoloPolicies?.approvalTimeout === "string" &&
+    (yoloPolicies?.dailyTurnBudget === null || typeof yoloPolicies?.dailyTurnBudget === "number") &&
+    typeof yoloPolicies?.memoryKeeper === "boolean",
+);
+const rereadPolicies = (await call("GET", `/api/profiles/${rid}`, undefined, headers)).json
+  ?.policies;
+expect("approval mode sticks on reread", rereadPolicies?.approvalMode === "yolo");
+const badMode = await call(
+  "PATCH",
+  `/api/profiles/${rid}`,
+  { policies: { approvalMode: "chaos" } },
+  headers,
+);
+expect("unknown approval mode rejected", badMode.status === 400);
+const restored = await call(
+  "PATCH",
+  `/api/profiles/${rid}`,
+  { policies: { approvalMode: "manual" } },
+  headers,
+);
+expect(
+  "approval mode restored to manual",
+  restored.status === 200 && restored.json.policies.approvalMode === "manual",
+);
 const mainAgain = await call("GET", `/api/profiles/${rid}/main`, undefined, headers);
 const mainConv = await call("GET", `/api/sessions?profile=${rid}`, undefined, headers);
 expect(
