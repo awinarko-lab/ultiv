@@ -3,6 +3,7 @@ import type {
   ModelInfo,
   PendingApproval,
   Phase,
+  ProfileApprovalMode,
   QueuedInput,
   TaskInfo,
   ThinkingLevel,
@@ -99,11 +100,13 @@ export function SessionView({
   model,
   effort,
   models,
+  approvalMode,
   queued = [],
   onInput,
   onWithdraw,
   onDecide,
   onConfigure,
+  onApprovalMode,
   onInterrupt,
   tasks,
   taskInfo = [],
@@ -120,12 +123,15 @@ export function SessionView({
   model: string | null;
   effort: ThinkingLevel | null;
   models: ModelInfo[];
+  /** This bot's approval mode; the header popover switches it. */
+  approvalMode: ProfileApprovalMode;
   /** Messages waiting for the running turn, shown as pending bubbles at the end of the transcript. */
   queued?: readonly QueuedInput[];
   onInput: (text: string, whenBusy?: SendMode) => Promise<void>;
   onWithdraw?: (id: string) => Promise<void>;
   onDecide: Decide;
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => Promise<void>;
+  onApprovalMode: (mode: ProfileApprovalMode) => Promise<void>;
   onInterrupt: () => Promise<void>;
   /** Background tasks, floated above the composer. */
   tasks?: React.ReactNode;
@@ -207,7 +213,9 @@ export function SessionView({
           model={model}
           effort={effort}
           models={models}
+          approvalMode={approvalMode}
           onConfigure={(nextModel, nextEffort) => control(() => onConfigure(nextModel, nextEffort))}
+          onApprovalMode={(mode) => control(() => onApprovalMode(mode))}
         />
       </div>
       {/* Screen readers hear new replies and approval requests. */}

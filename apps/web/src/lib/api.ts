@@ -10,6 +10,7 @@ import type {
   MemoryRecord,
   ModelInfo,
   ProfileInfo,
+  ProfilePolicies,
   RoomInfo,
   RoutineEvent,
   SensorInfo,
@@ -221,6 +222,7 @@ export const api = {
     description?: string;
     persona?: string;
     model?: { id: string; effort?: string } | null;
+    policies?: Partial<ProfilePolicies>;
   }): Promise<ProfileInfo> => send<ProfileInfo>("/api/profiles", "POST", input),
   updateProfile: (
     id: string,
@@ -229,6 +231,8 @@ export const api = {
       description?: string;
       persona?: string;
       model?: { id: string; effort?: string } | null;
+      /** Per-key merge server-side, so a partial object is safe. */
+      policies?: Partial<ProfilePolicies>;
     },
   ): Promise<ProfileInfo> =>
     send<ProfileInfo>(`/api/profiles/${encodeURIComponent(id)}`, "PATCH", patch),

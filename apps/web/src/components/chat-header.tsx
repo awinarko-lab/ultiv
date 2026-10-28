@@ -6,8 +6,9 @@
  */
 import { Popover } from "@base-ui/react/popover";
 import { ChevronLeftIcon, EllipsisIcon } from "lucide-react";
-import type { ModelInfo, ThinkingLevel, UsageSummary } from "@ultiv/contracts";
+import type { ModelInfo, ProfileApprovalMode, ThinkingLevel, UsageSummary } from "@ultiv/contracts";
 import { linkLabel, type ChatBot, type LinkState } from "@/components/bot-avatar";
+import { APPROVAL_MODE_OPTIONS } from "@/components/bot-dialog";
 import { BotSwitcher } from "@/components/bot-switcher";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -18,21 +19,25 @@ function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
-/** Model and effort selection, this session's spend and the link state. */
+/** Model, effort, approvals, this session's spend and the link state. */
 function SessionDetails({
   link,
   usage,
   model,
   effort,
   models,
+  approvalMode,
   onConfigure,
+  onApprovalMode,
 }: {
   link: LinkState;
   usage: UsageSummary | null;
   model: string | null;
   effort: ThinkingLevel | null;
   models: ModelInfo[];
+  approvalMode: ProfileApprovalMode;
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
+  onApprovalMode: (mode: ProfileApprovalMode) => void;
 }) {
   const selected = models.find((candidate) => candidate.id === model);
   const efforts = selected?.efforts ?? (["off", "low", "high", "max"] as const);
@@ -75,6 +80,20 @@ function SessionDetails({
           ))}
         </Select>
       </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-muted-foreground text-xs">Approvals</span>
+        <Select
+          className="w-full"
+          value={approvalMode}
+          onChange={(event) => onApprovalMode(event.target.value as ProfileApprovalMode)}
+        >
+          {APPROVAL_MODE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </label>
       {usage !== null && (
         <p className="text-muted-foreground text-xs">
           {formatTokens(usage.totalTokens)} tokens · {formatTokens(usage.input)} in ·{" "}
@@ -99,7 +118,9 @@ export function ChatHeader({
   model,
   effort,
   models,
+  approvalMode,
   onConfigure,
+  onApprovalMode,
 }: {
   bot?: ChatBot | undefined;
   link: LinkState;
@@ -108,7 +129,9 @@ export function ChatHeader({
   model: string | null;
   effort: ThinkingLevel | null;
   models: ModelInfo[];
+  approvalMode: ProfileApprovalMode;
   onConfigure: (model: string | null, effort: ThinkingLevel | null) => void;
+  onApprovalMode: (mode: ProfileApprovalMode) => void;
 }) {
   const name = bot?.name !== undefined && bot.name !== "" ? bot.name : "Chat";
   // Floating chips: translucent + blurred so the transcript shows through.
@@ -144,7 +167,9 @@ export function ChatHeader({
                 model={model}
                 effort={effort}
                 models={models}
+                approvalMode={approvalMode}
                 onConfigure={onConfigure}
+                onApprovalMode={onApprovalMode}
               />
             </Popover.Popup>
           </Popover.Positioner>

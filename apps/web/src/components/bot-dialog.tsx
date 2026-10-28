@@ -11,7 +11,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useApp } from "@/lib/app-state";
-import type { ModelInfo, ProfileInfo } from "@ultiv/contracts";
+import type { ModelInfo, ProfileApprovalMode, ProfileInfo } from "@ultiv/contracts";
 
 export interface BotForm {
   name: string;
@@ -20,6 +20,8 @@ export interface BotForm {
   /** "" = workspace default model. */
   modelId: string;
   effort: string;
+  /** Who answers the bot's gated tool calls. */
+  approvalMode: ProfileApprovalMode;
 }
 
 export const emptyForm: BotForm = {
@@ -28,7 +30,18 @@ export const emptyForm: BotForm = {
   persona: "",
   modelId: "",
   effort: "",
+  approvalMode: "manual",
 };
+
+/** The approval modes and their labels (shared by the edit dialog and the chat details). */
+export const APPROVAL_MODE_OPTIONS: readonly {
+  value: ProfileApprovalMode;
+  label: string;
+}[] = [
+  { value: "manual", label: "Manual — ask me" },
+  { value: "jev", label: "Jev decides" },
+  { value: "yolo", label: "Fully automatic" },
+];
 
 /** Model and effort: side by side only when both selects have room for their labels. */
 function ModelFields({
@@ -192,6 +205,25 @@ export function BotDialog({
             />
           </label>
           <ModelFields form={form} setForm={setForm} models={models} />
+          <label className="flex flex-col gap-1 text-sm">
+            Approval mode
+            <Select
+              className="w-full"
+              value={form.approvalMode}
+              onChange={(event) =>
+                setForm({ ...form, approvalMode: event.target.value as ProfileApprovalMode })
+              }
+            >
+              {APPROVAL_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            <span className="text-muted-foreground text-xs">
+              Who answers when the bot wants to act: you each time, its own judgment, or nobody.
+            </span>
+          </label>
           {error !== null && <p className="text-destructive text-sm">{error}</p>}
           <SaveRow busy={busy} unnamed={form.name.trim() === ""} />
         </form>
@@ -208,6 +240,8 @@ export const createBot = async (form: BotForm): Promise<string> =>
       ...(form.description !== "" ? { description: form.description } : {}),
       ...(form.persona !== "" ? { persona: form.persona } : {}),
       ...modelPayload(form),
+      // The default needs no key; a delegated mode rides the per-key merge.
+      ...(form.approvalMode !== "manual" ? { policies: { approvalMode: form.approvalMode } } : {}),
     })
   ).id;
 
@@ -273,6 +307,7 @@ export function EditBotDialog({
         persona: bot.persona,
         modelId: bot.model?.id ?? "",
         effort: bot.model?.effort ?? "",
+        approvalMode: bot.policies.approvalMode,
       }}
       confirm={async (form) => {
         // Throws on failure, so the form stays open with the reason.
@@ -282,6 +317,8 @@ export function EditBotDialog({
           description: form.description,
           persona: form.persona,
           ...modelPayload(form),
+          // Per-key merge server-side: only the mode key changes.
+          policies: { approvalMode: form.approvalMode },
         });
         await refresh();
       }}

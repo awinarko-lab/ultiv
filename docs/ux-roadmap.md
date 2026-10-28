@@ -98,3 +98,11 @@ error states with retry; initial focus lands on the dialog title. DONE:
 everything above. Remaining: entity merge UI once the API exists, core
 reorder/pin-toggle routes if wanted, and folding the panel into profile tabs
 (pattern 1 leftover).
+
+**Approval mode controls** (2026-10-28): `policies.approvalMode` (manual |
+jev | yolo) is live on both surfaces — the Edit-bot dialog gains an
+"Approval mode" select (Manual — ask me / Jev decides / Fully automatic,
+with a one-line hint), and the chat header details popover gains an
+"Approvals" select that PATCHes just the mode key and refreshes app state.
+Yolo never covers credential/connector first use; jev routes through the
+Decide faculty and hands the owner anything Jev won't answer.

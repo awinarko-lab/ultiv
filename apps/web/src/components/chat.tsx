@@ -7,10 +7,15 @@ import type { ChatBot } from "@/components/chat-header";
 import { SessionView } from "@/components/session-view";
 import { TasksPill } from "@/components/tasks-pill";
 import { StopDialog } from "@/components/stop-dialog";
+import { api } from "@/lib/api";
+import { useApp } from "@/lib/app-state";
 import { useSession } from "@/lib/use-session";
 import { useTasks } from "@/lib/use-tasks";
 import { useState } from "react";
-import type { ModelInfo } from "@ultiv/contracts";
+import type { ModelInfo, ProfileApprovalMode, ProfileInfo } from "@ultiv/contracts";
+
+/** The chat's bot carries the policies the header popover switches. */
+type ChatBotWithPolicies = ChatBot & { policies?: ProfileInfo["policies"] };
 
 export function Chat({
   sessionId,
@@ -20,16 +25,24 @@ export function Chat({
 }: {
   sessionId: string;
   models: ModelInfo[];
-  bot?: ChatBot | undefined;
+  bot?: ChatBotWithPolicies | undefined;
   onBack?: (() => void) | undefined;
 }) {
   const session = useSession(sessionId);
   const chatTasks = useTasks(session.conversationId);
+  const { refreshAll } = useApp();
   const [askStop, setAskStop] = useState(false);
   // Stop asks first only when this chat has background tasks running.
   const requestStop = async (): Promise<void> => {
     if (chatTasks.running.length === 0) await session.interrupt();
     else setAskStop(true);
+  };
+  // The approval-mode switch PATCHes just the one policy key and refreshes
+  // the app state, like every other profile mutation.
+  const changeApprovalMode = async (mode: ProfileApprovalMode): Promise<void> => {
+    if (bot?.id === undefined) return;
+    await api.updateProfile(bot.id, { policies: { approvalMode: mode } });
+    await refreshAll();
   };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -47,11 +60,13 @@ export function Chat({
         model={session.model}
         effort={session.effort}
         models={models}
+        approvalMode={bot?.policies?.approvalMode ?? "manual"}
         queued={session.queued}
         onInput={session.input}
         onWithdraw={session.withdraw}
         onDecide={session.decide}
         onConfigure={session.configure}
+        onApprovalMode={changeApprovalMode}
         onInterrupt={requestStop}
       />
       <StopDialog
