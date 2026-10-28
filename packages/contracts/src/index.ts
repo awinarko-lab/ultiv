@@ -41,6 +41,7 @@ export {
   ProfileInfoSchema,
   ProfileListSchema,
   ProfileCreateSchema,
+  ProfileApprovalModeSchema,
   ProfileModelSchema,
   ProfilePoliciesSchema,
 } from "./profiles.ts";
@@ -48,6 +49,7 @@ export type {
   ProfileInfo,
   ProfileList,
   ProfileCreate,
+  ProfileApprovalMode,
   ProfileModel,
   ProfilePolicies,
 } from "./profiles.ts";

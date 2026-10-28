@@ -8,12 +8,23 @@ export const ProfileModelSchema = Type.Object({
 
 export type ProfileModel = Static<typeof ProfileModelSchema>;
 
+/** How gated tool calls get approved for this profile: the owner each time ('manual'), Jev as the gate ('jev'), or nobody ('yolo'). */
+export const ProfileApprovalModeSchema = Type.Union([
+  Type.Literal("manual"),
+  Type.Literal("jev"),
+  Type.Literal("yolo"),
+]);
+
+export type ProfileApprovalMode = Static<typeof ProfileApprovalModeSchema>;
+
 /** Behavior policy of one profile: initiation rights, approvals, budget. */
 export const ProfilePoliciesSchema = Type.Object({
   /** Sibling ids this entity may message autonomously; ["*"] (default) = all, [] = locked. */
   canInitiate: Type.Array(Type.String()),
   /** Gated tool names pre-approved for this profile. */
   autoApprove: Type.Array(Type.String()),
+  /** Who answers a gated call: the owner each time, Jev as the gate, or nobody. */
+  approvalMode: ProfileApprovalModeSchema,
   /** What a pending approval does on timeout: deny, or deny + escalate to the inbox. */
   approvalTimeout: Type.Union([Type.Literal("deny"), Type.Literal("escalate")]),
   /** Model turns per day across the profile; null = uncapped. */

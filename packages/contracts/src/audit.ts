@@ -12,6 +12,8 @@ export const AuditEventSchema = Type.Object({
     Type.Literal("mailbox"),
     Type.Literal("escalation"),
     Type.Literal("credential"),
+    /** A Jev adjudication of a gated call (approval-mode 'jev'). */
+    Type.Literal("adjudication"),
     /** Human REST acts on memory (purge, tombstone, restore). */
     Type.Literal("memory"),
   ]),
