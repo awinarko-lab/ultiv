@@ -15,6 +15,8 @@ export const TABS = {
 
 export const factsEmpty = (name: string): string =>
   `Nothing yet. Facts ${name} keeps about its work show up here, and you can edit or delete them.`;
+export const factsBotTitle = "This bot";
+export const factsSharedTitle = "Shared · the whole workspace";
 export const addPlaceholder = (name: string): string => `Something ${name} should always know…`;
 export const addLabel = (name: string): string => `Something ${name} should always know`;
 
@@ -26,13 +28,34 @@ export const forgetAria = (text: string): string => `Forget: ${text.slice(0, 40)
 export const coreIntro = "The few lines that sit in every prompt — always in context.";
 export const coreEmpty = (name: string): string =>
   `Empty. Core lines are always in ${name}'s context, so keep them short and few.`;
+export const coreSharedTitle = "Shared · the whole workspace";
+export const coreSharedNote =
+  "Every bot sees these. Removing one removes it everywhere — this cannot be undone.";
+export const coreBotTitle = "This bot";
 export const coreAddLabel = "A core line";
 export const coreAddPlaceholder = "A short line always in context…";
+export const coreTargetLabel = "Add to";
+export const coreTargetBot = "This bot";
+export const coreTargetShared = "Shared (workspace)";
 export const coreRemoveTitle = "Remove this core line?";
 export const coreRemoveWarning =
   "The bot stops seeing it from its next turn. This cannot be undone.";
 export const coreRemoveAria = (text: string): string => `Remove core line: ${text.slice(0, 40)}`;
 export const pinnedLabel = "pinned";
+export const words = (count: number, budget: number): string => `${count} / ${budget} words`;
+export const lineWords = (count: number): string => `${count} / 25 words`;
+export const draftTooLong = "Keep the line to 25 words or fewer.";
+export const overBudget = (budget: number): string =>
+  `Over the ${budget}-word budget for this store.`;
+
+/** Word budgets the server enforces on core stores. */
+export const SHARED_CORE_BUDGET = 120;
+export const BOT_CORE_BUDGET = 80;
+export const CORE_LINE_LIMIT = 25;
+
+/** Counts words the way the server's budget check does (whitespace runs). */
+export const countWords = (text: string): number =>
+  text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
 
 export const tidyIntro = "The Sunday tidy proposes; nothing changes until you accept.";
 export const tidyEmpty = "No suggestions right now.";
@@ -51,5 +74,4 @@ export const kvDeleteWarning = (name: string): string =>
 export const filesEmpty = "No files yet.";
 export const downloadAria = (name: string): string => `Download ${name}`;
 
-export const footer = (name: string): string =>
-  `${name} reads this store plus your workspace-wide memory. Forgetting an item hides it until you purge; the workspace-wide store is editable from any bot's panel.`;
+export const footer = `Shared lines and facts are marked "Shared" — changes apply to every bot in the workspace. Forgetting an item hides it until you purge.`;

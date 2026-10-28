@@ -116,7 +116,7 @@ function MemoryBody({
         {tab === "tidy" && <TidyTab {...tabProps} />}
         {tab === "files" && <FilesTab {...tabProps} />}
       </div>
-      <p className="text-muted-foreground mt-3 text-xs">{t.footer(name)}</p>
+      <p className="text-muted-foreground mt-3 text-xs">{t.footer}</p>
     </>
   );
 }
