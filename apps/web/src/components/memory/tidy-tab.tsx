@@ -100,9 +100,26 @@ function PurgeControl({
     <ConfirmDialog
       title={t.purgeTitle}
       warning={t.purgeWarning}
+      detail={
+        pending.length > 0 ? (
+          <div className="mt-2 text-sm">
+            <p className="text-muted-foreground text-xs">
+              {t.purgeListTitle} ({pending.length})
+            </p>
+            <ul className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto text-xs">
+              {pending.map((fact) => (
+                <li key={fact.id} className="break-words">
+                  {fact.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : undefined
+      }
+      typed={pending.length > 0 ? String(pending.length) : undefined}
       confirmLabel="Purge"
       onConfirm={async () => {
-        await api.memoryPurge(profileId);
+        await api.memoryPurge(profileId, pending.length);
         await reload();
       }}
     >

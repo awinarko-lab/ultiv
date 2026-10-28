@@ -254,10 +254,11 @@ export const api = {
     drop(
       `/api/memory/v2/core/${encodeURIComponent(lineId)}?profile=${encodeURIComponent(profile ?? "owner")}`,
     ),
-  memoryPurge: (profile?: string): Promise<{ purged: number }> =>
+  memoryPurge: (profile?: string, confirm?: number): Promise<{ purged: number }> =>
     send<{ purged: number }>(
       `/api/memory/purge?profile=${encodeURIComponent(profile ?? "owner")}`,
       "POST",
+      { confirm },
     ),
   memoryTidyRun: (): Promise<{ proposals: number }> =>
     send<{ proposals: number }>("/api/memory/tidy/run", "POST"),

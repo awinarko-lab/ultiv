@@ -92,6 +92,7 @@ export const purgeLabel = "Purge forgotten";
 export const purgeTitle = "Purge forgotten facts?";
 export const purgeWarning =
   "Every forgotten fact loses its text for good. Tombstones stay, but the words are gone. This cannot be undone.";
+export const purgeListTitle = "These facts lose their text:";
 
 export const kvEmpty = (name: string): string =>
   `Nothing yet. ${name} notes what it has already done here, so it doesn't do it twice.`;

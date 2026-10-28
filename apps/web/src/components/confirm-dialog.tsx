@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 export function ConfirmDialog({
   title,
   warning,
+  detail,
   confirmLabel = "Delete",
   typed,
   onConfirm,
@@ -21,9 +22,11 @@ export function ConfirmDialog({
 }: {
   title: string;
   warning: string;
+  /** Extra context under the warning (e.g. the rows a purge will destroy). */
+  detail?: React.ReactNode | undefined;
   confirmLabel?: string;
   /** When set, the user must type exactly this to enable the button. */
-  typed?: string;
+  typed?: string | undefined;
   onConfirm: () => Promise<void>;
   /** The trigger; omit it and drive `open` instead (e.g. from a menu item). */
   children?: React.ReactElement | undefined;
@@ -72,6 +75,7 @@ export function ConfirmDialog({
       <DialogContent>
         <DialogTitle>{title}</DialogTitle>
         <p className="text-destructive mt-2 text-sm">{warning}</p>
+        {detail}
         {typed !== undefined && (
           <label className="mt-2 flex flex-col gap-1 text-sm">
             Type <span className="font-mono font-semibold">{typed}</span> to confirm

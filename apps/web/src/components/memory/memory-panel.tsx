@@ -93,6 +93,7 @@ function MemoryBody({
   profileId,
   name,
   reload,
+  refreshError,
 }: {
   data: MemoryData;
   tab: MemoryTabId;
@@ -100,11 +101,19 @@ function MemoryBody({
   profileId: string;
   name: string;
   reload: () => Promise<void>;
+  refreshError: string | null;
 }) {
   const tabProps = { data, profileId, name, reload };
   return (
     <>
       <TabStrip tab={tab} onTab={onTab} openCount={data.openCount} />
+      {refreshError !== null && (
+        <ErrorState
+          message={`Refresh failed: ${refreshError}`}
+          onRetry={() => void reload()}
+          className="mt-2"
+        />
+      )}
       <div
         id={`memory-tabpanel-${tab}`}
         role="tabpanel"
@@ -200,6 +209,7 @@ export function MemoryPanel({
             profileId={profileId}
             name={name}
             reload={load}
+            refreshError={error}
           />
         )}
       </DialogContent>
