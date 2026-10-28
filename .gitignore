@@ -13,3 +13,4 @@ coverage/
 
 # server runtime state (harness sqlite)
 var/
+var-db-backup*/
