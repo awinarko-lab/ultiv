@@ -125,9 +125,16 @@ async function route(args: RouteArgs): Promise<void> {
     const limit = Number(args.url.searchParams.get("limit") ?? "100");
     const capped = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 1_000) : 100;
     const profile = queryOr(args, "profile");
+    const conversation = queryOr(args, "conversation");
+    const kind = queryOr(args, "kind");
+    // Narrow filters read a wider window, then keep the newest `capped`.
+    const narrow = conversation !== undefined || kind !== undefined;
     const events = mind.audit
-      .tail(capped)
-      .filter((event) => profile === undefined || event.profile === profile);
+      .tail(narrow ? 5_000 : capped)
+      .filter((event) => profile === undefined || event.profile === profile)
+      .filter((event) => conversation === undefined || event.conversationId === conversation)
+      .filter((event) => kind === undefined || event.kind === kind)
+      .slice(-capped);
     return json(200, events);
   }
   // Routine fire receipts — "did it actually fire?" is a lookup, not a guess.

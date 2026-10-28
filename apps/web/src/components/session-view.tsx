@@ -21,6 +21,7 @@ import { QueuedChips } from "@/components/queued-chips";
 import { ChatHeader, type ChatBot, type LinkState } from "@/components/chat-header";
 import { TranscriptItems } from "@/components/transcript-items";
 import { describeTool } from "@/lib/approval-text";
+import type { JevNotice } from "@/lib/jev-text";
 import { turnActivity } from "@/lib/queue-text";
 import { aboveComposer, useChatScroll } from "@/lib/use-chat-scroll";
 
@@ -110,6 +111,7 @@ export function SessionView({
   onInterrupt,
   tasks,
   taskInfo = [],
+  jevNotices,
 }: {
   bot?: ChatBot | undefined;
   /** Shown as the header's round back button when set. */
@@ -137,6 +139,8 @@ export function SessionView({
   tasks?: React.ReactNode;
   /** This chat's task rows, for the task cards in the transcript. */
   taskInfo?: readonly TaskInfo[];
+  /** Jev's gate decisions by tool call id, shown under the calls. */
+  jevNotices?: ReadonlyMap<string, JevNotice> | undefined;
 }) {
   const busy = phase === "working";
   const { draft, setDraft, sending, sendFailed, run } = useSend(onInput);
@@ -175,7 +179,12 @@ export function SessionView({
             {transcript.length === 0 && link === "live" && !busy && (
               <EmptyChat bot={bot} onPick={setDraft} />
             )}
-            <TranscriptItems transcript={transcript} busy={busy} tasks={taskInfo} />
+            <TranscriptItems
+              transcript={transcript}
+              busy={busy}
+              tasks={taskInfo}
+              jevNotices={jevNotices}
+            />
             {pending !== null ? (
               <li>
                 <ApprovalCard

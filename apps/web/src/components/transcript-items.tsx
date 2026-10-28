@@ -2,14 +2,24 @@
  * The transcript body: markdown output, collapsed reasoning, tool traces and
  * machinery notes, grouped so consecutive tool steps read as one sequence.
  */
-import { memo } from "react";
+import { Fragment, memo, type ReactNode } from "react";
 import { useApp } from "@/lib/app-state";
 import { formatDivider, formatFull } from "@/lib/format";
 import { readNote } from "@/lib/note-text";
 import { parseSystem } from "@/lib/system-text";
 import { SystemCard } from "@/components/system/system-card";
 import type { TaskInfo, ToolStep, TranscriptEntry } from "@ultiv/contracts";
-import { BrainIcon, CircleAlertIcon, CircleSlashIcon, WrenchIcon } from "lucide-react";
+import {
+  BrainIcon,
+  CircleAlertIcon,
+  CircleSlashIcon,
+  ScissorsIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
+  ShieldXIcon,
+  WrenchIcon,
+} from "lucide-react";
+import type { JevKind, JevNotice } from "@/lib/jev-text";
 import { LazyMarkdown } from "@/components/lazy-markdown";
 import {
   CodeBlock,
@@ -152,6 +162,26 @@ const Tool = memo(function Tool({ step }: { step: ToolStep }) {
   );
 });
 
+const JEV_ICONS: Record<JevKind, ReactNode> = {
+  approved: <ShieldCheckIcon className="mt-0.5 size-3 shrink-0" aria-hidden />,
+  denied: <ShieldXIcon className="text-destructive mt-0.5 size-3 shrink-0" aria-hidden />,
+  split: <ScissorsIcon className="mt-0.5 size-3 shrink-0" aria-hidden />,
+  destructive: <ShieldAlertIcon className="text-destructive mt-0.5 size-3 shrink-0" aria-hidden />,
+};
+
+/** Jev answered this call's gate on its own: say so, with its reason. */
+function JevLine({ notice }: { notice: JevNotice }) {
+  return (
+    <p className="text-muted-foreground flex items-start gap-1 -mt-1 px-1 text-xs break-words">
+      {JEV_ICONS[notice.kind]}
+      <span className="min-w-0">
+        <span className="text-foreground/80 font-medium">{notice.title}</span>
+        {notice.reason !== "" && <> — {notice.reason}</>}
+      </span>
+    </p>
+  );
+}
+
 /** A machinery note: small caption + markdown body, in owner-facing words. */
 const Note = memo(function Note({ text }: { text: string }) {
   const { sessions } = useApp();
@@ -193,11 +223,14 @@ export function TranscriptItems({
   transcript,
   busy = false,
   tasks = [],
+  jevNotices,
 }: {
   transcript: TranscriptEntry[];
   busy?: boolean;
   /** This chat's background tasks, so task cards can show title and duration. */
   tasks?: readonly TaskInfo[];
+  /** Jev's gate decisions by tool call id. */
+  jevNotices?: ReadonlyMap<string, JevNotice> | undefined;
 }) {
   return (
     <>
@@ -213,7 +246,10 @@ export function TranscriptItems({
               {formatDivider(group.at)}
             </li>
           ) : null;
-        return [divider, renderGroup(group, busy && index === groups.length - 1, tasks)];
+        return [
+          divider,
+          renderGroup(group, busy && index === groups.length - 1, tasks, jevNotices),
+        ];
       })}
     </>
   );
@@ -235,15 +271,28 @@ function systemItem(entry: TranscriptEntry, key: string, tasks: readonly TaskInf
   );
 }
 
-function renderGroup(group: Group, last: boolean, tasks: readonly TaskInfo[]) {
+function renderGroup(
+  group: Group,
+  last: boolean,
+  tasks: readonly TaskInfo[],
+  jevNotices?: ReadonlyMap<string, JevNotice>,
+) {
   const system = "tools" in group ? undefined : systemItem(group.entry, group.key, tasks);
   if (system !== undefined) return system;
   return "tools" in group ? (
     <li key={group.key} className="w-full">
       <Trace>
-        {group.tools.map((step) => (
-          <Tool key={step.callId} step={step} />
-        ))}
+        {group.tools.map((step) => {
+          const notice = jevNotices?.get(step.callId);
+          return notice === undefined ? (
+            <Tool key={step.callId} step={step} />
+          ) : (
+            <Fragment key={step.callId}>
+              <Tool step={step} />
+              <JevLine notice={notice} />
+            </Fragment>
+          );
+        })}
       </Trace>
     </li>
   ) : group.entry.kind === "input" ? (

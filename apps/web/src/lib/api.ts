@@ -403,6 +403,11 @@ export const api = {
     getJson<RoutineEvent[]>(`/api/routines/events?limit=${limit ?? 30}`),
   audit: (limit?: number): Promise<AuditEvent[]> =>
     getJson<AuditEvent[]>(`/api/audit?limit=${limit ?? 200}`),
+  /** Jev's decisions in one chat (approval mode 'jev'), newest last. */
+  adjudications: (conversationId: string): Promise<AuditEvent[]> =>
+    getJson<AuditEvent[]>(
+      `/api/audit?limit=200&kind=adjudication&conversation=${encodeURIComponent(conversationId)}`,
+    ),
   stateOf: (profile: string): Promise<{ key: string; value: string; updatedAt: number }[]> =>
     getJson(`/api/state?profile=${encodeURIComponent(profile)}`),
   removeState: (profile: string, key: string): Promise<{ ok: boolean }> =>

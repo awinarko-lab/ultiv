@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import { useApp } from "@/lib/app-state";
 import { useSession } from "@/lib/use-session";
 import { useTasks } from "@/lib/use-tasks";
+import { useJevNotices } from "@/lib/use-jev-notices";
 import { useState } from "react";
 import type { ModelInfo, ProfileApprovalMode, ProfileInfo } from "@ultiv/contracts";
 
@@ -30,6 +31,7 @@ export function Chat({
 }) {
   const session = useSession(sessionId);
   const chatTasks = useTasks(session.conversationId);
+  const jevNotices = useJevNotices(session.conversationId, session.transcript);
   const { refreshAll } = useApp();
   const [askStop, setAskStop] = useState(false);
   // Stop asks first only when this chat has background tasks running.
@@ -49,6 +51,7 @@ export function Chat({
       <SessionView
         tasks={<TasksPill chatTasks={chatTasks} />}
         taskInfo={chatTasks.tasks}
+        jevNotices={jevNotices}
         bot={bot}
         onBack={onBack}
         link={session.link}
