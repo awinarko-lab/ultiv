@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { MemoryStorage } from "@earendil-works/pi-durable";
 import { Effect } from "effect";
 import type { SessionInfo } from "@ultiv/contracts";
+import { defaultPolicies } from "./docs.ts";
 import { openMind } from "../entity.ts";
 
 describe("Profiles (offline, MemoryStorage)", () => {
@@ -81,6 +82,32 @@ describe("Profiles (offline, MemoryStorage)", () => {
     expect(profiles.profileOf(main)?.description).toBe("");
     expect((await profiles.get("harry", bot.id))?.description).toBe("");
     expect(profiles.profileOf(other)?.description).toBe("");
+    await handle.close();
+  });
+
+  it("a partial policies patch merges per key and rejects an unknown mode", async () => {
+    const handle = await openMind({ storage: new MemoryStorage() });
+    const { profiles } = handle.mind;
+    const bot = await profiles.create("harry", { name: "Gated", onboard: false });
+    // What the chat-box switcher sends: only the mode key.
+    const switched = await profiles.update("harry", bot.id, {
+      policies: { ...defaultPolicies(), approvalMode: "yolo" },
+    } as never);
+    expect(switched.policies.approvalMode).toBe("yolo");
+    // The other keys survived (defaults, not a wholesale replace).
+    expect(switched.policies.canInitiate).toEqual(["*"]);
+    expect(switched.policies.approvalTimeout).toBe("deny");
+    expect(switched.policies.dailyTurnBudget).toBeNull();
+    expect(switched.policies.memoryKeeper).toBe(false);
+    let reason = "";
+    try {
+      await profiles.update("harry", bot.id, {
+        policies: { ...defaultPolicies(), approvalMode: "chaos" },
+      } as never);
+    } catch (error) {
+      reason = (error as { reason?: string }).reason ?? "";
+    }
+    expect(reason).toBe("unknown approval mode: chaos");
     await handle.close();
   });
 

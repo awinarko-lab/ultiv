@@ -3,11 +3,13 @@
  * services, the late pi-registry installs, the approval policy and the
  * describe() truth. Each profile runs as its own entity over these.
  */
+import { Effect } from "effect";
 import { defineExtension, type ToolRegistration } from "@earendil-works/pi-durable";
 import { FIRST_USE_APPROVAL, type ScopeHolder } from "@ultiv/ext";
 import { isMcpFirstUse } from "./mcp/access.ts";
 import { isNeverAutoApproved } from "./mcp/manage.ts";
-import type { ApprovalsService } from "./approvals.ts";
+import { adjudicationOf, type ApprovalsService } from "./approvals.ts";
+import type { ApprovalRequest } from "./approvals.ts";
 import type { actService } from "./act/act.ts";
 import { codemodeExtension } from "./act/codemode.ts";
 import { taskTools } from "./act/task-tools.ts";
@@ -127,12 +129,67 @@ export const installFaculties = (
   );
 };
 
-/** Profile scoping for the ext plugins and the per-profile approval policy. */
+/** Jev's rubric for the 'jev' approval mode: what the delegated judge may wave through. */
+const JEV_RUBRIC =
+  "You are the approval gate for an AI assistant acting on its owner's behalf. " +
+  "Approve routine, low-risk, reversible actions that are clearly within the " +
+  "role the owner delegated to this bot. Deny anything that spends money, " +
+  "deletes or overwrites data, messages people, exposes secrets, or touches " +
+  "credentials and connectors. When unsure, decline to decide.";
+
+/** Ask Jev about one gated call; undefined = no opinion (the owner decides). */
+const adjudicateWith =
+  (decide: DecideService, audit: AuditService, profiles: ProfilesService) =>
+  (conversationId: string, request: ApprovalRequest) => {
+    const profile = profiles.profileOf(conversationId);
+    // The gate reads the profile LIVE: a chat-box switch must apply to the
+    // next gated call without re-wiring the hooks.
+    if (profile?.policies.approvalMode !== "jev" || !decide.available) {
+      return Effect.succeed(undefined);
+    }
+    const state = JSON.stringify({
+      bot: profile.name + (profile.description !== "" ? ` — ${profile.description}` : ""),
+      tool: request.name,
+      input: request.input,
+    });
+    return Effect.map(decide.yesNo(state, JEV_RUBRIC), (probability) => {
+      const verdict = adjudicationOf("jev", decide.available, probability);
+      if (verdict === "human") return undefined;
+      audit.record({
+        at: Date.now(),
+        kind: "adjudication",
+        conversationId,
+        profile: profile.id,
+        callId: request.callId,
+        name: request.name,
+        durationMs: null,
+        ok: verdict === "approve",
+        error:
+          verdict === "deny"
+            ? `jev denied (probability ${probability.toFixed(2)})`
+            : `jev approved (probability ${probability.toFixed(2)})`,
+      });
+      return verdict === "approve"
+        ? { approved: true }
+        : {
+            approved: false,
+            note:
+              `denied by the bot's own judgment (Jev, probability ${probability.toFixed(2)}) — ` +
+              "this looks outside what the owner delegated; do not retry",
+          };
+    });
+  };
+
+/**
+ * Profile scoping for the ext plugins and the per-profile approval policy.
+ * `decide` is the Jev faculty: it powers the 'jev' approval mode's gate.
+ */
 export const wirePolicies = (
   holder: ScopeHolder,
   approvals: ApprovalsService,
   audit: AuditService,
   profiles: ProfilesService,
+  decide: DecideService,
 ): void => {
   // Profile scoping reaches the ext plugins (artifacts dirs, vault lists)
   // through the holder the registry was built with — set now that the
@@ -143,15 +200,23 @@ export const wirePolicies = (
       return scope === undefined ? undefined : { owner: scope.owner, profile: scope.profileId };
     },
   });
-  // Per-profile approval policy (auto-approve lists, timeout escalation).
+  // Per-profile approval policy (auto-approve lists, Jev gate, timeout
+  // escalation). The hard floors stand whatever the mode says.
   approvals.setHooks({
     // A credential's first use on a host, and a connector's first use, are
     // always asked, whatever the list says.
-    autoApprove: (conversationId, request) =>
-      request.name !== FIRST_USE_APPROVAL &&
-      !isMcpFirstUse(request.name) &&
-      !isNeverAutoApproved(request.name) &&
-      profiles.profileOf(conversationId)?.policies.autoApprove.includes(request.name) === true,
+    autoApprove: (conversationId, request) => {
+      const mode = profiles.profileOf(conversationId)?.policies.approvalMode;
+      return (
+        request.name !== FIRST_USE_APPROVAL &&
+        !isMcpFirstUse(request.name) &&
+        !isNeverAutoApproved(request.name) &&
+        // 'yolo' waves everything past the floors through.
+        (mode === "yolo" ||
+          profiles.profileOf(conversationId)?.policies.autoApprove.includes(request.name) === true)
+      );
+    },
+    adjudicate: adjudicateWith(decide, audit, profiles),
     onExpire: (conversationId, request) => {
       audit.record({
         at: Date.now(),

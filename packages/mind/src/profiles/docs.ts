@@ -77,6 +77,8 @@ export const defaultPolicies = (): ProfilePolicies => ({
   // owner restricts a profile by setting an explicit list (or [] to lock).
   canInitiate: ["*"],
   autoApprove: [],
+  // The owner answers every gate unless they delegate (jev) or waive (yolo).
+  approvalMode: "manual",
   approvalTimeout: "deny",
   dailyTurnBudget: null,
   memoryKeeper: false,

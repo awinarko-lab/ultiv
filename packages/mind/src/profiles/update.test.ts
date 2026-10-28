@@ -1,0 +1,72 @@
+import { describe, expect, it } from "vite-plus/test";
+import type { ProfileInfo } from "@ultiv/contracts";
+import { defaultPolicies } from "./docs.ts";
+import { patchedProfile, validatePatch } from "./update.ts";
+
+const row = (policies: ProfileInfo["policies"]): ProfileInfo => ({
+  id: "p1",
+  owner: "harry",
+  name: "Scout",
+  description: "",
+  persona: "",
+  timezone: "Asia/Jakarta",
+  model: null,
+  toolAllowlist: null,
+  policies,
+  createdAt: 0,
+  archivedAt: null,
+});
+
+describe("Profile policy patches", () => {
+  it("defaults carry the manual approval mode", () => {
+    expect(defaultPolicies().approvalMode).toBe("manual");
+  });
+
+  it("a policies patch merges per key, not wholesale", () => {
+    const current = row({ ...defaultPolicies(), autoApprove: ["now"] });
+    // What a chat-box switcher sends: only the mode key (partial object).
+    const next = patchedProfile(current, {
+      policies: { approvalMode: "yolo" },
+    } as Parameters<typeof patchedProfile>[1]);
+    // The switched key changed; the untouched keys survived the patch.
+    expect(next.policies.approvalMode).toBe("yolo");
+    expect(next.policies.autoApprove).toEqual(["now"]);
+    expect(next.policies.canInitiate).toEqual(["*"]);
+    expect(next.policies.approvalTimeout).toBe("deny");
+    expect(next.policies.dailyTurnBudget).toBeNull();
+    expect(next.policies.memoryKeeper).toBe(false);
+  });
+
+  it("an empty policies patch leaves every key alone", () => {
+    const current = row({ ...defaultPolicies(), autoApprove: ["now"], approvalMode: "jev" });
+    const next = patchedProfile(current, { description: "new role" });
+    expect(next.policies).toEqual(current.policies);
+  });
+
+  it("a chat-box switch patches just the mode", () => {
+    const current = row(defaultPolicies());
+    const next = patchedProfile(current, {
+      policies: { ...defaultPolicies(), approvalMode: "manual" },
+    });
+    expect(next.policies.approvalMode).toBe("manual");
+  });
+
+  it("validatePatch rejects an unknown approval mode", () => {
+    let reason = "";
+    try {
+      validatePatch({
+        policies: { ...defaultPolicies(), approvalMode: "chaos" as never },
+      });
+    } catch (error) {
+      reason = (error as { reason?: string }).reason ?? "";
+    }
+    expect(reason).toBe("unknown approval mode: chaos");
+    // The three literals pass.
+    expect(() =>
+      validatePatch({ policies: { ...defaultPolicies(), approvalMode: "jev" } }),
+    ).not.toThrow();
+    expect(() =>
+      validatePatch({ policies: { ...defaultPolicies(), approvalMode: "yolo" } }),
+    ).not.toThrow();
+  });
+});

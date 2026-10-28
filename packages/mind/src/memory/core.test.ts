@@ -13,6 +13,7 @@ describe("core memory", () => {
       policies: {
         canInitiate: [],
         autoApprove: [],
+        approvalMode: "manual",
         approvalTimeout: "deny",
         dailyTurnBudget: null,
         memoryKeeper: true,

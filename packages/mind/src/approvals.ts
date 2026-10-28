@@ -13,6 +13,7 @@
 import { Context, Deferred, Duration, Effect, Exit, Layer } from "effect";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { TSchema } from "typebox";
+import type { ProfileApprovalMode } from "@ultiv/contracts";
 
 export interface ApprovalRequest {
   readonly callId: string;
@@ -20,10 +21,53 @@ export interface ApprovalRequest {
   readonly input: unknown;
 }
 
-/** Late-wired policy hooks: per-profile auto-approve and timeout escalation. */
+/** The adjudication helper's verdict: the gate's outcome for one call. */
+export type Adjudication = "approve" | "deny" | "human";
+
+/**
+ * Jev-as-gate thresholds: a probability this sure approves, this doubtful
+ * denies, and anything between is handed back to the owner (pending path).
+ */
+export const APPROVE_AT = 0.8;
+export const DENY_BELOW = 0.2;
+
+/**
+ * Pure gate: given the profile's approval mode, whether the Decide faculty is
+ * configured, and Jev's probability, who answers the gate. 'yolo' never
+ * reaches here (autoApprove already returned), 'manual' and an unavailable
+ * faculty are always the owner's call.
+ */
+export const adjudicationOf = (
+  mode: ProfileApprovalMode,
+  decideAvailable: boolean,
+  probability: number,
+): Adjudication => {
+  if (mode !== "jev" || !decideAvailable) return "human";
+  if (probability >= APPROVE_AT) return "approve";
+  if (probability < DENY_BELOW) return "deny";
+  return "human";
+};
+
+/** The verdict an adjudicate hook returns; undefined = no opinion (the owner decides). */
+export interface AdjudicationVerdict {
+  readonly approved: boolean;
+  readonly note?: string;
+}
+
+/** Late-wired policy hooks: per-profile auto-approve, Jev adjudication, timeout escalation. */
 export interface ApprovalsHooks {
   /** Return true to approve without waiting (policies.autoApprove). */
   readonly autoApprove?: (conversationId: string, request: ApprovalRequest) => boolean;
+  /**
+   * Ask a delegated judge (Jev) before parking the gate. True approves, false
+   * denies immediately (the note rides `noteFor` to the tool's denial
+   * message), undefined falls through to the owner-pending path. A failure is
+   * treated as no verdict.
+   */
+  readonly adjudicate?: (
+    conversationId: string,
+    request: ApprovalRequest,
+  ) => Effect.Effect<AdjudicationVerdict | undefined, unknown>;
   /** Called when the wait timed out (policies.approvalTimeout escalation). */
   readonly onExpire?: (conversationId: string, request: ApprovalRequest) => void;
 }
@@ -103,6 +147,19 @@ export const makeApprovals = (
         if (hooks.autoApprove?.(conversationId, request) === true) return true;
         const k = key(conversationId, callId);
         notes.delete(k); // a stale note must not leak into this call's denial
+        if (hooks.adjudicate !== undefined) {
+          // A failing judge is no verdict: fall through to the owner.
+          const verdict = yield* Effect.match(hooks.adjudicate(conversationId, request), {
+            onFailure: () => undefined,
+            onSuccess: (found) => found,
+          });
+          if (verdict !== undefined) {
+            if (verdict.approved) return true;
+            // Denied by the judge: no pending entry, the note rides noteFor.
+            if (verdict.note !== undefined) notes.set(k, verdict.note);
+            return false;
+          }
+        }
         const deferred = yield* Deferred.make<boolean>();
         pending.set(k, { conversationId, request });
         waiters.set(k, deferred);

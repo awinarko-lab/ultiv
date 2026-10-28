@@ -90,6 +90,7 @@ describe("forgetFact (offline, MemoryStorage)", () => {
       policies: {
         canInitiate: [],
         autoApprove: [],
+        approvalMode: "manual",
         approvalTimeout: "deny",
         dailyTurnBudget: null,
         memoryKeeper: true,

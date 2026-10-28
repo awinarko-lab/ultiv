@@ -11,6 +11,7 @@ describe("Memory seam (offline, MemoryStorage)", () => {
       policies: {
         canInitiate: [],
         autoApprove: [],
+        approvalMode: "manual",
         approvalTimeout: "deny",
         dailyTurnBudget: null,
         memoryKeeper: true,
@@ -142,6 +143,7 @@ describe("Memory seam (offline, MemoryStorage)", () => {
       policies: {
         canInitiate: [],
         autoApprove: [],
+        approvalMode: "manual",
         approvalTimeout: "deny",
         dailyTurnBudget: null,
         memoryKeeper: true,

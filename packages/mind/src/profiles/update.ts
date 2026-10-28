@@ -4,14 +4,16 @@
  * mains, sessions, task threads) gets the edited profile from its next turn.
  */
 import { InvalidInput } from "@ultiv/core";
-import type { ProfileCreate, ProfileInfo } from "@ultiv/contracts";
+import type { ProfileApprovalMode, ProfileCreate, ProfileInfo } from "@ultiv/contracts";
 import { KENARI_MODELS } from "../providers/kenari.ts";
 import { validTimezone } from "./docs.ts";
 
 /** Field limits, shared with create. */
 export const PROFILE_LIMITS = { name: 80, description: 500, persona: 8_000 } as const;
 
-/** Reject a patch with an unknown timezone or model; `model: null` clears the override. */
+const APPROVAL_MODES: readonly ProfileApprovalMode[] = ["manual", "jev", "yolo"];
+
+/** Reject a patch with an unknown timezone, model, or approval mode. */
 export const validatePatch = (patch: Partial<ProfileCreate>): void => {
   if (patch.timezone !== undefined && !validTimezone(patch.timezone)) {
     throw new InvalidInput({ reason: `unknown timezone: ${patch.timezone}` });
@@ -22,6 +24,10 @@ export const validatePatch = (patch: Partial<ProfileCreate>): void => {
     !KENARI_MODELS.some((m) => m.id === patch.model?.id)
   ) {
     throw new InvalidInput({ reason: `unknown model: ${patch.model?.id}` });
+  }
+  const mode = patch.policies?.approvalMode;
+  if (mode !== undefined && !APPROVAL_MODES.includes(mode)) {
+    throw new InvalidInput({ reason: `unknown approval mode: ${String(mode)}` });
   }
 };
 
@@ -41,7 +47,7 @@ export const patchedProfile = (
   timezone: patch.timezone ?? current.timezone,
   model: patch.model !== undefined ? patch.model : current.model,
   toolAllowlist: patch.toolAllowlist !== undefined ? patch.toolAllowlist : current.toolAllowlist,
-  policies: patch.policies !== undefined ? patch.policies : current.policies,
+  policies: { ...current.policies, ...patch.policies },
 });
 
 /** Point every conversation that carries this profile at its edited copy. */
